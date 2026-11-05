@@ -98,7 +98,10 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
 }
 
 export const PR02_P0_AUTHORITY_ENV: string
-export const PR02_P0_FALLBACK_AUTHORITY_SECRET: string
+export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
+
+export function isTestAuthorityKey(secret: unknown): boolean
+export function validateP0AuthoritySecret(secret: unknown): string
 
 export interface Pr02P0Attestation {
   readonly version: string
@@ -109,10 +112,13 @@ export interface Pr02P0Attestation {
   readonly consultadoEn: string
   readonly entorno: string
   readonly transportType: string
+  readonly executorIdentity?: string
+  readonly operacionesWsfe?: readonly string[]
   readonly ivaRawSha: string
   readonly ivaNormSha: string
   readonly condRawSha: string
   readonly condNormSha: string
+  readonly goAuthorization?: string | null
   readonly issuedAt: string
   readonly signature: string | null
   readonly accredited: boolean
@@ -124,6 +130,9 @@ export function createP0Attestation(params?: {
   commitSha?: string
   transportType?: string
   authoritySecret?: string
+  goAuthorization?: string
+  executorIdentity?: string
+  operacionesWsfe?: readonly string[]
   now?: string | number | Date
 }): Pr02P0Attestation
 
@@ -176,6 +185,7 @@ export function createPr02P0OfficialEvidenceManifest(params?: {
   attestation?: Pr02P0Attestation
   commit_sha?: string
   authoritySecret?: string
+  goAuthorization?: string
 }): Pr02P0OfficialEvidenceManifest
 
 export function validatePr02P0Manifest(manifest: unknown): boolean

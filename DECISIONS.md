@@ -2179,3 +2179,38 @@ El diseño previo desacopló la recolección oficial de evidencia (`PR02-P0`) de
 **Consecuencias:**
 `PR02_P0_COLLECTOR_IMPLEMENTATION = PASS`, `PR02_P0_AUTHORIZATION_GUARD = PASS`, `PR02_P0_WSAA_WSFE_ALLOWLIST = PASS`, `PR02_P0_CALL_LIMIT_GUARD = PASS`, `PR02_P0_SOAP_VALIDATION = PASS`, `PR02_P0_MANIFEST_INTEGRITY = PASS`, `PR02_P0_PROVENANCE_BINDING = PASS`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `PR02_P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`, `PR02_READY_FOR_EMISSION_GO = false`.
 147/147 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+## 05/11/2026 - Corrección Crítica de Atestación y Ejecución Oficial PR02-P0
+
+**Contexto:**
+Tras la auditoría de hardening del colector PR02-P0, se identificaron vulnerabilidades residuales en el esquema de atestación de procedencia y trazabilidad de llamadas oficiales:
+1. Existencia de una clave HMAC de respaldo hardcodeada (`PR02_P0_FALLBACK_AUTHORITY_SECRET`) en el repositorio, la cual quedó comprometida por exposición en Git.
+2. Posibilidad teórica de fabricar atestaciones oficiales por el llamador mediante parámetros booleanos sin vincular explícitamente el token GO, la identidad del componente colector ni el commit SHA.
+3. El circuito CLI de WSAA carecía de separación en 4 etapas explícitas: disponibilidad de material de autenticación -> verificación de GO externo -> autorización efectiva de transporte -> ejecución de llamadas.
+4. Los contadores del call tracker podían duplicar el registro de inicio de llamada si `recordStart` y `recordCall` se invocaban sucesivamente, y no distinguían taxativamente llamadas con resultado incierto (timeout).
+5. El transporte oficial de red carecía de streaming con aborto inmediato por límite de tamaño de respuesta (> 2MB).
+
+**Decisión:**
+1. **Eliminación Total de Fallback HMAC y Denylist de Claves Comprometidas**:
+   - Se removió `PR02_P0_FALLBACK_AUTHORITY_SECRET` y cualquier clave criptográfica hardcodeada en el repositorio.
+   - Se declaró la lista negra inmutable `PR02_P0_COMPROMISED_SECRETS` conteniendo `'kioskopos-pr02-p0-official-custody-secret-2026'`. Su presencia lanza `P0_ATTESTATION_KEY_COMPROMISED`.
+   - Se implementó `validateP0AuthoritySecret(secret)` que exige custodia externa en `PR02_P0_AUTHORITY_SECRET`, longitud mínima de 32 caracteres de alta entropía, y rechazo de nombres y marcadores de prueba (`isTestAuthorityKey`). Sin clave válida: STOP con `P0_ATTESTATION_KEY_MISSING`.
+2. **Atestación Criptográfica Inalterable con Enlace Unívoco**:
+   - `createP0Attestation` y `verifyP0Attestation` vinculan en el payload canónico firmado: `goAuthorization`, `executorIdentity` (`scripts/fiscal/execute-pr02-p0-official-evidence.mjs`), `commitSha` (40 hex minúsculas), `executionId`, `consultadoEn`, entorno `HOMOLOGACION`, operaciones WSFE y digests SHA-256 de las respuestas SOAP originales y textos normalizados.
+   - Cualquier intento de suministrar evidencia simulada fuerza `accredited: false`, `provenance: 'UNVERIFIED'` y `signature: null`. Intentos de auto-acreditación por el llamador son bloqueados con `P0_SIMULATED_EVIDENCE_CANNOT_BE_ACCREDITED`.
+   - `validatePr02P1ImportEvidence` verifica la atestación de procedencia contra la clave de autoridad custodiada externamente; cualquier inconsistencia detiene la importación con `P1_IMPORT_FORBIDDEN`.
+3. **Circuito Seguro CLI y Separación de 4 Etapas**:
+   - El ejecutor y el script PowerShell `run-pr02-p0-staging-private.ps1` reciben el GO token y la ruta al archivo CMS sin exponer secretos en `argv`.
+   - Separación secuencial estricta: Etapa 1: Disponibilidad de credenciales (TA vigente o archivo CMS) -> Etapa 2: Validación obligatoria de GO externo en transporte oficial -> Etapa 3: Autorización de transporte oficial (`createOfficialArcaTransport`) -> Etapa 4: Ejecución controlada con límites inmutables.
+4. **Contadores de Auditoría y Detección de Incertidumbre**:
+   - `createPr02P0CallTracker`: `recordStart()` verifica límites ANTES de iniciar y previene reintentos automáticos. `recordCall()` no re-ejecuta `recordStart()` si ya fue registrado.
+   - Métricas auditadas: `CALLS_ATTEMPTED`, `CALLS_COMPLETED`, `CALLS_FAILED`, `CALLS_OUTCOME_UNKNOWN`. Ante timeout, la operación se computa como intentada y de desenlace desconocido (`outcomeUnknown`). Cero reintentos automáticos.
+5. **Streaming HTTP con Límite de 2MB**:
+   - `createOfficialArcaTransport` lee el body en streaming mediante `response.body.getReader()`. Si el acumulado supera 2 MB, cancela inmediatamente el lector (`reader.cancel()`), aborta la solicitud (`controller.abort()`) y lanza `RESPONSE_SIZE_EXCEEDED`.
+6. **Pruebas de Falsa Procedencia E2E y Regresiones**:
+   - Se incorporó la prueba E2E de falsa procedencia que demuestra que respuestas simuladas con hashes válidos pero sin autorización oficial resultan en `OFFICIAL_PROVENANCE = UNVERIFIED`, `P1_IMPORT_ALLOWED = false` y `STAGING_WRITES = 0`.
+   - Pruebas negativas para claves comprometidas, claves cortas, claves de test, firmas adulteradas, ejecutor apócrifo y commit mismatch.
+
+**Consecuencias:**
+`P0_HARDCODED_HMAC_SECRET = REMOVED`, `P0_UNTRUSTED_ATTESTATION_REJECTED = PASS`, `P0_OFFICIAL_PROVENANCE_GUARD = PASS`, `P0_CLI_WSAA_AUTH_PREPARED = PASS`, `P0_CALL_AUDIT_ACCURATE = PASS`, `P0_HTTP_RESPONSE_LIMIT = PASS`, `P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `P1_IMPORT_ALLOWED = false`, `P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
+159/159 tests PASS (28 collector, 17 plan, 29 postgres integration P1/P2, 33 preflight, 9 plan 03c, 37 preparation, 6 postgres A0), PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

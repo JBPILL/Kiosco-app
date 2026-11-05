@@ -35,22 +35,36 @@ export function validateEvidenceDirectory(dirPath: string, repoRoot?: string): s
 export interface Pr02P0CallTracker {
   recordStart(operationName: string): void
   recordCall(operationName: string): void
-  recordFailure(operationName: string): void
+  recordSuccess?(operationName: string): void
+  recordFailure(operationName: string, isTimeout?: boolean): void
   getCounts(): {
     readonly loginCms: number
     readonly tiposIva: number
     readonly condicionIvaReceptor: number
     readonly total: number
+    readonly attempted: number
+    readonly completed: number
+    readonly failed: number
+    readonly outcomeUnknown: number
   }
   getAuditSummary(): {
     readonly started: readonly string[]
     readonly completed: readonly string[]
     readonly failed: readonly string[]
+    readonly outcomeUnknown: readonly string[]
+    readonly CALLS_ATTEMPTED: number
+    readonly CALLS_COMPLETED: number
+    readonly CALLS_FAILED: number
+    readonly CALLS_OUTCOME_UNKNOWN: number
     readonly counts: {
       readonly loginCms: number
       readonly tiposIva: number
       readonly condicionIvaReceptor: number
       readonly total: number
+      readonly attempted: number
+      readonly completed: number
+      readonly failed: number
+      readonly outcomeUnknown: number
     }
   }
   getOperations(): readonly string[]
@@ -72,6 +86,8 @@ export interface Pr02P0CliArgs {
   readonly expectedHead: string
   readonly evidenceDir: string
   readonly saveEvidence: boolean
+  readonly goAuthorization: string
+  readonly cmsFilePath: string
 }
 
 export function validatePr02P0CliArgs(argv?: readonly string[]): Pr02P0CliArgs

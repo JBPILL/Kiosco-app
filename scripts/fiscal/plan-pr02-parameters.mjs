@@ -13,7 +13,48 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
 
 export const PR02_P0_AUTHORITY_ENV = 'PR02_P0_AUTHORITY_SECRET'
-export const PR02_P0_FALLBACK_AUTHORITY_SECRET = 'kioskopos-pr02-p0-official-custody-secret-2026'
+export const PR02_P0_COMPROMISED_SECRETS = Object.freeze([
+  'kioskopos-pr02-p0-official-custody-secret-2026',
+])
+
+/**
+ * Detecta si una clave es un marcador o clave de prueba no confiable.
+ */
+export function isTestAuthorityKey(secret) {
+  if (!secret || typeof secret !== 'string') return false
+  const lower = secret.toLowerCase()
+  return (
+    lower.includes('test') ||
+    lower.includes('mock') ||
+    lower.includes('dummy') ||
+    lower.includes('synthetic') ||
+    lower.includes('sample') ||
+    lower.includes('example')
+  )
+}
+
+/**
+ * Validador estricto de la clave de autoridad de atestación oficial P0.
+ * Exige alta entropía (>= 32 caracteres), custodia externa, y rechaza claves comprometidas o de prueba.
+ */
+export function validateP0AuthoritySecret(secret) {
+  if (!secret || typeof secret !== 'string' || secret.trim().length === 0) {
+    throw new Error('P0_ATTESTATION_KEY_MISSING: Se requiere una clave de atestación oficial custodiada fuera del repositorio')
+  }
+  const trimmed = secret.trim()
+  for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
+    if (trimmed === compromised || trimmed.toLowerCase() === compromised.toLowerCase()) {
+      throw new Error('P0_ATTESTATION_KEY_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa')
+    }
+  }
+  if (trimmed.length < 32) {
+    throw new Error('P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY: La clave de atestación oficial debe tener al menos 32 caracteres de alta entropía')
+  }
+  if (isTestAuthorityKey(trimmed)) {
+    throw new Error('P0_ATTESTATION_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba o simulación para atestación oficial')
+  }
+  return trimmed
+}
 
 export const PR02_P0_SCOPE = 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
 export const PR02_P1_SCOPE = 'PR02_P1_VERIFIED_CATALOG_IMPORT'
@@ -429,7 +470,8 @@ export function validateCondicionIvaReceptorEvidence(text, expectedChecksum) {
 /**
  * Crea una constancia criptográfica (atestación) de adquisición oficial de evidencia P0.
  * Vincula de forma no repudiable: identificador de proceso, ejecución autorizada,
- * commit ejecutado, hashes de respuestas SOAP y normalizadas, y transporte oficial verificado.
+ * commit ejecutado, hashes de respuestas SOAP y normalizadas, transporte oficial verificado,
+ * autorización externa GO, identidad de ejecutor y operaciones WSFE.
  * Si el transporte es simulado, genera una atestación no acreditada (accredited = false).
  */
 export function createP0Attestation(params = {}) {
@@ -442,6 +484,9 @@ export function createP0Attestation(params = {}) {
     commitSha,
     transportType = 'SIMULATED',
     authoritySecret,
+    goAuthorization,
+    executorIdentity,
+    operacionesWsfe,
     now = new Date(),
   } = params
 
@@ -463,10 +508,13 @@ export function createP0Attestation(params = {}) {
       consultadoEn: manifest.consultado_en || issuedAt,
       entorno: manifest.entorno || 'HOMOLOGACION',
       transportType: 'SIMULATED',
+      executorIdentity: executorIdentity || manifest.colector_identidad || PR02_P0_COLECTOR_IDENTIDAD,
+      operacionesWsfe: operacionesWsfe || Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
       ivaRawSha: manifest.iva_respuesta_original_sha256 || '0'.repeat(64),
       ivaNormSha: manifest.iva_archivo_normalizado_sha256 || '0'.repeat(64),
       condRawSha: manifest.condition_respuesta_original_sha256 || '0'.repeat(64),
       condNormSha: manifest.condition_archivo_normalizado_sha256 || '0'.repeat(64),
+      goAuthorization: null,
       issuedAt,
       signature: null,
       accredited: false,
@@ -474,11 +522,25 @@ export function createP0Attestation(params = {}) {
     })
   }
 
+  // En transporte oficial se valida obligatoriamente commitSha
   if (!commitSha || !/^[0-9a-fA-F]{40}$/.test(commitSha)) {
     throw new Error('P0_ATTESTATION_COMMIT_SHA_REQUIRED: Se requiere commitSha hexadecimal de 40 caracteres para atestación oficial')
   }
 
-  const secret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV] || PR02_P0_FALLBACK_AUTHORITY_SECRET
+  // Validación de GO externo autorizado
+  if (!goAuthorization || typeof goAuthorization !== 'string' || goAuthorization.trim().length === 0) {
+    throw new Error('P0_ATTESTATION_GO_REQUIRED: Se requiere evidencia de GO externo autorizado para emitir atestación oficial')
+  }
+
+  // Validación de identidad del ejecutor confiable
+  const execId = executorIdentity || manifest.colector_identidad
+  if (execId !== PR02_P0_COLECTOR_IDENTIDAD) {
+    throw new Error(`P0_ATTESTATION_EXECUTOR_MISMATCH: Identidad de ejecutor '${execId}' no coincide con el colector confiable '${PR02_P0_COLECTOR_IDENTIDAD}'`)
+  }
+
+  // Validación estricta de clave de autoridad custodiada (sin fallbacks hardcodeados)
+  const rawSecret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
+  const validSecret = validateP0AuthoritySecret(rawSecret)
 
   const payload = {
     version: '1.0',
@@ -487,17 +549,20 @@ export function createP0Attestation(params = {}) {
     executionScope: manifest.ejecucion_autorizada_scope,
     commitSha: String(commitSha).toLowerCase(),
     consultadoEn: manifest.consultado_en,
-    entorno: manifest.entorno,
+    entorno: manifest.entorno || 'HOMOLOGACION',
     transportType: 'OFFICIAL',
+    executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    operacionesWsfe: operacionesWsfe || Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
     ivaRawSha: manifest.iva_respuesta_original_sha256,
     ivaNormSha: manifest.iva_archivo_normalizado_sha256,
     condRawSha: manifest.condition_respuesta_original_sha256,
     condNormSha: manifest.condition_archivo_normalizado_sha256,
+    goAuthorization: goAuthorization.trim(),
     issuedAt,
   }
 
   const canonicalPayload = JSON.stringify(payload)
-  const signature = createHmac('sha256', secret).update(canonicalPayload).digest('hex')
+  const signature = createHmac('sha256', validSecret).update(canonicalPayload).digest('hex')
 
   return Object.freeze({
     ...payload,
@@ -525,6 +590,12 @@ export function verifyP0Attestation(attestation, options = {}) {
   if (!attestation.signature || typeof attestation.signature !== 'string' || !/^[0-9a-f]{64}$/.test(attestation.signature)) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_SIGNATURE_INVALID' })
   }
+  if (attestation.executorIdentity !== PR02_P0_COLECTOR_IDENTIDAD) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_EXECUTOR_MISMATCH' })
+  }
+  if (!attestation.goAuthorization || typeof attestation.goAuthorization !== 'string' || attestation.goAuthorization.trim().length === 0) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_GO_MISSING' })
+  }
 
   const { manifest, commitSha, authoritySecret } = options
 
@@ -535,7 +606,8 @@ export function verifyP0Attestation(attestation, options = {}) {
       attestation.condRawSha !== manifest.condition_respuesta_original_sha256 ||
       attestation.condNormSha !== manifest.condition_archivo_normalizado_sha256 ||
       attestation.executionScope !== manifest.ejecucion_autorizada_scope ||
-      attestation.processId !== manifest.identificador_proceso
+      attestation.processId !== manifest.identificador_proceso ||
+      (manifest.entorno && attestation.entorno !== manifest.entorno)
     ) {
       return Object.freeze({ valid: false, reason: 'ATTESTATION_MANIFEST_MISMATCH' })
     }
@@ -547,11 +619,29 @@ export function verifyP0Attestation(attestation, options = {}) {
     }
   }
 
-  const secret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV] || PR02_P0_FALLBACK_AUTHORITY_SECRET
+  const rawSecret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
+  let validSecret
+  try {
+    validSecret = validateP0AuthoritySecret(rawSecret)
+  } catch (err) {
+    if (err.message.includes('P0_ATTESTATION_KEY_MISSING')) {
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING' })
+    }
+    if (err.message.includes('P0_ATTESTATION_KEY_COMPROMISED')) {
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_COMPROMISED' })
+    }
+    if (err.message.includes('P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY')) {
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INSUFFICIENT_ENTROPY' })
+    }
+    if (err.message.includes('P0_ATTESTATION_TEST_KEY_PROHIBITED')) {
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_TEST_KEY_PROHIBITED' })
+    }
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INVALID' })
+  }
 
   const { signature, accredited, provenance, ...payload } = attestation
   const canonicalPayload = JSON.stringify(payload)
-  const expectedSig = createHmac('sha256', secret).update(canonicalPayload).digest('hex')
+  const expectedSig = createHmac('sha256', validSecret).update(canonicalPayload).digest('hex')
 
   const sigBuf = Buffer.from(signature, 'hex')
   const expBuf = Buffer.from(expectedSig, 'hex')
@@ -655,8 +745,10 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
         condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
       },
       commitSha: params.commit_sha || resolveCurrentGitHead() || '0'.repeat(40),
-      transportType: isSimulated ? 'SIMULATED' : (params.transport_type || 'OFFICIAL'),
+      transportType: isSimulated ? 'SIMULATED' : (params.transport_type || 'SIMULATED'),
       authoritySecret: params.authoritySecret,
+      goAuthorization: params.goAuthorization,
+      executorIdentity: colectorIdentidad,
       now: params.now,
     })
   }
@@ -672,6 +764,7 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
         iva_archivo_normalizado_sha256: params.iva_archivo_normalizado_sha256,
         condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
         condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
+        entorno,
       },
       authoritySecret: params.authoritySecret,
       commitSha: params.commit_sha,
@@ -679,8 +772,8 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     isAccredited = verified.valid === true
   }
 
-  // No permitir que el caller declare accredited: true para evidencia simulada
-  if (isSimulated && params.accredited === true) {
+  // No permitir que el caller declare accredited: true para evidencia simulada o no acreditada
+  if ((isSimulated || !isAccredited) && params.accredited === true) {
     throw new Error('P0_SIMULATED_EVIDENCE_CANNOT_BE_ACCREDITED: No se puede declarar acreditada una evidencia simulada o no oficial')
   }
 
@@ -697,7 +790,7 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
     condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
     transporte_validado: true,
-    transport_type: isSimulated ? 'SIMULATED' : (params.transport_type || 'OFFICIAL'),
+    transport_type: isSimulated || !isAccredited ? 'SIMULATED' : (params.transport_type || 'OFFICIAL'),
     origen_verificado: origen,
     accredited: isAccredited,
     attestation,
@@ -790,7 +883,18 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_MANIFEST_REQUIRED: Se requiere manifiesto oficial P0 para importar evidencia en P1')
   }
 
-  validatePr02P0Manifest(manifest)
+  try {
+    validatePr02P0Manifest(manifest)
+  } catch (err) {
+    if (
+      err.message.includes('P0_MANIFEST_NOT_ACCREDITED') ||
+      err.message.includes('P0_MANIFEST_TRANSPORT_NOT_OFFICIAL') ||
+      err.message.includes('P0_MANIFEST_ATTESTATION_MISSING')
+    ) {
+      throw new Error(`P1_IMPORT_FORBIDDEN: ${err.message}`)
+    }
+    throw err
+  }
 
   if (typeof ivaText !== 'string' || typeof conditionText !== 'string') {
     throw new Error('P1_IMPORT_EVIDENCE_TEXTS_REQUIRED')

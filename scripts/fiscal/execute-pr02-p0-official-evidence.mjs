@@ -199,13 +199,42 @@ export function createOfficialArcaTransport(options = {}) {
 
         const contentLengthHeader = response.headers.get('content-length')
         if (contentLengthHeader && parseInt(contentLengthHeader, 10) > maxResponseBytes) {
+          controller.abort()
           throw new Error(`RESPONSE_SIZE_EXCEEDED: Content-Length (${contentLengthHeader}) supera el límite de ${maxResponseBytes} bytes`)
         }
 
-        const text = await response.text()
-        if (Buffer.byteLength(text, 'utf8') > maxResponseBytes) {
-          throw new Error(`RESPONSE_SIZE_EXCEEDED: Tamaño de respuesta supera el límite de ${maxResponseBytes} bytes`)
+        if (!response.body) {
+          throw new Error('EMPTY_RESPONSE_BODY: La respuesta HTTP no contiene cuerpo')
         }
+
+        // Lectura en streaming con abort inmediato al superar maxResponseBytes
+        const reader = response.body.getReader()
+        const chunks = []
+        let totalBytes = 0
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value) {
+              totalBytes += value.byteLength
+              if (totalBytes > maxResponseBytes) {
+                try { await reader.cancel('RESPONSE_SIZE_EXCEEDED') } catch {}
+                controller.abort()
+                throw new Error(`RESPONSE_SIZE_EXCEEDED: La respuesta superó en streaming el límite máximo de ${maxResponseBytes} bytes`)
+              }
+              chunks.push(value)
+            }
+          }
+        } catch (streamErr) {
+          if (streamErr.message && streamErr.message.includes('RESPONSE_SIZE_EXCEEDED')) {
+            throw streamErr
+          }
+          throw streamErr
+        }
+
+        const fullBuffer = Buffer.concat(chunks)
+        const text = fullBuffer.toString('utf8')
 
         if (!response.ok) {
           throw new Error(`ARCA_HTTP_STATUS_${response.status}`)
@@ -214,6 +243,9 @@ export function createOfficialArcaTransport(options = {}) {
         return text
       } catch (err) {
         if (err.name === 'AbortError' || controller.signal.aborted) {
+          if (err.message && err.message.includes('RESPONSE_SIZE_EXCEEDED')) {
+            throw err
+          }
           throw new Error('ARCA_TIMEOUT: Tiempo de espera agotado al consultar endpoint oficial ARCA (timeout 15s)')
         }
         throw err
@@ -226,7 +258,8 @@ export function createOfficialArcaTransport(options = {}) {
 
 /**
  * Gestor y tracker de llamadas para PR02-P0.
- * Garantiza allowlist estricto, límites máximos de llamadas no sobreescribibles y cero reintentos automáticos.
+ * Garantiza allowlist estricto, límites máximos de llamadas verificados ANTES de iniciar,
+ * distinción entre intentos, completadas, fallidas e inciertas (timeout), y cero reintentos automáticos.
  */
 export function createPr02P0CallTracker(options = {}) {
   // Prohibición taxativa de overrides que incrementen límites
@@ -250,13 +283,20 @@ export function createPr02P0CallTracker(options = {}) {
     totalMax: options.totalMax !== undefined ? options.totalMax : P0_MAX_LIMITS.totalMax,
   })
 
-  let loginCmsCount = 0
-  let tiposIvaCount = 0
-  let condicionIvaReceptorCount = 0
+  let attemptedLoginCms = 0
+  let attemptedTiposIva = 0
+  let attemptedCondicionIva = 0
+
+  let completedLoginCms = 0
+  let completedTiposIva = 0
+  let completedCondicionIva = 0
+
   const startedOps = []
+  const attemptedOpsSet = new Set()
   const completedOps = []
+  const completedOpsSet = new Set()
   const failedOps = []
-  const failedOpsSet = new Set()
+  const outcomeUnknownOps = []
 
   return Object.freeze({
     recordStart(operationName) {
@@ -266,55 +306,84 @@ export function createPr02P0CallTracker(options = {}) {
       if (!ALLOWED_P0_ARCA_OPERATIONS.includes(operationName)) {
         throw new Error(`DISALLOWED_ARCA_OPERATION: Operación fiscal '${operationName}' no forma parte del allowlist de PR02-P0`)
       }
-      if (failedOpsSet.has(operationName)) {
-        throw new Error(`AUTOMATIC_RETRY_FORBIDDEN: Reintento automático de operación fallida '${operationName}' estrictamente prohibido`)
-      }
 
-      const currentTotal = loginCmsCount + tiposIvaCount + condicionIvaReceptorCount
-      if (currentTotal + 1 > limits.totalMax) {
-        throw new Error(`TOTAL_CALL_LIMIT_EXCEEDED: Total de llamadas ARCA (${currentTotal + 1}) superaría el límite permitido de ${limits.totalMax}`)
+      // Verificación de límites ANTES de iniciar cada llamada
+      const currentAttemptedTotal = startedOps.length
+      if (currentAttemptedTotal + 1 > limits.totalMax) {
+        throw new Error(`TOTAL_CALL_LIMIT_EXCEEDED: Total de llamadas ARCA (${currentAttemptedTotal + 1}) superaría el límite permitido de ${limits.totalMax}`)
       }
 
       if (operationName === 'LoginCms') {
-        if (loginCmsCount + 1 > limits.loginCmsMax) {
-          throw new Error(`CALL_LIMIT_EXCEEDED: LoginCms excedió el límite máximo (${loginCmsCount + 1} > ${limits.loginCmsMax})`)
+        if (attemptedLoginCms + 1 > limits.loginCmsMax) {
+          throw new Error(`CALL_LIMIT_EXCEEDED: LoginCms excedió el límite máximo (${attemptedLoginCms + 1} > ${limits.loginCmsMax})`)
         }
       } else if (operationName === 'FEParamGetTiposIva') {
-        if (tiposIvaCount + 1 > limits.tiposIvaMax) {
-          throw new Error(`CALL_LIMIT_EXCEEDED: FEParamGetTiposIva excedió el límite máximo (${tiposIvaCount + 1} > ${limits.tiposIvaMax})`)
+        if (attemptedTiposIva + 1 > limits.tiposIvaMax) {
+          throw new Error(`CALL_LIMIT_EXCEEDED: FEParamGetTiposIva excedió el límite máximo (${attemptedTiposIva + 1} > ${limits.tiposIvaMax})`)
         }
       } else if (operationName === 'FEParamGetCondicionIvaReceptor') {
-        if (condicionIvaReceptorCount + 1 > limits.condicionIvaReceptorMax) {
-          throw new Error(`CALL_LIMIT_EXCEEDED: FEParamGetCondicionIvaReceptor excedió el límite máximo (${condicionIvaReceptorCount + 1} > ${limits.condicionIvaReceptorMax})`)
+        if (attemptedCondicionIva + 1 > limits.condicionIvaReceptorMax) {
+          throw new Error(`CALL_LIMIT_EXCEEDED: FEParamGetCondicionIvaReceptor excedió el límite máximo (${attemptedCondicionIva + 1} > ${limits.condicionIvaReceptorMax})`)
         }
+      }
+
+      if (attemptedOpsSet.has(operationName)) {
+        throw new Error(`AUTOMATIC_RETRY_FORBIDDEN: Reintento automático de operación '${operationName}' estrictamente prohibido`)
+      }
+
+      if (operationName === 'LoginCms') {
+        attemptedLoginCms++
+      } else if (operationName === 'FEParamGetTiposIva') {
+        attemptedTiposIva++
+      } else if (operationName === 'FEParamGetCondicionIvaReceptor') {
+        attemptedCondicionIva++
       }
 
       startedOps.push(operationName)
+      attemptedOpsSet.add(operationName)
     },
 
     recordCall(operationName) {
-      this.recordStart(operationName)
-      if (operationName === 'LoginCms') {
-        loginCmsCount++
-      } else if (operationName === 'FEParamGetTiposIva') {
-        tiposIvaCount++
-      } else if (operationName === 'FEParamGetCondicionIvaReceptor') {
-        condicionIvaReceptorCount++
+      if (!attemptedOpsSet.has(operationName)) {
+        this.recordStart(operationName)
       }
+      if (completedOpsSet.has(operationName)) {
+        throw new Error(`CALL_ALREADY_COMPLETED: Operación '${operationName}' ya fue completada previamente`)
+      }
+
+      if (operationName === 'LoginCms') {
+        completedLoginCms++
+      } else if (operationName === 'FEParamGetTiposIva') {
+        completedTiposIva++
+      } else if (operationName === 'FEParamGetCondicionIvaReceptor') {
+        completedCondicionIva++
+      }
+
       completedOps.push(operationName)
+      completedOpsSet.add(operationName)
     },
 
-    recordFailure(operationName) {
+    recordSuccess(operationName) {
+      this.recordCall(operationName)
+    },
+
+    recordFailure(operationName, isTimeout = false) {
       failedOps.push(operationName)
-      failedOpsSet.add(operationName)
+      if (isTimeout) {
+        outcomeUnknownOps.push(operationName)
+      }
     },
 
     getCounts() {
       return Object.freeze({
-        loginCms: loginCmsCount,
-        tiposIva: tiposIvaCount,
-        condicionIvaReceptor: condicionIvaReceptorCount,
-        total: loginCmsCount + tiposIvaCount + condicionIvaReceptorCount,
+        loginCms: completedLoginCms,
+        tiposIva: completedTiposIva,
+        condicionIvaReceptor: completedCondicionIva,
+        total: completedOps.length,
+        attempted: startedOps.length,
+        completed: completedOps.length,
+        failed: failedOps.length,
+        outcomeUnknown: outcomeUnknownOps.length,
       })
     },
 
@@ -323,6 +392,11 @@ export function createPr02P0CallTracker(options = {}) {
         started: Object.freeze([...startedOps]),
         completed: Object.freeze([...completedOps]),
         failed: Object.freeze([...failedOps]),
+        outcomeUnknown: Object.freeze([...outcomeUnknownOps]),
+        CALLS_ATTEMPTED: startedOps.length,
+        CALLS_COMPLETED: completedOps.length,
+        CALLS_FAILED: failedOps.length,
+        CALLS_OUTCOME_UNKNOWN: outcomeUnknownOps.length,
         counts: this.getCounts(),
       })
     },
@@ -392,6 +466,8 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
     '--evidence-dir',
     '--save-evidence',
     '--no-save-evidence',
+    '--go-token',
+    '--cms-file',
   ])
 
   const flagCounts = new Map()
@@ -405,6 +481,8 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
   let expectedHead = ''
   let evidenceDir = DEFAULT_PRIVATE_EVIDENCE_DIR
   let saveEvidence = true
+  let goToken = ''
+  let cmsFile = ''
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
@@ -421,7 +499,7 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
       else if (arg === '--dry-run') hasDryRunFlag = true
       else if (arg === '--save-evidence') saveEvidence = true
       else if (arg === '--no-save-evidence') saveEvidence = false
-      else if (['--scope', '--project-ref', '--head', '--expected-head', '--evidence-dir'].includes(arg)) {
+      else if (['--scope', '--project-ref', '--head', '--expected-head', '--evidence-dir', '--go-token', '--cms-file'].includes(arg)) {
         const val = argv[i + 1]
         if (!val || val.startsWith('--')) {
           throw new Error(`CLI_MISSING_VALUE: Argumento '${arg}' requiere un valor`)
@@ -432,6 +510,11 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
         else if (arg === '--head') head = val.trim()
         else if (arg === '--expected-head') expectedHead = val.trim()
         else if (arg === '--evidence-dir') evidenceDir = val.trim()
+        else if (arg === '--go-token') goToken = val.trim()
+        else if (arg === '--cms-file') {
+          cmsFile = val.trim()
+          validateEvidenceDirectory(path.dirname(path.resolve(cmsFile)))
+        }
         i++
       }
     } else {
@@ -477,6 +560,8 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
     expectedHead,
     evidenceDir,
     saveEvidence,
+    goAuthorization: goToken,
+    cmsFilePath: cmsFile,
   })
 }
 
@@ -743,6 +828,11 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
         started: Object.freeze([]),
         completed: Object.freeze([]),
         failed: Object.freeze([]),
+        outcomeUnknown: Object.freeze([]),
+        CALLS_ATTEMPTED: 0,
+        CALLS_COMPLETED: 0,
+        CALLS_FAILED: 0,
+        CALLS_OUTCOME_UNKNOWN: 0,
         counts: Object.freeze({ loginCms: 0, tiposIva: 0, condicionIvaReceptor: 0, total: 0 }),
       }),
     })
@@ -769,11 +859,6 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
   const isSimulatedTransport = hasInjectedFetcher || hasSpecificMocks
   const transportType = isSimulatedTransport ? 'SIMULATED' : 'OFFICIAL'
 
-  // Si no se inyectó mock, se utiliza el adaptador oficial de transporte
-  const officialTransport = !isSimulatedTransport
-    ? createOfficialArcaTransport({ officialGoAuthorized: options.officialGoAuthorized })
-    : null
-
   const tracker = createPr02P0CallTracker({
     loginCmsMax: options.loginCmsMax,
     totalMax: options.totalMax,
@@ -785,7 +870,19 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
   let token = ''
   let sign = ''
 
-  // 3.1 Manejo de TA (Ticket de Acceso)
+  // Etapa 1: Manejo y validación de material de autenticación WSAA (Ticket de Acceso o CMS)
+  const cliArgs = options.argv ? validatePr02P0CliArgs(options.argv) : null
+  let resolvedCms = options.cmsBase64 || process.env.PR02_P0_WSAA_CMS_B64 || ''
+  const cmsFilePath = options.cmsFilePath || (cliArgs ? cliArgs.cmsFilePath : '') || process.env.PR02_P0_WSAA_CMS_FILE || ''
+  if (!resolvedCms && cmsFilePath) {
+    const resolvedPath = path.resolve(cmsFilePath)
+    validateEvidenceDirectory(path.dirname(resolvedPath))
+    if (!fs.existsSync(resolvedPath)) {
+      throw new Error(`WSAA_CMS_FILE_NOT_FOUND: No se encontró el archivo CMS en '${cmsFilePath}'`)
+    }
+    resolvedCms = fs.readFileSync(resolvedPath, 'utf8').trim()
+  }
+
   if (options.existingTa) {
     const existing = evaluateExistingTa(options.existingTa, options.now)
     const rawTa = typeof options.existingTa === 'object' ? options.existingTa : {}
@@ -803,17 +900,40 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       sign = rawTa.sign
     } else {
       // Si el TA es revocado o inválido y no hay credenciales CMS, abortar antes de cualquier consulta WSFE
-      if (!options.cmsBase64 && !deps.wsaaLogin && !deps.fetcher && !options.officialGoAuthorized) {
+      if (!resolvedCms && !deps.wsaaLogin && !deps.fetcher) {
         throw new Error(`TA_INVALID_OR_REVOKED: El Ticket de Acceso no es reutilizable (${existing.reason || 'TA_CREDENTIALS_INCOMPLETE'}) y no se dispone de credenciales para LoginCms`)
       }
     }
   }
 
+  // Si no hay TA reutilizable y no es transporte simulado, se exige CMS
+  if ((!token || !sign) && !isSimulatedTransport && (!resolvedCms || resolvedCms === 'MOCK_CMS')) {
+    throw new Error("WSAA_CMS_REQUIRED: Se requiere CMS PKCS#7 firmado válido para LoginCms. 'MOCK_CMS' prohibido en ejecución oficial")
+  }
+
+  // Etapa 2: Validación obligatoria de GO externo en transporte oficial
+  const goAuthorization = (
+    options.goAuthorization ||
+    options.goToken ||
+    (cliArgs ? cliArgs.goAuthorization : '') ||
+    process.env.PR02_P0_GO_AUTHORIZATION ||
+    ''
+  ).trim()
+
+  if (!isSimulatedTransport) {
+    if (!goAuthorization || goAuthorization.length < 16) {
+      throw new Error('PR02_P0_GO_AUTHORIZATION_REQUIRED: Se requiere evidencia de GO externo autorizado para ejecutar PR02-P0 oficialmente')
+    }
+  }
+
+  // Etapa 3: Autorización efectiva de transporte
+  const officialTransport = !isSimulatedTransport
+    ? createOfficialArcaTransport({ officialGoAuthorized: Boolean(goAuthorization) })
+    : null
+
+  // Etapa 4: Ejecución controlada de llamadas
   // Si no hay TA reutilizable, ejecutar LoginCms
   if (!token || !sign) {
-    if (!isSimulatedTransport && (!options.cmsBase64 || options.cmsBase64 === 'MOCK_CMS')) {
-      throw new Error("WSAA_CMS_REQUIRED: Se requiere CMS PKCS#7 firmado válido para LoginCms. 'MOCK_CMS' prohibido en ejecución oficial")
-    }
 
     tracker.recordStart('LoginCms')
     try {
@@ -824,7 +944,7 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
         const res = await deps.fetcher(WSAA_HOMO_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/xml; charset=utf-8', SOAPAction: '""' },
-          body: buildWsaaLoginCmsSoapRequest(options.cmsBase64 || 'MOCK_CMS'),
+          body: buildWsaaLoginCmsSoapRequest(resolvedCms || 'MOCK_CMS'),
         })
         if (!res.ok) throw new Error(`WSAA_HTTP_${res.status}`)
         wsaaResponseXml = await res.text()
@@ -832,7 +952,7 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
         wsaaResponseXml = await officialTransport.postSoap(
           WSAA_HOMO_URL,
           '""',
-          buildWsaaLoginCmsSoapRequest(options.cmsBase64)
+          buildWsaaLoginCmsSoapRequest(resolvedCms)
         )
       } else {
         throw new Error('REMOTE_NETWORK_DISABLED: Conexión externa a WSAA no autorizada en este entorno')
@@ -844,7 +964,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       token = parsedTa.token
       sign = parsedTa.sign
     } catch (wsaaErr) {
-      tracker.recordFailure('LoginCms')
+      const isTimeout = wsaaErr.message.includes('TIMEOUT') || wsaaErr.name === 'AbortError' || wsaaErr.message.includes('ARCA_TIMEOUT')
+      tracker.recordFailure('LoginCms', isTimeout)
       throw wsaaErr
     }
   }
@@ -879,7 +1000,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     tracker.recordCall('FEParamGetTiposIva')
     assertNoForbiddenSecrets(rawIvaSoapXml, 'rawIvaSoapXml')
   } catch (ivaErr) {
-    tracker.recordFailure('FEParamGetTiposIva')
+    const isTimeout = ivaErr.message.includes('TIMEOUT') || ivaErr.name === 'AbortError' || ivaErr.message.includes('ARCA_TIMEOUT')
+    tracker.recordFailure('FEParamGetTiposIva', isTimeout)
     throw ivaErr
   }
 
@@ -915,7 +1037,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     tracker.recordCall('FEParamGetCondicionIvaReceptor')
     assertNoForbiddenSecrets(rawConditionSoapXml, 'rawConditionSoapXml')
   } catch (condErr) {
-    tracker.recordFailure('FEParamGetCondicionIvaReceptor')
+    const isTimeout = condErr.message.includes('TIMEOUT') || condErr.name === 'AbortError' || condErr.message.includes('ARCA_TIMEOUT')
+    tracker.recordFailure('FEParamGetCondicionIvaReceptor', isTimeout)
     throw condErr
   }
 
@@ -949,6 +1072,9 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     commitSha: expectedHead,
     transportType,
     authoritySecret: options.authoritySecret,
+    goAuthorization: isSimulatedTransport ? null : goAuthorization,
+    executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    operacionesWsfe: Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
     now: options.now,
   })
 
@@ -970,6 +1096,7 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     attestation,
     commit_sha: expectedHead,
     authoritySecret: options.authoritySecret,
+    goAuthorization: isSimulatedTransport ? null : goAuthorization,
     now: options.now,
   })
 

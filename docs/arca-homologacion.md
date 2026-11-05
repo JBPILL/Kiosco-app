@@ -2267,38 +2267,49 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
     - **Evaluación Estricta de TA**:
       - Eliminada autoasignación `valido: true`.
       - Falla cerrada (`TA_REVOKED`, `TA_NOT_AVAILABLE`, `TA_CREDENTIALS_INCOMPLETE`, `TA_SERVICE_MISMATCH`, `TA_CUIT_MISMATCH`, `TA_EXPIRED_OR_EXPIRING_SOON` con margen de 10 min) antes de invocar WSFE si el material de autenticación es revocado o inválido.
-    - **Procedencia Criptográfica Inalterable (Attestation HMAC-SHA256)**:
-      - Eliminada acreditación por mero parámetro booleano. Implementada atestación criptográfica HMAC-SHA256 (`createP0Attestation` / `verifyP0Attestation`) vinculando processId, executionScope, commitSha, consultadoEn, entorno, transportType ('OFFICIAL') y hashes de los artefactos.
-      - Colector rechaza marcar como acreditada evidencia simulada (`P0_SIMULATED_EVIDENCE_CANNOT_BE_ACCREDITED`).
-      - P1 (`validatePr02P1ImportEvidence`) rechaza manifiestos no oficiales o sin atestación válida con `P1_IMPORT_FORBIDDEN` (`OFFICIAL_PROVENANCE = UNVERIFIED`, `P1_IMPORT_ALLOWED = false`).
     - **Custodia Privada y Almacenamiento Atómico de Evidencia**:
       - Validación de `evidenceDir`: rechazo de `..` (path traversal), symlinks y rutas dentro de directorios de código fuente del repositorio (`src`, `scripts`, `supabase`, `docs`, `.agent`, `.git`).
       - Permisos `0o700` para carpetas y `0o600` para archivos.
       - Guarda contra sobreescritura (`EVIDENCE_OVERWRITE_FORBIDDEN`).
       - Exclusión de secretos verificada en todos los archivos generados (incluyendo XML crudos).
       - Escritura atómica vía staging temporal `.tmp_p0_*` con verificación SHA-256 previa al renombramiento definitivo.
-    - **CLI y Auditoría**:
-      - Parser fail-closed que rechaza argumentos desconocidos, duplicados o con secretos, y verifica Git HEAD contra `resolveCurrentGitHead()`.
-      - Dry-run reporta fielmente `NOT_RUN` para comprobaciones remotas.
-    - **Estado**:
-      - `PR02_P0_LOCAL_HARDENING = PASS`
-      - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
-      - `P0_CLI_TRANSPORT_WIRING = PASS`
-      - `P0_WSAA_TA_GUARD = PASS`
-      - `P0_EXACT_ENDPOINT_GUARD = PASS`
-      - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
-      - `P0_PROVENANCE_ATTESTATION = PASS`
-      - `P0_FAKE_MANIFEST_REJECTED = PASS`
-      - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
-      - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+
+11. **Corrección Crítica de Atestación y Ejecución Oficial PR02-P0 (05/11/2026)**:
+    - **Eliminación Total de Clave HMAC de Respaldo y Denylist**:
+      - Eliminada permanentemente `PR02_P0_FALLBACK_AUTHORITY_SECRET` y cualquier fallback criptográfico en código.
+      - Denylist formal `PR02_P0_COMPROMISED_SECRETS` declarando no confiable la clave expuesta `'kioskopos-pr02-p0-official-custody-secret-2026'`. Su uso lanza `P0_ATTESTATION_KEY_COMPROMISED`.
+      - Validador estricto `validateP0AuthoritySecret(secret)` exige alta entropía (>= 32 caracteres) y custodia externa en `PR02_P0_AUTHORITY_SECRET`. Sin clave válida: STOP con `P0_ATTESTATION_KEY_MISSING`. Claves con marcadores de prueba (`test`, `mock`, `dummy`, `synthetic`, `sample`, `example`) son rechazadas taxativamente (`P0_ATTESTATION_TEST_KEY_PROHIBITED`).
+    - **Atestación Oficial No Falsificable y Binding Criptográfico**:
+      - Atestación oficial restringida exclusivamente al componente colector confiable (`scripts/fiscal/execute-pr02-p0-official-evidence.mjs`).
+      - Vinculación criptográfica obligatoria de: GO externo autorizado (`goAuthorization`), identidad del ejecutor (`executorIdentity`), commit SHA de 40 hex (`commitSha`), identificador de ejecución (`executionId`), entorno `HOMOLOGACION`, operaciones WSFE ejecutadas (`operacionesWsfe`), hashes de las respuestas SOAP originales y normalizadas (`ivaRawSha`, `ivaNormSha`, `condRawSha`, `condNormSha`), y timestamp de adquisición (`consultadoEn`).
+      - Respuestas simuladas/mocks conservan forzosamente `accredited: false` y `provenance: 'UNVERIFIED'`.
+      - P1 (`validatePr02P1ImportEvidence`) verifica la atestación contra la clave de autoridad custodiada externamente, impidiendo importación con `P1_IMPORT_FORBIDDEN` ante cualquier inconsistencia.
+    - **Circuito CLI Seguro de WSAA**:
+      - Wrapper PowerShell y ejecutor CLI manejan la autenticación sin exponer CMS, tokens, firmas ni claves privadas en argumentos de proceso (`argv`).
+      - Cuatro etapas explícitas: 1. Disponibilidad de material de autenticación (TA o CMS) -> 2. Verificación de autorización GO externa -> 3. Autorización efectiva de transporte -> 4. Ejecución controlada de llamadas.
+    - **Contadores de Llamadas y Auditoría Exacta**:
+      - `recordStart()` registra inicio de llamada exactamente una vez y valida límites ANTES de iniciar. `recordCall()` no duplica el inicio.
+      - Distinción exhaustiva entre `CALLS_ATTEMPTED`, `CALLS_COMPLETED`, `CALLS_FAILED`, `CALLS_OUTCOME_UNKNOWN`. En caso de timeout, la llamada se audita como intentada y de resultado incierto. Cero reintentos automáticos.
+    - **Transporte HTTP en Streaming con Límite de 2MB**:
+      - Lectura en streaming (`response.body.getReader()`) con cancelación inmediata (`reader.cancel()`, `controller.abort()`) en caso de superar 2 MB (`RESPONSE_SIZE_EXCEEDED`).
+    - **Pruebas de Regresión y Falsa Procedencia E2E**:
+      - Prueba de regresión E2E confirmando que respuestas simuladas con hashes correctos pero sin autorización real resultan en `OFFICIAL_PROVENANCE = UNVERIFIED`, `P1_IMPORT_ALLOWED = false`, `STAGING_WRITES = 0`.
+      - Pruebas negativas para claves faltantes, comprometidas, de prueba, firma adulterada, ejecutor discrepante, commit incorrecto y cancelación de streaming.
+    - **Métricas y Estado**:
+      - `P0_HARDCODED_HMAC_SECRET = REMOVED`
+      - `P0_UNTRUSTED_ATTESTATION_REJECTED = PASS`
+      - `P0_OFFICIAL_PROVENANCE_GUARD = PASS`
+      - `P0_CLI_WSAA_AUTH_PREPARED = PASS`
+      - `P0_CALL_AUDIT_ACCURATE = PASS`
+      - `P0_HTTP_RESPONSE_LIMIT = PASS`
+      - `P0_REMOTE_EXECUTION_READY = false`
       - `P0_REMOTE_EXECUTED = false`
-      - `OFFICIAL_PROVENANCE = UNVERIFIED`
-      - `P1_REMOTE_EXECUTION_READY = false`
+      - `P1_IMPORT_ALLOWED = false`
       - `P2_REMOTE_EXECUTION_READY = false`
       - `REAL_PV2_ENABLED = false`
       - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
       - `PR02_READY_FOR_EMISSION_GO = false`
-      - 148/148 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+      - 159/159 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
 
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 

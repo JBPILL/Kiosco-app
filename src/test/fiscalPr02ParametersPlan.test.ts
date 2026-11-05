@@ -12,6 +12,7 @@ import {
   PR02_PARAMETERS_HISTORICAL_REVISION,
   PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
   PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+  PR02_P0_COLECTOR_IDENTIDAD,
   REV3_SOURCE_SHA256,
   PR02_CATALOG_REV3_HASH,
   computeCatalogRowDigest,
@@ -390,12 +391,13 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
 
   // 7. P0 Manifest creation and validation
   it('creates and validates P0 official evidence manifest (zero secrets allowed)', () => {
+    const trustedAuthoritySecret = 'authority-secret-20261105-prov-7f8e9d0a1b2c3d4e5f6a'
     const ivaHash = 'a'.repeat(64)
     const condHash = 'b'.repeat(64)
     const manifest = createPr02P0OfficialEvidenceManifest({
       consultado_en: '2026-11-04T12:00:00.000Z',
-      identificador_proceso: 'P0_TEST_PROC_001',
-      colector_identidad: 'scripts/fiscal/collect-pr02-p0-evidence.mjs',
+      identificador_proceso: 'P0_PROC_001',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
       ejecucion_autorizada_id: 'e1000000-2026-4011-a001-000000000001',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
       iva_respuesta_original_sha256: ivaHash,
@@ -403,6 +405,10 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
       condition_respuesta_original_sha256: condHash,
       condition_archivo_normalizado_sha256: condHash,
       transporte_validado: true,
+      transport_type: 'OFFICIAL',
+      commit_sha: '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb',
+      goAuthorization: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      authoritySecret: trustedAuthoritySecret,
     })
 
     expect(manifest.entorno).toBe('HOMOLOGACION')
@@ -474,6 +480,7 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
 
   // 8. P1 Import evidence validation
   it('validates P1 import evidence against P0 manifest', () => {
+    const trustedAuthoritySecret = 'authority-secret-20261105-prov-7f8e9d0a1b2c3d4e5f6a'
     const ivaSha = 'a'.repeat(64)
     const condSha = 'b'.repeat(64)
     const expectedIvaSha = createHash('sha256').update(SYNTHETIC_IVA_EVIDENCE).digest('hex')
@@ -483,11 +490,18 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
     const manifest = createPr02P0OfficialEvidenceManifest({
       consultado_en: '2026-11-04T12:00:00.000Z',
       identificador_proceso: 'P0_TEST_PROC_002',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      ejecucion_autorizada_id: 'e1000000-2026-4011-a001-000000000002',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
       iva_respuesta_original_sha256: ivaSha,
       iva_archivo_normalizado_sha256: expectedIvaSha,
       condition_respuesta_original_sha256: condSha,
       condition_archivo_normalizado_sha256: expectedCondSha,
       transporte_validado: true,
+      transport_type: 'OFFICIAL',
+      commit_sha: '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb',
+      goAuthorization: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      authoritySecret: trustedAuthoritySecret,
     })
 
     // Importación con hashes coincidentes
@@ -496,6 +510,8 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
       ivaText: SYNTHETIC_IVA_EVIDENCE,
       conditionText: SYNTHETIC_CONDITION_EVIDENCE,
       now: '2026-11-04T14:00:00.000Z',
+      authoritySecret: trustedAuthoritySecret,
+      expectedHead: '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb',
     })
     expect(importRes.status).toBe('PASS')
     expect(importRes.officialEvidenceVerified).toBe(true)

@@ -15,6 +15,7 @@ import {
   createPr02P0CallTracker,
   validatePr02P0CliArgs,
   saveP0EvidencePackage,
+  loadP0EvidencePackage,
   validateEvidenceDirectory,
   createOfficialArcaTransport,
   assertNoForbiddenSecrets,
@@ -26,6 +27,9 @@ import {
   validatePr02P1ImportEvidence,
   evaluateExistingTa,
   resolveCurrentGitHead,
+  validateP0AuthoritySecret,
+  PR02_P0_COMPROMISED_SECRETS,
+  isTestAuthorityKey,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
 
 const VALID_HEAD = resolveCurrentGitHead() || '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb'
@@ -528,5 +532,267 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(wrapperContent).toContain('MISSING_EXPECTED_HEAD')
     expect(wrapperContent).toContain('EXPECTED_HEAD_MISMATCH')
     expect(wrapperContent).toContain('execute-pr02-p0-official-evidence.mjs')
+  })
+
+  // 24. Falsa procedencia E2E
+  it('24. Falsa procedencia E2E: evidencia simulada con hashes correctos pero sin autorización real es rechazada para importación P1', async () => {
+    cleanupTestDir()
+    const report = await executePr02P0OfficialEvidence(
+      {
+        authorized: true,
+        dryRun: false,
+        scope: PR02_P0_SCOPE,
+        projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        head: VALID_HEAD,
+        expectedHead: VALID_HEAD,
+        existingTa: {
+          valido: true,
+          estado: 'DISPONIBLE',
+          token: 'TOKEN_1234567890',
+          sign: 'SIGN_1234567890',
+          vence_en: '2026-11-05T12:00:00.000Z',
+        },
+        now: '2026-11-05T02:00:00.000Z',
+        evidenceDir: TEST_EVIDENCE_DIR,
+      },
+      {
+        wsfeTiposIva: async () => SYNTHETIC_TIPOS_IVA_RESPONSE,
+        wsfeCondicionIva: async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+      }
+    )
+
+    expect(report.OFFICIAL_PROVENANCE).toBe('UNVERIFIED')
+    expect(report.P0_REMOTE_EXECUTED).toBe(false)
+    expect(report.STAGING_WRITES_NEW).toBe(0)
+
+    // El paquete guardado tiene acreditación false y transporte simulado
+    const manifestPath = path.join(TEST_EVIDENCE_DIR, 'manifest.json')
+    const ivaNormPath = path.join(TEST_EVIDENCE_DIR, 'FEParamGetTiposIva_normalized.json')
+    const condNormPath = path.join(TEST_EVIDENCE_DIR, 'FEParamGetCondicionIvaReceptor_normalized.json')
+
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    const ivaNormalizedText = fs.readFileSync(ivaNormPath, 'utf8')
+    const conditionNormalizedText = fs.readFileSync(condNormPath, 'utf8')
+
+    expect(manifest.accredited).toBe(false)
+    expect(manifest.transport_type).toBe('SIMULATED')
+    expect(manifest.attestation.accredited).toBe(false)
+    expect(manifest.attestation.provenance).toBe('UNVERIFIED')
+
+    // Intento de importación en P1 DEBE ser bloqueado taxativamente
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText: ivaNormalizedText,
+        conditionText: conditionNormalizedText,
+      })
+    ).toThrow(/P1_IMPORT_FORBIDDEN/)
+
+    // Carga de paquete no acreditado también es rechazada
+    expect(() => loadP0EvidencePackage(TEST_EVIDENCE_DIR)).toThrow(/P0_MANIFEST_NOT_ACCREDITED/)
+
+    cleanupTestDir()
+  })
+
+  // 25. Validación estricta de clave de autoridad
+  it('25. Rechazo estricto de claves de autoridad faltantes, comprometidas, débiles o de prueba', () => {
+    // Falta de clave
+    expect(() => validateP0AuthoritySecret('')).toThrow(/P0_ATTESTATION_KEY_MISSING/)
+    expect(() => validateP0AuthoritySecret(null as any)).toThrow(/P0_ATTESTATION_KEY_MISSING/)
+
+    // Clave comprometida expuesta en historial de Git
+    for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
+      expect(() => validateP0AuthoritySecret(compromised)).toThrow(/P0_ATTESTATION_KEY_COMPROMISED/)
+    }
+
+    // Clave con baja entropía (< 32 caracteres)
+    expect(() => validateP0AuthoritySecret('short_key_12345')).toThrow(/P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY/)
+
+    // Claves marcadas como prueba / test / mock / dummy / synthetic / sample / example
+    expect(isTestAuthorityKey('this_is_a_test_key')).toBe(true)
+    expect(isTestAuthorityKey('dummy-key')).toBe(true)
+    expect(isTestAuthorityKey('production_grade_custody_secret_entropy_8f9a0b1c2d3e4f5a6b7c8d9e')).toBe(false)
+
+    expect(() => validateP0AuthoritySecret('this_is_a_test_authority_key_longer_than_32_characters')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
+    expect(() => validateP0AuthoritySecret('a_mock_secret_with_adequate_length_1234567890')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
+    expect(() => validateP0AuthoritySecret('dummy_custody_secret_for_local_runs_1234567890')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
+    expect(() => validateP0AuthoritySecret('synthetic_authority_secret_guard_1234567890')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
+    expect(() => validateP0AuthoritySecret('sample_authority_secret_string_1234567890')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
+    expect(() => validateP0AuthoritySecret('example_authority_key_long_enough_1234567890')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
+
+    // Clave válida de alta entropía
+    const validKey = 'production_grade_custody_secret_entropy_8f9a0b1c2d3e4f5a6b7c8d9e'
+    expect(validateP0AuthoritySecret(validKey)).toBe(validKey)
+  })
+
+  // 26. Verificación de atestación
+  it('26. Rechazo de atestación por firma adulterada, commit mismatch o ejecutor desconocido', () => {
+    const validKey = 'production_grade_custody_secret_entropy_8f9a0b1c2d3e4f5a6b7c8d9e'
+    const manifestDraft = {
+      identificador_proceso: 'PROC_TEST_001',
+      ejecucion_autorizada_id: 'PROC_TEST_001',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: 'a'.repeat(64),
+      iva_archivo_normalizado_sha256: 'b'.repeat(64),
+      condition_respuesta_original_sha256: 'c'.repeat(64),
+      condition_archivo_normalizado_sha256: 'd'.repeat(64),
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const attestation = createP0Attestation({
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      goAuthorization: 'GO-PR02-P0-HOMOLOGACION-VALID',
+      authoritySecret: validKey,
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    })
+
+    expect(attestation.accredited).toBe(true)
+    expect(attestation.provenance).toBe('VERIFIED')
+
+    // Verificación exitosa con clave correcta
+    const verified = verifyP0Attestation(attestation, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      authoritySecret: validKey,
+    })
+    expect(verified.valid).toBe(true)
+
+    // Firma adulterada
+    expect(attestation.signature).not.toBeNull()
+    const validSig = attestation.signature!
+    const tamperedSig = validSig.substring(0, 63) + (validSig[63] === 'a' ? 'b' : 'a')
+    const badSigCheck = verifyP0Attestation({ ...attestation, signature: tamperedSig }, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      authoritySecret: validKey,
+    })
+    expect(badSigCheck.valid).toBe(false)
+    expect(badSigCheck.reason).toBe('ATTESTATION_SIGNATURE_VERIFICATION_FAILED')
+
+    // Commit mismatch
+    const badCommitCheck = verifyP0Attestation(attestation, {
+      manifest: manifestDraft,
+      commitSha: '0'.repeat(40),
+      authoritySecret: validKey,
+    })
+    expect(badCommitCheck.valid).toBe(false)
+    expect(badCommitCheck.reason).toBe('ATTESTATION_COMMIT_MISMATCH')
+
+    // Identidad de ejecutor alterada
+    const badExecCheck = verifyP0Attestation({ ...attestation, executorIdentity: 'unauthorized-script.mjs' }, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      authoritySecret: validKey,
+    })
+    expect(badExecCheck.valid).toBe(false)
+    expect(badExecCheck.reason).toBe('ATTESTATION_EXECUTOR_MISMATCH')
+
+    // Verificación con clave de prueba prohibida
+    const testKeyCheck = verifyP0Attestation(attestation, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      authoritySecret: 'test_authority_key_long_enough_1234567890',
+    })
+    expect(testKeyCheck.valid).toBe(false)
+    expect(testKeyCheck.reason).toBe('ATTESTATION_TEST_KEY_PROHIBITED')
+
+    // Verificación con clave comprometida
+    const compKeyCheck = verifyP0Attestation(attestation, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      authoritySecret: PR02_P0_COMPROMISED_SECRETS[0],
+    })
+    expect(compKeyCheck.valid).toBe(false)
+    expect(compKeyCheck.reason).toBe('ATTESTATION_KEY_COMPROMISED')
+  })
+
+  // 27. Límite de respuesta en streaming
+  it('27. Transporte oficial cancela streaming y arroja RESPONSE_SIZE_EXCEEDED al superar límite de bytes', async () => {
+    const originalFetch = globalThis.fetch
+    try {
+      const maxBytes = 1024
+      const chunk1 = Buffer.alloc(800, 'x')
+      const chunk2 = Buffer.alloc(800, 'y') // 800 + 800 = 1600 > 1024
+
+      let cancelled = false
+      let pullCount = 0
+      const stream = new ReadableStream({
+        pull(controller) {
+          pullCount++
+          if (pullCount === 1) {
+            controller.enqueue(chunk1)
+          } else if (pullCount === 2) {
+            controller.enqueue(chunk2)
+          }
+        },
+        cancel() {
+          cancelled = true
+        },
+      })
+
+      globalThis.fetch = async () =>
+        new Response(stream, {
+          status: 200,
+          headers: {
+            'content-type': 'text/xml; charset=utf-8',
+          },
+        })
+
+      const transport = createOfficialArcaTransport({
+        officialGoAuthorized: true,
+        maxResponseBytes: maxBytes,
+      })
+
+      await expect(
+        transport.postSoap(WSAA_HOMO_URL, '""', '<soap>query</soap>')
+      ).rejects.toThrow(/RESPONSE_SIZE_EXCEEDED/)
+
+      expect(cancelled).toBe(true)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  // 28. Auditoría exacta del call tracker
+  it('28. Call tracker audita exactamente llamadas iniciadas, completadas, fallidas e inciertas por timeout', () => {
+    const tracker = createPr02P0CallTracker()
+
+    // 1. Iniciar LoginCms
+    tracker.recordStart('LoginCms')
+    let counts = tracker.getCounts()
+    expect(counts.attempted).toBe(1)
+    expect(counts.completed).toBe(0)
+    expect(counts.failed).toBe(0)
+    expect(counts.outcomeUnknown).toBe(0)
+
+    // Completar LoginCms
+    tracker.recordCall('LoginCms')
+    counts = tracker.getCounts()
+    expect(counts.attempted).toBe(1)
+    expect(counts.completed).toBe(1)
+    expect(counts.loginCms).toBe(1)
+
+    // 2. Iniciar FEParamGetTiposIva y fallar por timeout
+    tracker.recordStart('FEParamGetTiposIva')
+    tracker.recordFailure('FEParamGetTiposIva', true) // isTimeout = true
+    counts = tracker.getCounts()
+    expect(counts.attempted).toBe(2)
+    expect(counts.completed).toBe(1)
+    expect(counts.failed).toBe(1)
+    expect(counts.outcomeUnknown).toBe(1)
+
+    const summary = tracker.getAuditSummary()
+    expect(summary.CALLS_ATTEMPTED).toBe(2)
+    expect(summary.CALLS_COMPLETED).toBe(1)
+    expect(summary.CALLS_FAILED).toBe(1)
+    expect(summary.CALLS_OUTCOME_UNKNOWN).toBe(1)
+    expect(summary.started).toEqual(['LoginCms', 'FEParamGetTiposIva'])
+    expect(summary.completed).toEqual(['LoginCms'])
+    expect(summary.failed).toEqual(['FEParamGetTiposIva'])
+    expect(summary.outcomeUnknown).toEqual(['FEParamGetTiposIva'])
   })
 })

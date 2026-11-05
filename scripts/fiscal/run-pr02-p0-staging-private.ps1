@@ -3,6 +3,8 @@
 param(
     [switch]$DryRun,
     [string]$ExpectedHead,
+    [string]$GoToken,
+    [string]$CmsFile,
     [string]$EvidenceDir = '.fiscal-evidence-pr02'
 )
 
@@ -69,6 +71,10 @@ try {
         if ($head -ne $ExpectedHead) {
             throw "EXPECTED_HEAD_MISMATCH: HEAD local ($head) difiere del esperado ($ExpectedHead)"
         }
+        if ([string]::IsNullOrWhiteSpace($GoToken)) {
+            throw 'MISSING_GO_TOKEN: En ejecucion autorizada se requiere obligatoriamente el parametro -GoToken con la autorizacion externa de GO'
+        }
+        $GoToken = $GoToken.Trim()
     }
 
     # 5. Validacion de version de Node.js
@@ -83,13 +89,21 @@ try {
         & node scripts/fiscal/execute-pr02-p0-official-evidence.mjs --dry-run --evidence-dir $EvidenceDir
     } else {
         Write-Host "Iniciando ejecucion AUTORIZADA de PR02-P0 (scope=PR02_P0_OFFICIAL_EVIDENCE_COLLECTION)..." -ForegroundColor Yellow
+        $extraArgs = @()
+        if ($GoToken) {
+            $extraArgs += @('--go-token', $GoToken)
+        }
+        if ($CmsFile) {
+            $extraArgs += @('--cms-file', $CmsFile)
+        }
         & node scripts/fiscal/execute-pr02-p0-official-evidence.mjs `
             --authorized `
             --scope PR02_P0_OFFICIAL_EVIDENCE_COLLECTION `
             --project-ref acoyfwwmhaeruciyedri `
             --head $head `
             --expected-head $ExpectedHead `
-            --evidence-dir $EvidenceDir
+            --evidence-dir $EvidenceDir `
+            @extraArgs
     }
 
     if ($LASTEXITCODE -ne 0) {

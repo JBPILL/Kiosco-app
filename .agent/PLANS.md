@@ -1006,3 +1006,43 @@ Implementación privada del colector de evidencia oficial ARCA homologación pre
   - `HISTORICAL_042_REEMISSION_FORBIDDEN = true`
   - `PR02_READY_FOR_EMISSION_GO = false`
   - 147/147 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+
+### 2026-11-05 - Corrección Crítica de Atestación y Ejecución Oficial PR02-P0
+
+Blindaje de atestación criptográfica, transporte en streaming y trazabilidad de llamadas para PR02-P0:
+- **Eliminación Total de Fallback HMAC y Denylist de Claves Comprometidas**:
+  - Removido `PR02_P0_FALLBACK_AUTHORITY_SECRET` y cualquier fallback en código.
+  - Denylist `PR02_P0_COMPROMISED_SECRETS` con `'kioskopos-pr02-p0-official-custody-secret-2026'`. Lanza `P0_ATTESTATION_KEY_COMPROMISED`.
+  - Validador `validateP0AuthoritySecret(secret)` exige custodia externa en `PR02_P0_AUTHORITY_SECRET`, >= 32 caracteres y rechaza claves de test (`P0_ATTESTATION_TEST_KEY_PROHIBITED`). Sin clave: `P0_ATTESTATION_KEY_MISSING`.
+- **Atestación Oficial No Falsificable y Binding Criptográfico**:
+  - Atestación oficial restringida al colector confiable (`scripts/fiscal/execute-pr02-p0-official-evidence.mjs`).
+  - Vinculación obligatoria de: GO externo (`goAuthorization`), identidad de ejecutor (`executorIdentity`), commit SHA (`commitSha`), `executionId`, entorno `HOMOLOGACION`, operaciones WSFE, digests SHA-256 de respuestas SOAP y normalizadas, y `consultadoEn`.
+  - Respuestas simuladas conservan `accredited: false` y `provenance: 'UNVERIFIED'`.
+  - P1 (`validatePr02P1ImportEvidence`) valida la atestación contra la clave custodiada externa, lanzando `P1_IMPORT_FORBIDDEN` ante cualquier inconsistencia.
+- **Circuito Seguro CLI y 4 Etapas Secuenciales**:
+  - Wrapper PowerShell y ejecutor CLI manejan autenticación sin exponer secretos en `argv`.
+  - 4 etapas explícitas: 1. Disponibilidad de credenciales (TA vigente o archivo CMS) -> 2. Validación obligatoria de GO externo en transporte oficial -> 3. Autorización de transporte oficial -> 4. Ejecución controlada.
+- **Contadores de Auditoría y Detección de Incertidumbre**:
+  - `createPr02P0CallTracker`: `recordStart()` verifica límites ANTES de iniciar y previene reintentos automáticos. `recordCall()` no re-ejecuta `recordStart()`.
+  - Métricas: `CALLS_ATTEMPTED`, `CALLS_COMPLETED`, `CALLS_FAILED`, `CALLS_OUTCOME_UNKNOWN`. Ante timeout, la operación se computa como intentada y de resultado desconocido (`outcomeUnknown`). Cero reintentos automáticos.
+- **Transporte HTTP en Streaming con Límite de 2MB**:
+  - Lectura en streaming (`response.body.getReader()`) con cancelación inmediata (`reader.cancel()`, `controller.abort()`) en caso de superar 2 MB (`RESPONSE_SIZE_EXCEEDED`).
+- **Pruebas de Falsa Procedencia E2E y Regresiones**:
+  - Prueba de regresión E2E confirmando que respuestas simuladas con hashes válidos pero sin autorización oficial resultan en `OFFICIAL_PROVENANCE = UNVERIFIED`, `P1_IMPORT_ALLOWED = false` y `STAGING_WRITES = 0`.
+  - Pruebas negativas para claves comprometidas, claves cortas, claves de test, firmas adulteradas, ejecutor apócrifo, commit discrepante y cancelación de streaming.
+- **Estado**:
+  - `P0_HARDCODED_HMAC_SECRET = REMOVED`
+  - `P0_UNTRUSTED_ATTESTATION_REJECTED = PASS`
+  - `P0_OFFICIAL_PROVENANCE_GUARD = PASS`
+  - `P0_CLI_WSAA_AUTH_PREPARED = PASS`
+  - `P0_CALL_AUDIT_ACCURATE = PASS`
+  - `P0_HTTP_RESPONSE_LIMIT = PASS`
+  - `P0_REMOTE_EXECUTION_READY = false`
+  - `P0_REMOTE_EXECUTED = false`
+  - `P1_IMPORT_ALLOWED = false`
+  - `P2_REMOTE_EXECUTION_READY = false`
+  - `REAL_PV2_ENABLED = false`
+  - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - 159/159 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
