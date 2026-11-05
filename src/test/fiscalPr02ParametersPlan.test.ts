@@ -12,7 +12,9 @@ import {
   PR02_PARAMETERS_HISTORICAL_REVISION,
   PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
   PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+  REV3_SOURCE_SHA256,
   PR02_CATALOG_REV3_HASH,
+  computeCatalogRowDigest,
   PR02_EXECUTION_OUTCOMES,
   UNCERTAIN_WRITE_RETRY_FORBIDDEN,
   PR02_PARAMETERS_REQUIRED_CALLS,
@@ -248,6 +250,9 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
 
   it('verifies P1 in-tx guard: passes when R3 is expired, R4 is absent, issuer is disabled', () => {
     const validGuard = {
+      catalog_total_count: 3,
+      rev1_exists: true,
+      rev2_exists: true,
       rev3_exists: true,
       rev3_hash_match: true,
       rev3_expired: true,
@@ -262,6 +267,12 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
 
     expect(verifyPr02P1InTxGuard(validGuard)).toBe(true)
 
+    // Falla si el conteo del baseline no es exactamente 3 (baseline modificado)
+    expect(() => verifyPr02P1InTxGuard({ ...validGuard, catalog_total_count: 2 })).toThrow(/PR02_P1_BASELINE_COUNT_MISMATCH/)
+    expect(() => verifyPr02P1InTxGuard({ ...validGuard, catalog_total_count: 4 })).toThrow(/PR02_P1_BASELINE_COUNT_MISMATCH/)
+    // Falla si R1 o R2 no existen
+    expect(() => verifyPr02P1InTxGuard({ ...validGuard, rev1_exists: false })).toThrow(/PR02_P1_BASELINE_REV1_MISSING/)
+    expect(() => verifyPr02P1InTxGuard({ ...validGuard, rev2_exists: false })).toThrow(/PR02_P1_BASELINE_REV2_MISSING/)
     // Falla si R3 no existe
     expect(() => verifyPr02P1InTxGuard({ ...validGuard, rev3_exists: false })).toThrow(/PR02_P1_REV3_MISSING/)
     // Falla si R3 hash no coincide
@@ -307,13 +318,17 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
   // 6. Verifiers for PR02-P2 in-tx guard and postcheck
   it('verifies P2 in-tx guard: passes when R4 is present disabled and unexpired, R3 hash matches, PV2 disabled', () => {
     const validP2Guard = {
+      catalog_total_count: 4,
+      rev1_exists: true,
+      rev2_exists: true,
+      rev3_exists: true,
+      rev3_hash_match: true,
+      rev3_expired: true,
       rev4_exists: true,
       rev4_enabled: false,
       rev4_hash_match: true,
       rev4_unexpired: true,
       rev4_not_future: true,
-      rev3_exists: true,
-      rev3_hash_match: true,
       expected_issuer_present: true,
       expected_issuer_enabled: false,
       unexpected_enabled_issuers: 0,
@@ -321,6 +336,12 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
 
     expect(verifyPr02P2InTxGuard(validP2Guard)).toBe(true)
 
+    // Falla si el conteo del catálogo no es exactamente 4 (baseline modificado)
+    expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, catalog_total_count: 3 })).toThrow(/PR02_P2_BASELINE_COUNT_MISMATCH/)
+    expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, catalog_total_count: 5 })).toThrow(/PR02_P2_BASELINE_COUNT_MISMATCH/)
+    // Falla si R1 o R2 no existen
+    expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, rev1_exists: false })).toThrow(/PR02_P2_BASELINE_REV1_MISSING/)
+    expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, rev2_exists: false })).toThrow(/PR02_P2_BASELINE_REV2_MISSING/)
     // Falla si R4 no existe
     expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, rev4_exists: false })).toThrow(/PR02_P2_REVISION_4_MISSING/)
     // Falla si R4 ya está habilitada
@@ -333,6 +354,8 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
     expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, rev3_exists: false })).toThrow(/PR02_P2_REVISION_3_MISSING/)
     // Falla si R3 baseline hash difiere
     expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, rev3_hash_match: false })).toThrow(/PR02_P2_REV3_BASELINE_MISMATCH/)
+    // Falla si R3 no está expirado
+    expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, rev3_expired: false })).toThrow(/PR02_P2_REV3_NOT_EXPIRED/)
     // Falla si emisor PV2 está habilitado
     expect(() => verifyPr02P2InTxGuard({ ...validP2Guard, expected_issuer_enabled: true })).toThrow(/PR02_P2_ISSUER_PV2_NOT_DISABLED/)
   })
@@ -372,6 +395,9 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
     const manifest = createPr02P0OfficialEvidenceManifest({
       consultado_en: '2026-11-04T12:00:00.000Z',
       identificador_proceso: 'P0_TEST_PROC_001',
+      colector_identidad: 'scripts/fiscal/collect-pr02-p0-evidence.mjs',
+      ejecucion_autorizada_id: 'e1000000-2026-4011-a001-000000000001',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
       iva_respuesta_original_sha256: ivaHash,
       iva_archivo_normalizado_sha256: ivaHash,
       condition_respuesta_original_sha256: condHash,
@@ -383,6 +409,15 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
     expect(manifest.accredited).toBe(true)
     expect(manifest.manifest_sha256).toHaveLength(64)
     expect(validatePr02P0Manifest(manifest)).toBe(true)
+
+    // Rechaza si falta colector_identidad
+    expect(() => validatePr02P0Manifest({ ...manifest, colector_identidad: '' })).toThrow(/P0_MANIFEST_COLLECTOR_IDENTITY_REQUIRED/)
+    // Rechaza si falta ejecucion_autorizada_id
+    expect(() => validatePr02P0Manifest({ ...manifest, ejecucion_autorizada_id: '' })).toThrow(/P0_MANIFEST_EXECUTION_ID_REQUIRED/)
+    // Rechaza si el scope no es P0
+    expect(() => validatePr02P0Manifest({ ...manifest, ejecucion_autorizada_scope: 'PR02_P1_SCOPE' })).toThrow(/P0_MANIFEST_SCOPE_MISMATCH/)
+    // Rechaza si accredited es false
+    expect(() => validatePr02P0Manifest({ ...manifest, accredited: false })).toThrow(/P0_MANIFEST_NOT_ACCREDITED/)
 
     // Rechaza secretos en el manifiesto
     expect(() =>
@@ -411,6 +446,30 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
         transporte_validado: true,
       })
     ).toThrow(/P0_MANIFEST_CONSULTED_IN_FUTURE/)
+  })
+
+  // 7.b Catalog row digest verification
+  it('computes catalog row digest and detects any column discrepancy in row', () => {
+    const row = {
+      revision: 3,
+      condiciones: [{ id: 5, descripcion: 'Consumidor Final', comprobantes: [1, 6, 11] }],
+      alicuotas: [{ id: 5, descripcion: '21%' }],
+      fuente_sha256: REV3_SOURCE_SHA256,
+      consultado_en: '2026-11-03T02:00:00.000Z',
+      vence_en: '2026-11-04T02:59:59.000Z',
+      habilitado: true,
+    }
+    const digest1 = computeCatalogRowDigest(row)
+    expect(digest1).toMatch(/^[0-9a-f]{64}$/)
+    expect(computeCatalogRowDigest(row)).toBe(digest1)
+
+    // Alterar alícuota cambia el digest de fila
+    const alteredRow = { ...row, alicuotas: [{ id: 4, descripcion: '10.5%' }] }
+    expect(computeCatalogRowDigest(alteredRow)).not.toBe(digest1)
+
+    // Alterar fecha cambia el digest de fila
+    const alteredDate = { ...row, vence_en: '2026-11-05T02:59:59.000Z' }
+    expect(computeCatalogRowDigest(alteredDate)).not.toBe(digest1)
   })
 
   // 8. P1 Import evidence validation

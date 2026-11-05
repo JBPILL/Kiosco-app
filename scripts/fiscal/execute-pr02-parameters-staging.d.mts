@@ -5,6 +5,8 @@ export const PR02_PARAMETERS_DB_HOST: string
 export const PR02_PARAMETERS_DB_PORT: number
 export const PR02_PARAMETERS_DB_USER: string
 export const PR02_PARAMETERS_DB_NAME: string
+export const REV3_SOURCE_SHA256: string
+export const PR02_CATALOG_REV3_HASH: string
 
 export function resolvePostgresSslConfig(options?: {
   ssl?: { rejectUnauthorized?: boolean; ca?: string }
@@ -79,6 +81,9 @@ export interface Pr02ParametersReport {
   readonly PR02_P1_COMMIT_OUTCOME_GUARD?: string
   readonly PR02_P2_ATOMIC_GUARDS?: string
   readonly PR02_P2_REV3_BASELINE_GUARD?: string
+  readonly PR02_P0_REMOTE_EXECUTION_READY?: boolean
+  readonly PR02_P1_REMOTE_EXECUTION_READY?: boolean
+  readonly PR02_P2_REMOTE_EXECUTION_READY?: boolean
   readonly PR02_PARAMETERS_LOCAL_PREPARATION?: string
   readonly PR02_PARAMETERS_REMOTE_EXECUTION_READY: boolean
   readonly PR02_PARAMETERS_REMOTE_EXECUTED: boolean

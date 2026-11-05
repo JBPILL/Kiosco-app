@@ -29,7 +29,31 @@ export const PR02_PARAMETERS_TARGET_REVISION = 4
 export const PR02_PARAMETERS_HISTORICAL_REVISION = 3
 export const PR02_PARAMETERS_EXPECTED_ISSUER_CUIT = '20415005963'
 export const PR02_PARAMETERS_EXPECTED_ISSUER_PV = 2
-export const PR02_CATALOG_REV3_HASH = '11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884'
+
+/**
+ * Hash acreditado oficial de la columna fuente_sha256 para la Revisión 3 en Staging.
+ * Comprobado fácticamente en acoyfwwmhaeruciyedri por PR02-A0.
+ */
+export const REV3_SOURCE_SHA256 = '11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884'
+export const PR02_CATALOG_REV3_HASH = REV3_SOURCE_SHA256
+
+/**
+ * Computa el digest canónico SHA-256 de una fila de catálogo fiscal.
+ * Distingue el digest de fila completa (JSON canónico) del campo fuente_sha256 (procedencia WSFE).
+ */
+export function computeCatalogRowDigest(row) {
+  if (!row || typeof row !== 'object') throw new Error('CATALOG_ROW_REQUIRED')
+  const canonical = {
+    revision: row.revision,
+    condiciones: row.condiciones,
+    alicuotas: row.alicuotas,
+    fuente_sha256: row.fuente_sha256,
+    consultado_en: new Date(row.consultado_en).toISOString(),
+    vence_en: new Date(row.vence_en).toISOString(),
+    habilitado: Boolean(row.habilitado),
+  }
+  return sha256(JSON.stringify(canonical))
+}
 
 export const PR02_EXECUTION_OUTCOMES = Object.freeze({
   NOT_STARTED: 'NOT_STARTED',
@@ -330,6 +354,8 @@ export function validateCondicionIvaReceptorEvidence(text, expectedChecksum) {
 
 /**
  * Constructor del manifiesto oficial de evidencia P0 (sin secretos ni claves privadas).
+ * Vincula de forma verificable la identidad del colector, la ejecución autorizada,
+ * el entorno HOMOLOGACION y los hashes de respuestas SOAP y archivos normalizados.
  */
 export function createPr02P0OfficialEvidenceManifest(params = {}) {
   if (!params || typeof params !== 'object') {
@@ -362,6 +388,21 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     throw new Error('P0_MANIFEST_PROCESS_ID_REQUIRED')
   }
 
+  const colectorIdentidad = params.colector_identidad || 'scripts/fiscal/collect-pr02-p0-evidence.mjs'
+  if (typeof colectorIdentidad !== 'string' || colectorIdentidad.trim().length === 0) {
+    throw new Error('P0_MANIFEST_COLLECTOR_IDENTITY_REQUIRED')
+  }
+
+  const ejecucionAutorizadaId = params.ejecucion_autorizada_id || pid
+  if (typeof ejecucionAutorizadaId !== 'string' || ejecucionAutorizadaId.trim().length === 0) {
+    throw new Error('P0_MANIFEST_EXECUTION_ID_REQUIRED')
+  }
+
+  const ejecucionAutorizadaScope = params.ejecucion_autorizada_scope || PR02_P0_SCOPE
+  if (ejecucionAutorizadaScope !== PR02_P0_SCOPE) {
+    throw new Error(`P0_MANIFEST_SCOPE_MISMATCH: Se requiere scope '${PR02_P0_SCOPE}', recibido '${ejecucionAutorizadaScope}'`)
+  }
+
   const validateHex64 = (val, name) => {
     if (!val || typeof val !== 'string' || !/^[0-9a-f]{64}$/.test(val)) {
       throw new Error(`P0_MANIFEST_INVALID_HASH: ${name} debe ser un SHA-256 de 64 caracteres en minúsculas`)
@@ -390,6 +431,9 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     operaciones: Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
     consultado_en: params.consultado_en,
     identificador_proceso: pid,
+    colector_identidad: colectorIdentidad,
+    ejecucion_autorizada_id: ejecucionAutorizadaId,
+    ejecucion_autorizada_scope: ejecucionAutorizadaScope,
     iva_respuesta_original_sha256: params.iva_respuesta_original_sha256,
     iva_archivo_normalizado_sha256: params.iva_archivo_normalizado_sha256,
     condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
@@ -409,6 +453,8 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
 
 /**
  * Validador estricto del manifiesto oficial de evidencia P0.
+ * Exige procedencia demostrable: colector autorizado, ejecución autorizada, entorno HOMOLOGACION,
+ * operaciones permitidas exactas, transporte validado, hashes SHA-256 de respuestas SOAP y normalizados.
  */
 export function validatePr02P0Manifest(manifest) {
   if (!manifest || typeof manifest !== 'object') {
@@ -426,6 +472,19 @@ export function validatePr02P0Manifest(manifest) {
   if (manifest.accredited !== true) {
     throw new Error('P0_MANIFEST_NOT_ACCREDITED: Evidencia no acreditada')
   }
+  if (!manifest.colector_identidad || typeof manifest.colector_identidad !== 'string' || manifest.colector_identidad.trim().length === 0) {
+    throw new Error('P0_MANIFEST_COLLECTOR_IDENTITY_REQUIRED: Falta identidad del colector autorizado')
+  }
+  if (!manifest.ejecucion_autorizada_id || typeof manifest.ejecucion_autorizada_id !== 'string' || manifest.ejecucion_autorizada_id.trim().length === 0) {
+    throw new Error('P0_MANIFEST_EXECUTION_ID_REQUIRED: Falta identificador de ejecución autorizada vinculada')
+  }
+  if (manifest.ejecucion_autorizada_scope !== PR02_P0_SCOPE) {
+    throw new Error(`P0_MANIFEST_SCOPE_MISMATCH: Scope de ejecución debe ser ${PR02_P0_SCOPE}`)
+  }
+  if (!Array.isArray(manifest.operaciones) || manifest.operaciones.length !== 2 ||
+      manifest.operaciones[0] !== 'FEParamGetTiposIva' || manifest.operaciones[1] !== 'FEParamGetCondicionIvaReceptor') {
+    throw new Error('P0_MANIFEST_OPERATIONS_MISMATCH: Operaciones deben ser exactamente FEParamGetTiposIva y FEParamGetCondicionIvaReceptor')
+  }
   if (!manifest.consultado_en || !Number.isFinite(Date.parse(manifest.consultado_en))) {
     throw new Error('P0_MANIFEST_CONSULTED_INVALID: Fecha de consulta inválida')
   }
@@ -439,6 +498,15 @@ export function validatePr02P0Manifest(manifest) {
       throw new Error(`P0_MANIFEST_HASH_INVALID: Hash inválido en ${f}`)
     }
   }
+
+  // Comprobar estrictamente ausencia de secretos
+  const str = JSON.stringify(manifest).toLowerCase()
+  for (const forbidden of ['token', 'sign', 'loginticket', 'privatekey', '-----begin', 'password']) {
+    if (str.includes(forbidden)) {
+      throw new Error(`P0_MANIFEST_SECRETS_PROHIBITED: Manifiesto contiene referencias a credenciales o tokens ('${forbidden}')`)
+    }
+  }
+
   return true
 }
 
@@ -450,7 +518,7 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_OPTIONS_REQUIRED')
   }
 
-  const { manifest, ivaText, conditionText, now, expectedHashes } = options
+  const { manifest, ivaText, conditionText, rawIvaSoapText, rawConditionSoapText, now, expectedHashes } = options
 
   if (!manifest) {
     throw new Error('P1_IMPORT_MANIFEST_REQUIRED: Se requiere manifiesto oficial P0 para importar evidencia en P1')
@@ -470,6 +538,19 @@ export function validatePr02P1ImportEvidence(options = {}) {
   }
   if (conditionSha !== manifest.condition_archivo_normalizado_sha256) {
     throw new Error('P1_IMPORT_CONDITION_HASH_MISMATCH: Archivo normalizado no coincide con manifiesto P0')
+  }
+
+  if (rawIvaSoapText) {
+    const rawIvaSha = sha256(rawIvaSoapText)
+    if (rawIvaSha !== manifest.iva_respuesta_original_sha256) {
+      throw new Error('P1_IMPORT_RAW_IVA_SOAP_HASH_MISMATCH: Respuesta SOAP de tipos de IVA no coincide con el manifiesto P0')
+    }
+  }
+  if (rawConditionSoapText) {
+    const rawCondSha = sha256(rawConditionSoapText)
+    if (rawCondSha !== manifest.condition_respuesta_original_sha256) {
+      throw new Error('P1_IMPORT_RAW_CONDITION_SOAP_HASH_MISMATCH: Respuesta SOAP de condición IVA no coincide con el manifiesto P0')
+    }
   }
 
   if (expectedHashes) {
@@ -498,6 +579,7 @@ export function validatePr02P1ImportEvidence(options = {}) {
     consultado_en: manifest.consultado_en,
     ivaSha256: ivaSha,
     conditionSha256: conditionSha,
+    manifestSha256: manifest.manifest_sha256,
   })
 }
 
@@ -582,6 +664,15 @@ export function verifyPr02P1Preflight(raw) {
  * Guarda transaccional atómica de P1 evaluada dentro de la misma transacción de escritura.
  */
 export const PR02_P1_ATOMIC_GUARD_SQL = `SELECT jsonb_build_object(
+  'catalog_total_count', (
+    SELECT count(*)::int FROM public.fiscal_parametros_homologacion
+  ),
+  'rev1_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 1
+  ),
+  'rev2_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 2
+  ),
   'rev3_exists', EXISTS (
     SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
   ),
@@ -611,6 +702,11 @@ export const PR02_P1_ATOMIC_GUARD_SQL = `SELECT jsonb_build_object(
 
 export function verifyPr02P1InTxGuard(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('PR02_P1_ATOMIC_GUARD_INVALID')
+  if (raw.catalog_total_count !== undefined && raw.catalog_total_count !== 3) {
+    throw new Error(`PR02_P1_BASELINE_COUNT_MISMATCH: Se esperaban 3 revisiones en baseline, encontradas ${raw.catalog_total_count}`)
+  }
+  if (raw.rev1_exists !== undefined && !raw.rev1_exists) throw new Error('PR02_P1_BASELINE_REV1_MISSING')
+  if (raw.rev2_exists !== undefined && !raw.rev2_exists) throw new Error('PR02_P1_BASELINE_REV2_MISSING')
   if (!raw.rev3_exists) throw new Error('PR02_P1_REV3_MISSING')
   if (!raw.rev3_hash_match) throw new Error('PR02_P1_REV3_HASH_MISMATCH')
   if (!raw.rev3_expired) throw new Error('PR02_P1_REV3_NOT_EXPIRED')
@@ -852,6 +948,24 @@ export function verifyPr02P1Postcheck(raw, expected = {}) {
  * Guarda transaccional atómica de P2 evaluada dentro de la misma transacción de actualización.
  */
 export const PR02_P2_ATOMIC_GUARD_SQL = `SELECT jsonb_build_object(
+  'catalog_total_count', (
+    SELECT count(*)::int FROM public.fiscal_parametros_homologacion
+  ),
+  'rev1_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 1
+  ),
+  'rev2_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 2
+  ),
+  'rev3_exists', EXISTS (
+    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ),
+  'rev3_hash_match', COALESCE((
+    SELECT fuente_sha256 = $4::text FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
+  'rev3_expired', COALESCE((
+    SELECT vence_en < clock_timestamp() FROM public.fiscal_parametros_homologacion WHERE revision = 3
+  ), false),
   'rev4_exists', EXISTS (
     SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 4
   ),
@@ -867,12 +981,6 @@ export const PR02_P2_ATOMIC_GUARD_SQL = `SELECT jsonb_build_object(
   'rev4_not_future', COALESCE((
     SELECT consultado_en <= clock_timestamp() FROM public.fiscal_parametros_homologacion WHERE revision = 4
   ), false),
-  'rev3_exists', EXISTS (
-    SELECT 1 FROM public.fiscal_parametros_homologacion WHERE revision = 3
-  ),
-  'rev3_hash_match', COALESCE((
-    SELECT fuente_sha256 = $4::text FROM public.fiscal_parametros_homologacion WHERE revision = 3
-  ), false),
   'expected_issuer_present', EXISTS (
     SELECT 1 FROM public.fiscal_emisores_homologacion WHERE cuit_emisor = $2::text AND punto_venta = $3::int
   ),
@@ -887,6 +995,11 @@ export const PR02_P2_ATOMIC_GUARD_SQL = `SELECT jsonb_build_object(
 
 export function verifyPr02P2InTxGuard(raw) {
   if (!raw || typeof raw !== 'object') throw new Error('PR02_P2_ATOMIC_GUARD_INVALID')
+  if (raw.catalog_total_count !== undefined && raw.catalog_total_count !== 4) {
+    throw new Error(`PR02_P2_BASELINE_COUNT_MISMATCH: Se esperaban 4 revisiones en catálogo, encontradas ${raw.catalog_total_count}`)
+  }
+  if (raw.rev1_exists !== undefined && !raw.rev1_exists) throw new Error('PR02_P2_BASELINE_REV1_MISSING')
+  if (raw.rev2_exists !== undefined && !raw.rev2_exists) throw new Error('PR02_P2_BASELINE_REV2_MISSING')
   if (!raw.rev4_exists) throw new Error('PR02_P2_REVISION_4_MISSING')
   if (raw.rev4_enabled) throw new Error('PR02_P2_REVISION_4_ALREADY_ENABLED')
   if (!raw.rev4_hash_match) throw new Error('PR02_P2_REVISION_4_HASH_MISMATCH')
@@ -894,6 +1007,7 @@ export function verifyPr02P2InTxGuard(raw) {
   if (!raw.rev4_not_future) throw new Error('PR02_P2_REVISION_4_FUTURE_CONSULTED')
   if (!raw.rev3_exists) throw new Error('PR02_P2_REVISION_3_MISSING')
   if (!raw.rev3_hash_match) throw new Error('PR02_P2_REV3_BASELINE_MISMATCH')
+  if (raw.rev3_expired !== undefined && !raw.rev3_expired) throw new Error('PR02_P2_REV3_NOT_EXPIRED')
   if (!raw.expected_issuer_present) throw new Error('PR02_P2_ISSUER_NOT_FOUND')
   if (raw.expected_issuer_enabled !== false) throw new Error('PR02_P2_ISSUER_PV2_NOT_DISABLED')
   if (raw.unexpected_enabled_issuers !== 0) throw new Error('PR02_P2_UNEXPECTED_ENABLED_ISSUERS')

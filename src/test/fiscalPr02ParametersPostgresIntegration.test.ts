@@ -12,6 +12,8 @@ import {
   PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
   PR02_PARAMETERS_EXPECTED_ISSUER_PV,
   PR02_CATALOG_REV3_HASH,
+  REV3_SOURCE_SHA256,
+  computeCatalogRowDigest,
   PR02_EXECUTION_OUTCOMES,
   UNCERTAIN_WRITE_RETRY_FORBIDDEN,
   PR02_P1_PREFLIGHT_SELECT_SQL,
@@ -299,7 +301,11 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
         revision,
         vence_en < clock_timestamp() AS is_expired,
         habilitado,
-        fuente_sha256
+        fuente_sha256,
+        condiciones,
+        alicuotas,
+        consultado_en,
+        vence_en
       FROM public.fiscal_parametros_homologacion
       WHERE revision = 3;
     `)
@@ -309,6 +315,15 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     expect(res.rows[0].is_expired).toBe(true)
     expect(res.rows[0].habilitado).toBe(true)
     expect(res.rows[0].fuente_sha256).toBe(PR02_CATALOG_REV3_HASH)
+    expect(res.rows[0].fuente_sha256).toBe(REV3_SOURCE_SHA256)
+
+    // Verificar digest de fila R3 y detección de discrepancia de columnas
+    const r3Row = res.rows[0] as Parameters<typeof computeCatalogRowDigest>[0]
+    const rowDigest = computeCatalogRowDigest(r3Row)
+    expect(rowDigest).toMatch(/^[0-9a-f]{64}$/)
+    expect(computeCatalogRowDigest(r3Row)).toBe(rowDigest)
+    const tamperedCol = { ...r3Row, alicuotas: [] }
+    expect(computeCatalogRowDigest(tamperedCol)).not.toBe(rowDigest)
 
     // PV 2 permanece deshabilitado
     const issuerRes = await adminClient.query(`
@@ -519,6 +534,32 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
     }
   })
 
+  // Escenario d: Concurrencia - alteración concurrente de R3 antes de commit en P1 aborta con ROLLBACK
+  it('B8.6b. Guarda atómica in-tx en P1 detecta alteración concurrente de R3 y aborta con ROLLBACK', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    const client = createTestClient()
+    await client.connect()
+    try {
+      await client.query('BEGIN;')
+      await client.query('LOCK TABLE public.fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE;')
+
+      const guardRes = await client.query(PR02_P1_ATOMIC_GUARD_SQL, [
+        PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
+        PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+        'wronghash'.padEnd(64, '0'),
+        'a'.repeat(64),
+        new Date().toISOString(),
+        new Date(Date.now() + 86400000).toISOString(),
+      ])
+
+      expect(() => verifyPr02P1InTxGuard(guardRes.rows[0]?.in_tx_guard)).toThrow(/PR02_P1_REV3_HASH_MISMATCH/)
+      await client.query('ROLLBACK;')
+    } finally {
+      await client.end().catch(() => {})
+    }
+  })
+
   // 3. P1 inserción atómica de R4
   it('3. P1 inserción de R4: atómica, insert-only, habilitado = false, hash coincide, R3 preservado, PV2 sigue deshabilitado', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
@@ -610,7 +651,7 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
   it('B8.8. Guarda atómica en transacción detecta cambio en baseline posterior a preflight', async () => {
     if (!adminClient) throw new Error('Admin client not connected')
 
-    // Simulando que R3 fue alterado
+    // Simulando que R3 fue alterado o el baseline cambió (por ejemplo revisión adicional)
     const guardRes = await adminClient.query(PR02_P1_ATOMIC_GUARD_SQL, [
       PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
       PR02_PARAMETERS_EXPECTED_ISSUER_PV,
@@ -620,7 +661,9 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
       new Date(Date.now() + 86400000).toISOString(),
     ])
 
-    expect(() => verifyPr02P1InTxGuard(guardRes.rows[0]?.in_tx_guard)).toThrow(/PR02_P1_REV3_HASH_MISMATCH/)
+    expect(() => verifyPr02P1InTxGuard(guardRes.rows[0]?.in_tx_guard)).toThrow(
+      /PR02_P1_BASELINE_COUNT_MISMATCH|PR02_P1_REV3_HASH_MISMATCH/
+    )
   })
 
   // Bloqueo 8 - Caso 9: Guardas P2 y UPDATE en la misma transacción
@@ -672,6 +715,31 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
       )
       await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
     }
+  })
+
+  // Escenario c: Baseline modificado en P2 (conteo != 4 o falta R1/R2) detectado por guarda in-tx
+  it('B8.10b. Baseline modificado en P2 (conteo != 4 o falta R1/R2) detectado por guarda in-tx', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    const guardRes = await adminClient.query(PR02_P2_ATOMIC_GUARD_SQL, [
+      generatedRev4Hash,
+      PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
+      PR02_PARAMETERS_EXPECTED_ISSUER_PV,
+      PR02_CATALOG_REV3_HASH,
+    ])
+
+    const rawGuard = (guardRes.rows[0]?.p2_in_tx_guard as Record<string, unknown>) || {}
+    expect(() =>
+      verifyPr02P2InTxGuard({ ...rawGuard, catalog_total_count: 5 })
+    ).toThrow(/PR02_P2_BASELINE_COUNT_MISMATCH/)
+
+    expect(() =>
+      verifyPr02P2InTxGuard({ ...rawGuard, rev1_exists: false })
+    ).toThrow(/PR02_P2_BASELINE_REV1_MISSING/)
+
+    expect(() =>
+      verifyPr02P2InTxGuard({ ...rawGuard, rev2_exists: false })
+    ).toThrow(/PR02_P2_BASELINE_REV2_MISSING/)
   })
 
   // Bloqueo 8 - Caso 11: Emisor faltante o habilitado en P2
@@ -735,6 +803,46 @@ describe.skipIf(!dockerRunning)('PR02-P1 & PR02-P2 Real PostgreSQL 17 Integratio
       )
       await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
     }
+  })
+
+  // Escenario f: R4 expirado en P2 aborta con PR02_P2_REVISION_4_EXPIRED y ROLLBACK confirmado
+  it('B8.12b. R4 expirado en P2 aborta con PR02_P2_REVISION_4_EXPIRED y ROLLBACK confirmado', async () => {
+    if (!adminClient) throw new Error('Admin client not connected')
+
+    await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
+    await adminClient.query(
+      "UPDATE public.fiscal_parametros_homologacion SET vence_en = clock_timestamp() - interval '1 hour' WHERE revision = 4;"
+    )
+    await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
+
+    const testClient = createTestClient()
+    try {
+      await expect(
+        executePr02ParametersStaging(
+          {
+            authorized: true,
+            dryRun: false,
+            scope: PR02_P2_SCOPE,
+            projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+            head: VALID_HEAD,
+            expectedHead: VALID_HEAD,
+            expectedHash: generatedRev4Hash,
+            password: postgresPassword,
+          },
+          { client: testClient, caCert: 'MOCK_CA' }
+        )
+      ).rejects.toThrow(/PR02_P2_REVISION_4_EXPIRED/)
+    } finally {
+      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion DISABLE TRIGGER fiscal_parametros_inmutables;')
+      await adminClient.query(
+        "UPDATE public.fiscal_parametros_homologacion SET vence_en = clock_timestamp() + interval '23 hours' WHERE revision = 4;"
+      )
+      await adminClient.query('ALTER TABLE public.fiscal_parametros_homologacion ENABLE TRIGGER fiscal_parametros_inmutables;')
+    }
+
+    // Verificar que R4 NO fue habilitada en BD tras el aborto
+    const r4Res = await adminClient.query('SELECT habilitado FROM public.fiscal_parametros_homologacion WHERE revision = 4;')
+    expect(r4Res.rows[0].habilitado).toBe(false)
   })
 
   // 7. P2 habilitación atómica exitosa

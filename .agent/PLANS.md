@@ -865,7 +865,11 @@ Resolución exhaustiva de los 8 bloqueadores de la auditoría independiente (`PR
 - **Habilitación Atómica en P2 con Verificación de Baseline R3 (BLOCKER 4)**:
   - `PR02_P2_ATOMIC_GUARD_SQL` y `verifyPr02P2InTxGuard`.
   - Transacción única con table locks en `SHARE ROW EXCLUSIVE MODE`.
-  - Guarda in-tx y postcheck validan taxativamente el digest exacto de la R3 histórica `2e6f4770ef1f1f964047a46abec7e05492d6e355f9a629b0be99fe1e550e5659` (`PR02_CATALOG_REV3_HASH`). Discordancia aborta con `PR02_P2_REV3_BASELINE_MISMATCH`.
+  - Guarda in-tx y postcheck validan taxativamente el digest fuente exacto de la R3 histórica `11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884` (`REV3_SOURCE_SHA256` / `PR02_CATALOG_REV3_HASH`). Discordancia aborta con `PR02_P2_REV3_BASELINE_MISMATCH`.
+  - Distinción semántica formal (`REV3_HASH_SEMANTICS = VERIFIED`): `REV3_SOURCE_SHA256` representa la procedencia de evidencia WSFE (columna `fuente_sha256`), mientras que `computeCatalogRowDigest(row)` (`REV3_ROW_DIGEST = 2f6f91e6eee09b1d8d21f0696242bc72f687be4995d7973edf1f4602822561d3`) representa el digest canónico de la tupla completa en base de datos.
+  - Corrección de auditoría: `PR02_R3_HASH_DISCREPANCY = RESOLVED`. El valor apócrifo `2e6f4770...` introducido inadvertidamente en documentación previa fue eliminado y reemplazado por la evidencia fáctica acreditada en Staging por PR02-A0.
+  - Procedencia P0 vinculada (`P0_PROVENANCE_BINDING = PASS`): Manifiesto P0 vincula unívocamente la identidad del colector, ID de ejecución autorizada, scope `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`, entorno `HOMOLOGACION`, operaciones WSFE y transporte seguro sin secretos.
+  - Evidencia P1 no disponible (`PR02_P1_OFFICIAL_EVIDENCE_VERIFIED = NOT_AVAILABLE`): Prohibida importación de archivos manuales; `PR02_P1_REMOTE_EXECUTION_READY = false`.
 - **Máquina de Estados de Transacción y Prohibición de Reintento Incierto (BLOCKER 5)**:
   - Enum `PR02_EXECUTION_OUTCOMES` registrando estado exacto (`NOT_STARTED`, `PREFLIGHT_FAILED_NO_WRITE`, `TRANSACTION_ROLLED_BACK_CONFIRMED`, `WRITE_COMMITTED`, `WRITE_COMMITTED_POSTCHECK_FAILED`, `COMMIT_OUTCOME_UNKNOWN`, `ROLLBACK_OUTCOME_UNKNOWN`, `CONNECTION_CLOSE_FAILED_AFTER_COMMIT`).
   - `UNCERTAIN_WRITE_RETRY_FORBIDDEN = true`. Prohibido cualquier reintento automático o inferido tras fallo de commit.
@@ -874,8 +878,15 @@ Resolución exhaustiva de los 8 bloqueadores de la auditoría independiente (`PR
 - **Endurecimiento de Wrappers PowerShell (BLOCKER 7)**:
   - `run-pr02-p1-staging-private.ps1` y `run-pr02-p2-staging-private.ps1` verifican `$LASTEXITCODE -ne 0` tras cada comando Git (`fetch`, `rev-parse`, `status`). P1 soporta parámetro `-ManifestFile`.
 - **Validación Integral con PostgreSQL 17 Real en Docker (BLOCKER 8)**:
-  - Suite `fiscalPr02ParametersPostgresIntegration.test.ts` con 26/26 tests PASS sobre `postgres:17-alpine` validando la atomicidad de locks, postchecks y reversiones.
+  - Suite `fiscalPr02ParametersPostgresIntegration.test.ts` con 29/29 tests PASS sobre `postgres:17-alpine` validando la atomicidad de locks, postchecks, reversiones, R4 expirado y alteración de columnas de R3.
 - **Estado**:
+  - `PR02_R3_HASH_DISCREPANCY = RESOLVED`
+  - `REV3_SOURCE_SHA256 = 11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884`
+  - `REV3_ROW_DIGEST = 2f6f91e6eee09b1d8d21f0696242bc72f687be4995d7973edf1f4602822561d3`
+  - `REV3_HASH_SEMANTICS = VERIFIED`
+  - `P1_R3_BASELINE_GUARD = PASS`
+  - `P2_R3_BASELINE_GUARD = PASS`
+  - `P0_PROVENANCE_BINDING = PASS`
   - `PR02_P0_OFFICIAL_EVIDENCE_DESIGN = PASS`
   - `PR02_P0_REMOTE_EXECUTION_READY = false`
   - `PR02_P1_IMPORT_ONLY = true`

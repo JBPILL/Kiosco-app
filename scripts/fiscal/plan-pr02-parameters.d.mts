@@ -9,7 +9,18 @@ export const PR02_PARAMETERS_TARGET_REVISION: number
 export const PR02_PARAMETERS_HISTORICAL_REVISION: number
 export const PR02_PARAMETERS_EXPECTED_ISSUER_CUIT: string
 export const PR02_PARAMETERS_EXPECTED_ISSUER_PV: number
+export const REV3_SOURCE_SHA256: string
 export const PR02_CATALOG_REV3_HASH: string
+
+export function computeCatalogRowDigest(row: {
+  revision: number
+  condiciones: unknown
+  alicuotas: unknown
+  fuente_sha256: string
+  consultado_en: string | Date
+  vence_en: string | Date
+  habilitado: boolean
+}): string
 
 export const PR02_EXECUTION_OUTCOMES: {
   readonly NOT_STARTED: string
@@ -90,6 +101,9 @@ export interface Pr02P0OfficialEvidenceManifest {
   readonly operaciones: readonly string[]
   readonly consultado_en: string
   readonly identificador_proceso: string
+  readonly colector_identidad: string
+  readonly ejecucion_autorizada_id: string
+  readonly ejecucion_autorizada_scope: string
   readonly iva_respuesta_original_sha256: string
   readonly iva_archivo_normalizado_sha256: string
   readonly condition_respuesta_original_sha256: string
@@ -106,6 +120,9 @@ export function createPr02P0OfficialEvidenceManifest(params?: {
   consultado_en: string
   now?: string | number | Date
   identificador_proceso: string
+  colector_identidad?: string
+  ejecucion_autorizada_id?: string
+  ejecucion_autorizada_scope?: string
   iva_respuesta_original_sha256: string
   iva_archivo_normalizado_sha256: string
   condition_respuesta_original_sha256: string
@@ -119,6 +136,8 @@ export function validatePr02P1ImportEvidence(options?: {
   manifest?: unknown
   ivaText: string
   conditionText: string
+  rawIvaSoapText?: string
+  rawConditionSoapText?: string
   now?: string | number | Date
   expectedHashes?: { iva?: string; condition?: string }
 }): {
@@ -127,6 +146,7 @@ export function validatePr02P1ImportEvidence(options?: {
   readonly consultado_en: string
   readonly ivaSha256: string
   readonly conditionSha256: string
+  readonly manifestSha256: string
 }
 
 export const PR02_P1_PREFLIGHT_SELECT_SQL: string

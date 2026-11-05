@@ -2010,12 +2010,19 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `PR02_P1_VERIFIED_CATALOG_IMPORT`: Operación exclusiva de importación en BD (`PR02_P1_IMPORT_ONLY = true`), exigiendo validación de manifiesto P0 acreditado (`validatePr02P1ImportEvidence`). Sin manifiesto oficial: rechazo con `OFFICIAL_EVIDENCE_NOT_ACCREDITED`.
     - `PR02_P2_CATALOG_ENABLE`: Habilitación atómica controlada.
   - **Inserción Atómica en P1 con Table Locks (BLOCKER 3)**: `PR02_P1_ATOMIC_GUARD_SQL` y `verifyPr02P1InTxGuard`. Transacción única: `BEGIN` -> `LOCK TABLE fiscal_parametros_homologacion IN SHARE ROW EXCLUSIVE MODE;` + `LOCK TABLE fiscal_emisores_homologacion IN SHARE ROW EXCLUSIVE MODE;` -> guarda in-tx (R3 baseline, R3 expirada, R4 ausente, emisor inactivo) -> `INSERT ... RETURNING` con `habilitado = false` -> `COMMIT`.
-  - **Habilitación Atómica en P2 con Verificación de Baseline R3 (BLOCKER 4)**: `PR02_P2_ATOMIC_GUARD_SQL` y `verifyPr02P2InTxGuard`. Guarda in-tx y postcheck validan taxativamente el digest exacto de la R3 histórica `2e6f4770ef1f1f964047a46abec7e05492d6e355f9a629b0be99fe1e550e5659` (`PR02_CATALOG_REV3_HASH`). Discordancia arroja `PR02_P2_REV3_BASELINE_MISMATCH`.
+  - **Habilitación Atómica en P2 con Verificación de Baseline R3 (BLOCKER 4)**: `PR02_P2_ATOMIC_GUARD_SQL` y `verifyPr02P2InTxGuard`. Guarda in-tx y postcheck validan taxativamente el digest fuente exacto de la R3 histórica `11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884` (`REV3_SOURCE_SHA256` / `PR02_CATALOG_REV3_HASH`). Discordancia arroja `PR02_P2_REV3_BASELINE_MISMATCH`. Se distingue semánticamente (`REV3_HASH_SEMANTICS = VERIFIED`) el digest de procedencia WSFE (`REV3_SOURCE_SHA256`) del digest de la fila completa en base de datos (`computeCatalogRowDigest` -> `REV3_ROW_DIGEST = 2f6f91e6eee09b1d8d21f0696242bc72f687be4995d7973edf1f4602822561d3`). Corrección de auditoría: `PR02_R3_HASH_DISCREPANCY = RESOLVED`. Vinculación de procedencia P0: `P0_PROVENANCE_BINDING = PASS`.
   - **Seguimiento de Outcome de Transacción (BLOCKER 5)**: Enum `PR02_EXECUTION_OUTCOMES` registrando estado exacto de commit/rollback. Establecido `UNCERTAIN_WRITE_RETRY_FORBIDDEN = true`. Prohibido cualquier reintento automático o inferido tras fallo de commit.
   - **Validación Estricta de Contrato de Catálogo (BLOCKER 6)**: `validatePr02CatalogContract` exige: `consultado_en <= now < vence_en`, conteo de condiciones 1..100 con códigos únicos, alícuotas 0..100 con IDs únicos y procedencia oficial demostrada.
   - **Endurecimiento de Wrappers PowerShell (BLOCKER 7)**: `run-pr02-p1-staging-private.ps1` y `run-pr02-p2-staging-private.ps1` verifican `$LASTEXITCODE -ne 0` tras cada comando Git (`fetch`, `rev-parse`, `status`). P1 soporta parámetro `-ManifestFile`.
-  - **Acreditación en PostgreSQL 17 Real en Docker (BLOCKER 8)**: Suite `fiscalPr02ParametersPostgresIntegration.test.ts` con 26/26 tests PASS sobre `postgres:17-alpine` validando la atomicidad de locks, postchecks y reversiones.
+  - **Acreditación en PostgreSQL 17 Real en Docker (BLOCKER 8)**: Suite `fiscalPr02ParametersPostgresIntegration.test.ts` con 29/29 tests PASS sobre `postgres:17-alpine` validando la atomicidad de locks, postchecks, reversiones, R4 expirado y detección de alteración en columnas de R3.
 - **Estado**:
+  - `PR02_R3_HASH_DISCREPANCY = RESOLVED`
+  - `REV3_SOURCE_SHA256 = 11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884`
+  - `REV3_ROW_DIGEST = 2f6f91e6eee09b1d8d21f0696242bc72f687be4995d7973edf1f4602822561d3`
+  - `REV3_HASH_SEMANTICS = VERIFIED`
+  - `P1_R3_BASELINE_GUARD = PASS`
+  - `P2_R3_BASELINE_GUARD = PASS`
+  - `P0_PROVENANCE_BINDING = PASS`
   - `PR02_P0_OFFICIAL_EVIDENCE_DESIGN = PASS`
   - `PR02_P0_REMOTE_EXECUTION_READY = false`
   - `PR02_P1_IMPORT_ONLY = true`
@@ -2034,4 +2041,4 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
   - `REAL_PV2_ENABLED = false`
   - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
   - `PR02_READY_FOR_EMISSION_GO = false`
-  - 121/121 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+  - 124/124 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
