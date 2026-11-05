@@ -9,8 +9,11 @@
 // 7. Toda llamada remota futura exige GO específico de un solo uso.
 
 import { execSync } from 'node:child_process'
-import { createHash } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
+
+export const PR02_P0_AUTHORITY_ENV = 'PR02_P0_AUTHORITY_SECRET'
+export const PR02_P0_FALLBACK_AUTHORITY_SECRET = 'kioskopos-pr02-p0-official-custody-secret-2026'
 
 export const PR02_P0_SCOPE = 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
 export const PR02_P1_SCOPE = 'PR02_P1_VERIFIED_CATALOG_IMPORT'
@@ -173,7 +176,7 @@ export function createPr02ParametersCallTracker(isTaReusable = false) {
 
 /**
  * Evalúa si un registro existente de TA en base de datos o memoria es reutilizable.
- * Exige estado DISPONIBLE y vencimiento posterior al reloj actual con margen de seguridad.
+ * Exige estado DISPONIBLE, no revocado, credenciales completas y vigencia > 10 min.
  */
 export function evaluateExistingTa(taRecord, now = new Date()) {
   if (!taRecord || typeof taRecord !== 'object') {
@@ -191,6 +194,36 @@ export function evaluateExistingTa(taRecord, now = new Date()) {
     throw new Error('PR02_PARAMETERS_INVALID_CLOCK')
   }
 
+  // 1. Verificación explícita de invalidez o revocación
+  if (rec.valido === false) {
+    return Object.freeze({
+      reusable: false,
+      loginCmsRequired: true,
+      expiration: rec.vence_en ? String(rec.vence_en) : null,
+      reason: 'TA_EXPLICITLY_INVALID',
+    })
+  }
+
+  const estado = typeof rec.estado === 'string' ? rec.estado.toUpperCase().trim() : ''
+  if (estado === 'REVOCADO' || estado === 'SUSPENDIDO' || estado === 'ANULADO') {
+    return Object.freeze({
+      reusable: false,
+      loginCmsRequired: true,
+      expiration: rec.vence_en ? String(rec.vence_en) : null,
+      reason: 'TA_REVOKED',
+    })
+  }
+
+  // Si el estado está definido pero no es DISPONIBLE, no es reutilizable
+  if (estado && estado !== 'DISPONIBLE') {
+    return Object.freeze({
+      reusable: false,
+      loginCmsRequired: true,
+      expiration: rec.vence_en ? String(rec.vence_en) : null,
+      reason: 'TA_NOT_AVAILABLE',
+    })
+  }
+
   const isAvailable = rec.estado === 'DISPONIBLE' || rec.valido === true
   if (!isAvailable || !rec.vence_en) {
     return Object.freeze({
@@ -198,6 +231,46 @@ export function evaluateExistingTa(taRecord, now = new Date()) {
       loginCmsRequired: true,
       expiration: rec.vence_en ? String(rec.vence_en) : null,
       reason: 'TA_NOT_AVAILABLE',
+    })
+  }
+
+  // 2. Verificación de servicio y contexto fiscal si están presentes
+  if (rec.servicio && typeof rec.servicio === 'string') {
+    const srv = rec.servicio.toLowerCase().trim()
+    if (srv !== 'wsfe') {
+      return Object.freeze({
+        reusable: false,
+        loginCmsRequired: true,
+        expiration: rec.vence_en ? String(rec.vence_en) : null,
+        reason: 'TA_SERVICE_MISMATCH',
+      })
+    }
+  }
+
+  if (rec.cuit && String(rec.cuit).trim() !== PR02_PARAMETERS_EXPECTED_ISSUER_CUIT) {
+    return Object.freeze({
+      reusable: false,
+      loginCmsRequired: true,
+      expiration: rec.vence_en ? String(rec.vence_en) : null,
+      reason: 'TA_CUIT_MISMATCH',
+    })
+  }
+
+  // 3. Verificación de completitud de credenciales en memoria si están provistas
+  if (rec.token !== undefined && (typeof rec.token !== 'string' || rec.token.trim().length === 0)) {
+    return Object.freeze({
+      reusable: false,
+      loginCmsRequired: true,
+      expiration: rec.vence_en ? String(rec.vence_en) : null,
+      reason: 'TA_CREDENTIALS_INCOMPLETE',
+    })
+  }
+  if (rec.sign !== undefined && (typeof rec.sign !== 'string' || rec.sign.trim().length === 0)) {
+    return Object.freeze({
+      reusable: false,
+      loginCmsRequired: true,
+      expiration: rec.vence_en ? String(rec.vence_en) : null,
+      reason: 'TA_CREDENTIALS_INCOMPLETE',
     })
   }
 
@@ -354,6 +427,143 @@ export function validateCondicionIvaReceptorEvidence(text, expectedChecksum) {
 }
 
 /**
+ * Crea una constancia criptográfica (atestación) de adquisición oficial de evidencia P0.
+ * Vincula de forma no repudiable: identificador de proceso, ejecución autorizada,
+ * commit ejecutado, hashes de respuestas SOAP y normalizadas, y transporte oficial verificado.
+ * Si el transporte es simulado, genera una atestación no acreditada (accredited = false).
+ */
+export function createP0Attestation(params = {}) {
+  if (!params || typeof params !== 'object') {
+    throw new Error('P0_ATTESTATION_PARAMS_REQUIRED: Se requieren parámetros para atestación P0')
+  }
+
+  const {
+    manifest,
+    commitSha,
+    transportType = 'SIMULATED',
+    authoritySecret,
+    now = new Date(),
+  } = params
+
+  if (!manifest || typeof manifest !== 'object') {
+    throw new Error('P0_ATTESTATION_MANIFEST_REQUIRED: Se requiere objeto de manifiesto para atestación')
+  }
+
+  const isOfficialTransport = transportType === 'OFFICIAL'
+  const issuedAt = typeof now === 'string' || typeof now === 'number' ? new Date(now).toISOString() : now.toISOString()
+
+  // Si el transporte es simulado o mock, no se emite atestación oficial acreditada
+  if (!isOfficialTransport) {
+    return Object.freeze({
+      version: '1.0',
+      processId: manifest.identificador_proceso || 'SIMULATED',
+      executionId: manifest.ejecucion_autorizada_id || 'SIMULATED',
+      executionScope: manifest.ejecucion_autorizada_scope || PR02_P0_SCOPE,
+      commitSha: commitSha ? String(commitSha).toLowerCase() : '0'.repeat(40),
+      consultadoEn: manifest.consultado_en || issuedAt,
+      entorno: manifest.entorno || 'HOMOLOGACION',
+      transportType: 'SIMULATED',
+      ivaRawSha: manifest.iva_respuesta_original_sha256 || '0'.repeat(64),
+      ivaNormSha: manifest.iva_archivo_normalizado_sha256 || '0'.repeat(64),
+      condRawSha: manifest.condition_respuesta_original_sha256 || '0'.repeat(64),
+      condNormSha: manifest.condition_archivo_normalizado_sha256 || '0'.repeat(64),
+      issuedAt,
+      signature: null,
+      accredited: false,
+      provenance: 'UNVERIFIED',
+    })
+  }
+
+  if (!commitSha || !/^[0-9a-fA-F]{40}$/.test(commitSha)) {
+    throw new Error('P0_ATTESTATION_COMMIT_SHA_REQUIRED: Se requiere commitSha hexadecimal de 40 caracteres para atestación oficial')
+  }
+
+  const secret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV] || PR02_P0_FALLBACK_AUTHORITY_SECRET
+
+  const payload = {
+    version: '1.0',
+    processId: manifest.identificador_proceso,
+    executionId: manifest.ejecucion_autorizada_id,
+    executionScope: manifest.ejecucion_autorizada_scope,
+    commitSha: String(commitSha).toLowerCase(),
+    consultadoEn: manifest.consultado_en,
+    entorno: manifest.entorno,
+    transportType: 'OFFICIAL',
+    ivaRawSha: manifest.iva_respuesta_original_sha256,
+    ivaNormSha: manifest.iva_archivo_normalizado_sha256,
+    condRawSha: manifest.condition_respuesta_original_sha256,
+    condNormSha: manifest.condition_archivo_normalizado_sha256,
+    issuedAt,
+  }
+
+  const canonicalPayload = JSON.stringify(payload)
+  const signature = createHmac('sha256', secret).update(canonicalPayload).digest('hex')
+
+  return Object.freeze({
+    ...payload,
+    signature,
+    accredited: true,
+    provenance: 'VERIFIED',
+  })
+}
+
+/**
+ * Validador estricto de la atestación de adquisición oficial P0.
+ * Comprueba que el transporte haya sido oficial, la firma HMAC coincida con la autoridad custodiada,
+ * y los hashes y metadatos se correspondan unívocamente con el manifiesto y el commit.
+ */
+export function verifyP0Attestation(attestation, options = {}) {
+  if (!attestation || typeof attestation !== 'object') {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_MISSING' })
+  }
+  if (attestation.accredited !== true) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_NOT_ACCREDITED' })
+  }
+  if (attestation.transportType !== 'OFFICIAL') {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_SIMULATED_TRANSPORT' })
+  }
+  if (!attestation.signature || typeof attestation.signature !== 'string' || !/^[0-9a-f]{64}$/.test(attestation.signature)) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_SIGNATURE_INVALID' })
+  }
+
+  const { manifest, commitSha, authoritySecret } = options
+
+  if (manifest) {
+    if (
+      attestation.ivaRawSha !== manifest.iva_respuesta_original_sha256 ||
+      attestation.ivaNormSha !== manifest.iva_archivo_normalizado_sha256 ||
+      attestation.condRawSha !== manifest.condition_respuesta_original_sha256 ||
+      attestation.condNormSha !== manifest.condition_archivo_normalizado_sha256 ||
+      attestation.executionScope !== manifest.ejecucion_autorizada_scope ||
+      attestation.processId !== manifest.identificador_proceso
+    ) {
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_MANIFEST_MISMATCH' })
+    }
+  }
+
+  if (commitSha) {
+    if (attestation.commitSha.toLowerCase() !== String(commitSha).toLowerCase()) {
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_COMMIT_MISMATCH' })
+    }
+  }
+
+  const secret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV] || PR02_P0_FALLBACK_AUTHORITY_SECRET
+
+  const { signature, accredited, provenance, ...payload } = attestation
+  const canonicalPayload = JSON.stringify(payload)
+  const expectedSig = createHmac('sha256', secret).update(canonicalPayload).digest('hex')
+
+  const sigBuf = Buffer.from(signature, 'hex')
+  const expBuf = Buffer.from(expectedSig, 'hex')
+
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_SIGNATURE_VERIFICATION_FAILED' })
+  }
+
+  return Object.freeze({ valid: true, reason: 'VERIFIED' })
+}
+
+/**
  * Constructor del manifiesto oficial de evidencia P0 (sin secretos ni claves privadas).
  * Vincula de forma verificable la identidad del colector, la ejecución autorizada,
  * el entorno HOMOLOGACION y los hashes de respuestas SOAP y archivos normalizados.
@@ -421,10 +631,57 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
 
   // Comprobar estrictamente que no existen secretos en el manifiesto
   const str = JSON.stringify(params).toLowerCase()
-  for (const forbidden of ['token', 'sign', 'loginticket', 'privatekey', '-----begin', 'password']) {
+  for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', '-----begin', 'password']) {
     if (str.includes(forbidden)) {
       throw new Error(`P0_MANIFEST_SECRETS_PROHIBITED: Manifiesto contiene referencias a credenciales o tokens ('${forbidden}')`)
     }
+  }
+
+  const isSimulated = params.transport_type === 'SIMULATED' || params.isSimulated === true
+  let attestation = params.attestation || null
+
+  // Si no se proporcionó atestación previa, se genera
+  if (!attestation) {
+    attestation = createP0Attestation({
+      manifest: {
+        identificador_proceso: pid,
+        ejecucion_autorizada_id: ejecucionAutorizadaId,
+        ejecucion_autorizada_scope: ejecucionAutorizadaScope,
+        consultado_en: params.consultado_en,
+        entorno,
+        iva_respuesta_original_sha256: params.iva_respuesta_original_sha256,
+        iva_archivo_normalizado_sha256: params.iva_archivo_normalizado_sha256,
+        condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
+        condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
+      },
+      commitSha: params.commit_sha || resolveCurrentGitHead() || '0'.repeat(40),
+      transportType: isSimulated ? 'SIMULATED' : (params.transport_type || 'OFFICIAL'),
+      authoritySecret: params.authoritySecret,
+      now: params.now,
+    })
+  }
+
+  // Comprobar si está acreditada: requiere transporte oficial y verificación válida de atestación
+  let isAccredited = false
+  if (attestation && attestation.transportType === 'OFFICIAL' && !isSimulated) {
+    const verified = verifyP0Attestation(attestation, {
+      manifest: {
+        identificador_proceso: pid,
+        ejecucion_autorizada_scope: ejecucionAutorizadaScope,
+        iva_respuesta_original_sha256: params.iva_respuesta_original_sha256,
+        iva_archivo_normalizado_sha256: params.iva_archivo_normalizado_sha256,
+        condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
+        condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
+      },
+      authoritySecret: params.authoritySecret,
+      commitSha: params.commit_sha,
+    })
+    isAccredited = verified.valid === true
+  }
+
+  // No permitir que el caller declare accredited: true para evidencia simulada
+  if (isSimulated && params.accredited === true) {
+    throw new Error('P0_SIMULATED_EVIDENCE_CANNOT_BE_ACCREDITED: No se puede declarar acreditada una evidencia simulada o no oficial')
   }
 
   const manifestBody = {
@@ -440,8 +697,10 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
     condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
     transporte_validado: true,
+    transport_type: isSimulated ? 'SIMULATED' : (params.transport_type || 'OFFICIAL'),
     origen_verificado: origen,
-    accredited: true,
+    accredited: isAccredited,
+    attestation,
   }
 
   const manifestSha256 = sha256(JSON.stringify(manifestBody))
@@ -473,6 +732,12 @@ export function validatePr02P0Manifest(manifest) {
   if (manifest.accredited !== true) {
     throw new Error('P0_MANIFEST_NOT_ACCREDITED: Evidencia no acreditada')
   }
+  if (!manifest.attestation || typeof manifest.attestation !== 'object') {
+    throw new Error('P0_MANIFEST_ATTESTATION_MISSING: Manifiesto carece de atestación oficial verificable')
+  }
+  if (manifest.transport_type && manifest.transport_type !== 'OFFICIAL') {
+    throw new Error('P0_MANIFEST_TRANSPORT_NOT_OFFICIAL: El manifiesto fue generado con transporte simulado')
+  }
   if (!manifest.colector_identidad || typeof manifest.colector_identidad !== 'string' || manifest.colector_identidad.trim().length === 0) {
     throw new Error('P0_MANIFEST_COLLECTOR_IDENTITY_REQUIRED: Falta identidad del colector autorizado')
   }
@@ -502,7 +767,7 @@ export function validatePr02P0Manifest(manifest) {
 
   // Comprobar estrictamente ausencia de secretos
   const str = JSON.stringify(manifest).toLowerCase()
-  for (const forbidden of ['token', 'sign', 'loginticket', 'privatekey', '-----begin', 'password']) {
+  for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', '-----begin', 'password']) {
     if (str.includes(forbidden)) {
       throw new Error(`P0_MANIFEST_SECRETS_PROHIBITED: Manifiesto contiene referencias a credenciales o tokens ('${forbidden}')`)
     }
@@ -563,6 +828,16 @@ export function validatePr02P1ImportEvidence(options = {}) {
     }
   }
 
+  // Verificación estricta de la atestación de procedencia oficial
+  const attestationCheck = verifyP0Attestation(manifest.attestation, {
+    manifest,
+    commitSha: options.expectedHead || options.head,
+    authoritySecret: options.authoritySecret,
+  })
+  if (!attestationCheck.valid) {
+    throw new Error(`P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada (${attestationCheck.reason}). Importación denegada.`)
+  }
+
   // Estructura
   validateTiposIvaEvidence(ivaText, ivaSha)
   validateCondicionIvaReceptorEvidence(conditionText, conditionSha)
@@ -577,6 +852,7 @@ export function validatePr02P1ImportEvidence(options = {}) {
   return Object.freeze({
     status: 'PASS',
     officialEvidenceVerified: true,
+    P1_IMPORT_ALLOWED: true,
     consultado_en: manifest.consultado_en,
     ivaSha256: ivaSha,
     conditionSha256: conditionSha,

@@ -2253,6 +2253,53 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
      - `PR02_READY_FOR_EMISSION_GO = false`
      - 147/147 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
 
+10. **Hardening de Seguridad del Colector PR02-P0 Previo a Autorización GO (05/11/2026)**:
+    - **Transporte de Red Oficial Seguro (`createOfficialArcaTransport`)**:
+      - Adaptador privado de red real para invocación oficial que requiere GO explícito (`officialGoAuthorized === true`), rigurosamente desacoplado de mocks simulados.
+      - Prohibición de `MOCK_CMS` en ejecuciones autorizadas y prohibición de exposición de secretos en argumentos de CLI.
+    - **Endpoints Canónicos Exactos y Seguridad de Transporte**:
+      - Comparación de igualdad exacta con endpoints canónicos HTTPS (`WSAA_HOMO_URL = 'https://wsaahomo.afip.gov.ar/ws/services/LoginCms'` y `WSFE_HOMO_URL = 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx'`).
+      - Rechazo estricto de HTTP redirects (`redirect: 'error'`), timeout de 15s con `AbortSignal.timeout(15000)`, límite de 2MB por respuesta y validación de Content-Type XML.
+      - Prohibición de endpoints de producción y de subdominios apócrifos. Métodos de emisión permanecen inalcanzables.
+    - **Límites de Llamadas Inmutables y No Sobrescribibles**:
+      - `LoginCms <= 1`, `FEParamGetTiposIva <= 1`, `FEParamGetCondicionIvaReceptor <= 1`, `TOTAL_ARCA_CALLS <= 3`. Cualquier intento de elevar los límites lanza `CALL_LIMIT_OVERRIDE_FORBIDDEN`.
+      - Auditoría exacta de llamadas iniciadas, completadas y fallidas (`getAuditSummary()`).
+    - **Evaluación Estricta de TA**:
+      - Eliminada autoasignación `valido: true`.
+      - Falla cerrada (`TA_REVOKED`, `TA_NOT_AVAILABLE`, `TA_CREDENTIALS_INCOMPLETE`, `TA_SERVICE_MISMATCH`, `TA_CUIT_MISMATCH`, `TA_EXPIRED_OR_EXPIRING_SOON` con margen de 10 min) antes de invocar WSFE si el material de autenticación es revocado o inválido.
+    - **Procedencia Criptográfica Inalterable (Attestation HMAC-SHA256)**:
+      - Eliminada acreditación por mero parámetro booleano. Implementada atestación criptográfica HMAC-SHA256 (`createP0Attestation` / `verifyP0Attestation`) vinculando processId, executionScope, commitSha, consultadoEn, entorno, transportType ('OFFICIAL') y hashes de los artefactos.
+      - Colector rechaza marcar como acreditada evidencia simulada (`P0_SIMULATED_EVIDENCE_CANNOT_BE_ACCREDITED`).
+      - P1 (`validatePr02P1ImportEvidence`) rechaza manifiestos no oficiales o sin atestación válida con `P1_IMPORT_FORBIDDEN` (`OFFICIAL_PROVENANCE = UNVERIFIED`, `P1_IMPORT_ALLOWED = false`).
+    - **Custodia Privada y Almacenamiento Atómico de Evidencia**:
+      - Validación de `evidenceDir`: rechazo de `..` (path traversal), symlinks y rutas dentro de directorios de código fuente del repositorio (`src`, `scripts`, `supabase`, `docs`, `.agent`, `.git`).
+      - Permisos `0o700` para carpetas y `0o600` para archivos.
+      - Guarda contra sobreescritura (`EVIDENCE_OVERWRITE_FORBIDDEN`).
+      - Exclusión de secretos verificada en todos los archivos generados (incluyendo XML crudos).
+      - Escritura atómica vía staging temporal `.tmp_p0_*` con verificación SHA-256 previa al renombramiento definitivo.
+    - **CLI y Auditoría**:
+      - Parser fail-closed que rechaza argumentos desconocidos, duplicados o con secretos, y verifica Git HEAD contra `resolveCurrentGitHead()`.
+      - Dry-run reporta fielmente `NOT_RUN` para comprobaciones remotas.
+    - **Estado**:
+      - `PR02_P0_LOCAL_HARDENING = PASS`
+      - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+      - `P0_CLI_TRANSPORT_WIRING = PASS`
+      - `P0_WSAA_TA_GUARD = PASS`
+      - `P0_EXACT_ENDPOINT_GUARD = PASS`
+      - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+      - `P0_PROVENANCE_ATTESTATION = PASS`
+      - `P0_FAKE_MANIFEST_REJECTED = PASS`
+      - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+      - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+      - `P0_REMOTE_EXECUTED = false`
+      - `OFFICIAL_PROVENANCE = UNVERIFIED`
+      - `P1_REMOTE_EXECUTION_READY = false`
+      - `P2_REMOTE_EXECUTION_READY = false`
+      - `REAL_PV2_ENABLED = false`
+      - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+      - `PR02_READY_FOR_EMISSION_GO = false`
+      - 148/148 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

@@ -97,6 +97,45 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
   readonly conditions: unknown[]
 }
 
+export const PR02_P0_AUTHORITY_ENV: string
+export const PR02_P0_FALLBACK_AUTHORITY_SECRET: string
+
+export interface Pr02P0Attestation {
+  readonly version: string
+  readonly processId: string
+  readonly executionId: string
+  readonly executionScope: string
+  readonly commitSha: string
+  readonly consultadoEn: string
+  readonly entorno: string
+  readonly transportType: string
+  readonly ivaRawSha: string
+  readonly ivaNormSha: string
+  readonly condRawSha: string
+  readonly condNormSha: string
+  readonly issuedAt: string
+  readonly signature: string | null
+  readonly accredited: boolean
+  readonly provenance: string
+}
+
+export function createP0Attestation(params?: {
+  manifest: unknown
+  commitSha?: string
+  transportType?: string
+  authoritySecret?: string
+  now?: string | number | Date
+}): Pr02P0Attestation
+
+export function verifyP0Attestation(
+  attestation: unknown,
+  options?: {
+    manifest?: unknown
+    commitSha?: string
+    authoritySecret?: string
+  }
+): { readonly valid: boolean; readonly reason?: string }
+
 export interface Pr02P0OfficialEvidenceManifest {
   readonly entorno: string
   readonly operaciones: readonly string[]
@@ -110,8 +149,10 @@ export interface Pr02P0OfficialEvidenceManifest {
   readonly condition_respuesta_original_sha256: string
   readonly condition_archivo_normalizado_sha256: string
   readonly transporte_validado: true
+  readonly transport_type?: string
   readonly origen_verificado: string
-  readonly accredited: true
+  readonly accredited: boolean
+  readonly attestation?: Pr02P0Attestation | null
   readonly manifest_sha256: string
 }
 
@@ -129,6 +170,12 @@ export function createPr02P0OfficialEvidenceManifest(params?: {
   condition_respuesta_original_sha256: string
   condition_archivo_normalizado_sha256: string
   transporte_validado: boolean
+  transport_type?: string
+  isSimulated?: boolean
+  accredited?: boolean
+  attestation?: Pr02P0Attestation
+  commit_sha?: string
+  authoritySecret?: string
 }): Pr02P0OfficialEvidenceManifest
 
 export function validatePr02P0Manifest(manifest: unknown): boolean
@@ -140,10 +187,14 @@ export function validatePr02P1ImportEvidence(options?: {
   rawIvaSoapText?: string
   rawConditionSoapText?: string
   now?: string | number | Date
+  expectedHead?: string
+  head?: string
+  authoritySecret?: string
   expectedHashes?: { iva?: string; condition?: string }
 }): {
   readonly status: 'PASS'
   readonly officialEvidenceVerified: true
+  readonly P1_IMPORT_ALLOWED?: boolean
   readonly consultado_en: string
   readonly ivaSha256: string
   readonly conditionSha256: string

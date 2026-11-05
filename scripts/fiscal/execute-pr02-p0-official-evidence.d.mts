@@ -11,10 +11,29 @@ export const PROHIBITED_ARCA_OPERATIONS: readonly string[]
 export const ALLOWED_P0_ARCA_OPERATIONS: readonly string[]
 export const DEFAULT_PRIVATE_EVIDENCE_DIR: string
 
+export const P0_MAX_LIMITS: {
+  readonly loginCmsMax: number
+  readonly tiposIvaMax: number
+  readonly condicionIvaReceptorMax: number
+  readonly totalMax: number
+}
+
 export function assertNoForbiddenSecrets(val: unknown, context?: string): void
 export function validateP0EndpointUrl(url: string, serviceName?: string): void
 
+export function createOfficialArcaTransport(options?: {
+  timeoutMs?: number
+  maxResponseBytes?: number
+  officialGoAuthorized?: boolean
+}): {
+  readonly type: 'OFFICIAL'
+  postSoap(url: string, soapAction: string, soapBody: string): Promise<string>
+}
+
+export function validateEvidenceDirectory(dirPath: string, repoRoot?: string): string
+
 export interface Pr02P0CallTracker {
+  recordStart(operationName: string): void
   recordCall(operationName: string): void
   recordFailure(operationName: string): void
   getCounts(): {
@@ -23,11 +42,24 @@ export interface Pr02P0CallTracker {
     readonly condicionIvaReceptor: number
     readonly total: number
   }
+  getAuditSummary(): {
+    readonly started: readonly string[]
+    readonly completed: readonly string[]
+    readonly failed: readonly string[]
+    readonly counts: {
+      readonly loginCms: number
+      readonly tiposIva: number
+      readonly condicionIvaReceptor: number
+      readonly total: number
+    }
+  }
   getOperations(): readonly string[]
 }
 
 export function createPr02P0CallTracker(options?: {
   loginCmsMax?: number
+  tiposIvaMax?: number
+  condicionIvaReceptorMax?: number
   totalMax?: number
 }): Pr02P0CallTracker
 
@@ -39,6 +71,7 @@ export interface Pr02P0CliArgs {
   readonly head: string
   readonly expectedHead: string
   readonly evidenceDir: string
+  readonly saveEvidence: boolean
 }
 
 export function validatePr02P0CliArgs(argv?: readonly string[]): Pr02P0CliArgs
@@ -75,13 +108,26 @@ export interface Pr02P0ExecutionOptions {
   evidenceDir?: string
   saveEvidence?: boolean
   cmsBase64?: string
-  existingTa?: string | { token: string; sign: string; expirationTime: string }
+  existingTa?: string | {
+    token?: string
+    sign?: string
+    expirationTime?: string
+    vence_en?: string
+    estado?: string
+    valido?: boolean
+    servicio?: string
+    cuit?: string
+  }
   now?: string | number | Date
   wsaaUrl?: string
   wsfeUrl?: string
   processId?: string
   loginCmsMax?: number
+  tiposIvaMax?: number
+  condicionIvaReceptorMax?: number
   totalMax?: number
+  authoritySecret?: string
+  officialGoAuthorized?: boolean
 }
 
 export interface Pr02P0ExecutionDeps {
@@ -90,6 +136,7 @@ export interface Pr02P0ExecutionDeps {
   wsfeTiposIva?: (params: { token: string; sign: string; cuit: string }) => Promise<string>
   wsfeCondicionIva?: (params: { token: string; sign: string; cuit: string }) => Promise<string>
   isOfficialExecution?: boolean
+  transportType?: string
 }
 
 export interface Pr02P0ExecutionReport {
@@ -99,6 +146,16 @@ export interface Pr02P0ExecutionReport {
   readonly processId?: string
   readonly PR02_P0_EXECUTION?: string
   readonly PR02_P0_LOCAL_PREPARATION: string
+  readonly PR02_P0_LOCAL_HARDENING: string
+  readonly P0_REAL_TRANSPORT_IMPLEMENTED: string
+  readonly P0_CLI_TRANSPORT_WIRING: string
+  readonly P0_WSAA_TA_GUARD: string
+  readonly P0_EXACT_ENDPOINT_GUARD: string
+  readonly P0_CALL_LIMITS_NON_OVERRIDABLE: string
+  readonly P0_PROVENANCE_ATTESTATION: string
+  readonly P0_FAKE_MANIFEST_REJECTED: string
+  readonly P0_PRIVATE_EVIDENCE_STORAGE: string
+  readonly P0_AUDIT_COUNTS_ACCURATE: string
   readonly PR02_P0_COLLECTOR_IMPLEMENTATION?: string
   readonly PR02_P0_AUTHORIZATION_GUARD: string
   readonly PR02_P0_WSAA_WSFE_ALLOWLIST: string
@@ -109,6 +166,7 @@ export interface Pr02P0ExecutionReport {
   readonly CONTENT_INTEGRITY?: string
   readonly OFFICIAL_PROVENANCE: string
   readonly PR02_P0_REMOTE_EXECUTION_READY: boolean
+  readonly P0_REMOTE_EXECUTED: boolean
   readonly PR02_P0_REMOTE_EXECUTED: boolean
   readonly PR02_P1_REMOTE_EXECUTION_READY: boolean
   readonly PR02_P2_REMOTE_EXECUTION_READY: boolean
@@ -119,6 +177,7 @@ export interface Pr02P0ExecutionReport {
   readonly STAGING_WRITES_NEW: number
   readonly PRODUCTION_MUTATIONS: number
   readonly UNAUTHORIZED_CONNECTION_ATTEMPTS?: number
+  readonly auditCounts?: unknown
   readonly manifest?: Pr02P0OfficialEvidenceManifest
   readonly evidenceFiles?: readonly string[]
 }
