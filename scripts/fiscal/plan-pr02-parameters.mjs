@@ -29,6 +29,7 @@ export const PR02_PARAMETERS_TARGET_REVISION = 4
 export const PR02_PARAMETERS_HISTORICAL_REVISION = 3
 export const PR02_PARAMETERS_EXPECTED_ISSUER_CUIT = '20415005963'
 export const PR02_PARAMETERS_EXPECTED_ISSUER_PV = 2
+export const PR02_P0_COLECTOR_IDENTIDAD = 'scripts/fiscal/execute-pr02-p0-official-evidence.mjs'
 
 /**
  * Hash acreditado oficial de la columna fuente_sha256 para la Revisión 3 en Staging.
@@ -388,7 +389,7 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     throw new Error('P0_MANIFEST_PROCESS_ID_REQUIRED')
   }
 
-  const colectorIdentidad = params.colector_identidad || 'scripts/fiscal/collect-pr02-p0-evidence.mjs'
+  const colectorIdentidad = params.colector_identidad || PR02_P0_COLECTOR_IDENTIDAD
   if (typeof colectorIdentidad !== 'string' || colectorIdentidad.trim().length === 0) {
     throw new Error('P0_MANIFEST_COLLECTOR_IDENTITY_REQUIRED')
   }

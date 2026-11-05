@@ -44,3 +44,6 @@ dist-ssr
 *LoginTicketResponse*.xml
 *loginTicketResponse*.xml
 *TRA*.cms*
+.fiscal-evidence/
+.fiscal-evidence-pr02/
+private/fiscal-evidence/

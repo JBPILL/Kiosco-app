@@ -2129,3 +2129,36 @@ Una revisión independiente tras la propuesta inicial de refresco arrojó `PR02_
 **Consecuencias:**
 `PR02_R3_HASH_DISCREPANCY = RESOLVED`, `REV3_SOURCE_SHA256 = 11e9d2244b4fd418df4ab9bc3798c303d66f181785ba678597fdeffa76d5e884`, `REV3_ROW_DIGEST = 2f6f91e6eee09b1d8d21f0696242bc72f687be4995d7973edf1f4602822561d3`, `REV3_HASH_SEMANTICS = VERIFIED`, `P1_R3_BASELINE_GUARD = PASS`, `P2_R3_BASELINE_GUARD = PASS`, `P0_PROVENANCE_BINDING = PASS`, `PR02_P0_OFFICIAL_EVIDENCE_DESIGN = PASS`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `PR02_P1_IMPORT_ONLY = true`, `PR02_P1_OFFICIAL_EVIDENCE_VERIFIED = NOT_AVAILABLE`, `PR02_P1_AUTHORIZATION_GUARD = PASS`, `PR02_P1_ATOMIC_GUARDS = PASS`, `PR02_P1_COMMIT_OUTCOME_GUARD = PASS`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_ATOMIC_GUARDS = PASS`, `PR02_P2_REV3_BASELINE_GUARD = PASS`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `CATALOG_CONTRACT_FAIL_CLOSED = PASS`, `WRAPPER_GIT_EXIT_CODE_GUARD = PASS`, `UNCERTAIN_WRITE_RETRY_FORBIDDEN = true`, `REV3_PRESERVED = true`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
 124/124 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA, cero escrituras Staging, cero mutaciones Producción.
+
+## 05/11/2026 - Implementación del Colector Oficial de Evidencia WSAA/WSFE (PR02-P0) sin Ejecución Remota
+
+**Contexto:**
+El diseño previo desacopló la recolección oficial de evidencia (`PR02-P0`) de la importación a base de datos (`PR02-P1`). Para preparar la fase de recolección oficial sin realizar conexiones de red remotas no autorizadas en este bloque, se requirió implementar el script ejecutor privado del colector, el wrapper de control de Git y entorno, la máquina de seguimiento de llamadas ARCA/WSFE, las verificaciones criptográficas de integridad y procedencia, y una suite completa de pruebas unitarias y de simulación.
+
+**Decisión:**
+1. **Implementación del Colector Privado e Invocador PowerShell**:
+   - `scripts/fiscal/execute-pr02-p0-official-evidence.mjs` y tipos `.d.mts`.
+   - Wrapper `scripts/fiscal/run-pr02-p0-staging-private.ps1` con guardas Git estrictas (`git fetch origin --prune`, paridad HEAD con remoto y con `-ExpectedHead`, worktree limpio).
+   - Scope exclusivo obligatorio: `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`.
+   - Target autorizado: `acoyfwwmhaeruciyedri` (CUIT `20415005963`, PV `2`).
+   - Modo predeterminado: `DRY_RUN` sin conexiones externas ni llamadas de red.
+2. **Auditoría de Transporte WSAA/WSFE y Allowlist Estricta**:
+   - Reutilización de parsers auditados de PR03-C (`parseWsaaLoginCmsResponse`, `parseWsfeTiposIvaResponse`, `parseWsfeCondicionIvaReceptorResponse`).
+   - Allowlist cerrada: `LoginCms` (máx 1 si el TA anterior no es reutilizable), `FEParamGetTiposIva` (máx 1), `FEParamGetCondicionIvaReceptor` (máx 1). Total máximo: 3 llamadas ARCA.
+   - Cero reintentos automáticos (`AUTOMATIC_RETRY_FORBIDDEN`).
+   - Bloqueo por diseño de métodos de emisión: `FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado`, `FEParamGetPtosVenta` inalcanzables.
+   - Endpoints fijos: exclusivamente `https://wsaahomo.afip.gov.ar/ws/services/LoginCms` y `https://wswhomo.afip.gov.ar/wsfev1/service.asmx`. Prohibido Producción y URLs arbitrarias.
+3. **Generación de Manifiesto y Evidencia sin Secretos**:
+   - Manifiesto construido exclusivamente desde respuestas SOAP verificadas por el colector.
+   - Cálculo y comprobación de doble hash SHA-256: respuesta SOAP cruda (`.xml`) y JSON canónico normalizado (`.json`).
+   - Prohibición absoluta de inclusión de secretos: sin tokens, signs, CMS, claves privadas ni contraseñas.
+   - Directorio de almacenamiento privado ignorado en git: `.fiscal-evidence-pr02/`.
+   - Separación formal de integridad y procedencia: `CONTENT_INTEGRITY = PASS`, pero `OFFICIAL_PROVENANCE = UNVERIFIED` hasta acreditar ejecución autorizada en vivo.
+4. **Manejo Fail-Fast ante Fallos**:
+   - Ante SOAP Fault, error de negocio WSFE o timeout, se detiene la adquisición inmediatamente sin reintentos ni generación de manifiesto aprobado.
+5. **Propuesta Futura de Autorización para P0**:
+   - Para un futuro GO: Scope `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`, Target `acoyfwwmhaeruciyedri`, Operaciones: `LoginCms` (<= 1), `FEParamGetTiposIva` (1), `FEParamGetCondicionIvaReceptor` (1) (máximo 3), Entorno `HOMOLOGACION`, Ejecutor `execute-pr02-p0-official-evidence.mjs` vía wrapper PowerShell, STOP ante cualquier fallo HTTP/SOAP/WSFE, artefactos en `.fiscal-evidence-pr02/` sin secretos.
+
+**Consecuencias:**
+`PR02_P0_COLLECTOR_IMPLEMENTATION = PASS`, `PR02_P0_AUTHORIZATION_GUARD = PASS`, `PR02_P0_WSAA_WSFE_ALLOWLIST = PASS`, `PR02_P0_CALL_LIMIT_GUARD = PASS`, `PR02_P0_SOAP_VALIDATION = PASS`, `PR02_P0_MANIFEST_INTEGRITY = PASS`, `PR02_P0_PROVENANCE_BINDING = PASS`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `PR02_P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`, `PR02_READY_FOR_EMISSION_GO = false`.
+147/147 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

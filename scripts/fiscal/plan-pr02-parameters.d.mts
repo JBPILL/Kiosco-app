@@ -9,6 +9,7 @@ export const PR02_PARAMETERS_TARGET_REVISION: number
 export const PR02_PARAMETERS_HISTORICAL_REVISION: number
 export const PR02_PARAMETERS_EXPECTED_ISSUER_CUIT: string
 export const PR02_PARAMETERS_EXPECTED_ISSUER_PV: number
+export const PR02_P0_COLECTOR_IDENTIDAD: string
 export const REV3_SOURCE_SHA256: string
 export const PR02_CATALOG_REV3_HASH: string
 

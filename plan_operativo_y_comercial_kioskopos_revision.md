@@ -2042,3 +2042,48 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
   - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
   - `PR02_READY_FOR_EMISSION_GO = false`
   - 124/124 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+### Implementación del Colector Oficial de Evidencia WSAA/WSFE (PR02-P0) sin Ejecución Remota — 05/11/2026
+
+- **Implementación Privada del Colector**:
+  - `scripts/fiscal/execute-pr02-p0-official-evidence.mjs` y tipos TypeScript `.d.mts`.
+  - Wrapper PowerShell `scripts/fiscal/run-pr02-p0-staging-private.ps1` con guardas Git (`git fetch origin --prune`, paridad HEAD con remoto y con `-ExpectedHead`, worktree limpio).
+  - Scope obligatorio: `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`.
+  - Target: `acoyfwwmhaeruciyedri` (CUIT `20415005963`, PV `2`).
+  - Modo por defecto: `DRY_RUN` sin llamadas de red ni conexiones remotas.
+- **Auditoría de Transporte WSAA/WSFE y Allowlist**:
+  - Reutilización de funciones de parseo auditadas de PR03-C (`parseWsaaLoginCmsResponse`, `parseWsfeTiposIvaResponse`, `parseWsfeCondicionIvaReceptorResponse`).
+  - Allowlist cerrada de métodos WSFE: `LoginCms` (máx 1 si no hay TA reutilizable), `FEParamGetTiposIva` (máx 1), `FEParamGetCondicionIvaReceptor` (máx 1). Límite total de llamadas ARCA: 3.
+  - Cero reintentos automáticos (`AUTOMATIC_RETRY_FORBIDDEN`).
+  - Prohibición por diseño de métodos de emisión: `FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado`, `FEParamGetPtosVenta` inalcanzables.
+  - Endpoints fijos y verificados: exclusivamente homologación (`wsaahomo.afip.gov.ar` y `wswhomo.afip.gov.ar`).
+- **Construcción de Manifiesto y Evidencia sin Secretos**:
+  - Manifiesto construido exclusivamente desde respuestas SOAP verificadas por el colector.
+  - Verificación de integridad con doble hash SHA-256: respuesta SOAP cruda (`.xml`) y JSON normalizado (`.json`).
+  - Prohibición total de inclusión de secretos: sin tokens, signs, CMS, claves privadas ni contraseñas.
+  - Directorio privado ignorado en git: `.fiscal-evidence-pr02/`.
+  - Separación formal de integridad y procedencia: `CONTENT_INTEGRITY = PASS`, pero `OFFICIAL_PROVENANCE = UNVERIFIED` hasta acreditar ejecución autorizada en vivo.
+- **Fail-Fast ante Fallos**:
+  - Detención inmediata ante cualquier SOAP Fault, error WSFE de negocio o timeout.
+- **Suite de Tests Locales**:
+  - 22/22 tests PASS en `src/test/fiscalPr02P0Collector.test.ts`. Total de tests fiscales: 147/147 PASS.
+- **Propuesta Futura de Autorización para P0**:
+  - Scope `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`, Target `acoyfwwmhaeruciyedri`, Operaciones: `LoginCms` (<= 1), `FEParamGetTiposIva` (1), `FEParamGetCondicionIvaReceptor` (1) (máximo 3), Entorno `HOMOLOGACION`, Ejecutor `execute-pr02-p0-official-evidence.mjs` vía wrapper PowerShell, STOP ante cualquier fallo HTTP/SOAP/WSFE, artefactos en `.fiscal-evidence-pr02/` sin secretos.
+- **Estado**:
+  - `PR02_P0_COLLECTOR_IMPLEMENTATION = PASS`
+  - `PR02_P0_AUTHORIZATION_GUARD = PASS`
+  - `PR02_P0_WSAA_WSFE_ALLOWLIST = PASS`
+  - `PR02_P0_CALL_LIMIT_GUARD = PASS`
+  - `PR02_P0_SOAP_VALIDATION = PASS`
+  - `PR02_P0_MANIFEST_INTEGRITY = PASS`
+  - `PR02_P0_PROVENANCE_BINDING = PASS`
+  - `PR02_P0_REMOTE_EXECUTION_READY = false`
+  - `PR02_P0_REMOTE_EXECUTED = false`
+  - `OFFICIAL_PROVENANCE = UNVERIFIED`
+  - `PR02_P1_REMOTE_EXECUTION_READY = false`
+  - `PR02_P2_REMOTE_EXECUTION_READY = false`
+  - `REAL_PV2_ENABLED = false`
+  - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+  - `HISTORICAL_042_REEMISSION_FORBIDDEN = true`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - 147/147 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

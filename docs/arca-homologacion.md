@@ -2226,8 +2226,15 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
      - `P1_R3_BASELINE_GUARD = PASS`
      - `P2_R3_BASELINE_GUARD = PASS`
      - `P0_PROVENANCE_BINDING = PASS`
-     - `PR02_P0_OFFICIAL_EVIDENCE_DESIGN = PASS`
+     - `PR02_P0_COLLECTOR_IMPLEMENTATION = PASS`
+     - `PR02_P0_AUTHORIZATION_GUARD = PASS`
+     - `PR02_P0_WSAA_WSFE_ALLOWLIST = PASS`
+     - `PR02_P0_CALL_LIMIT_GUARD = PASS`
+     - `PR02_P0_SOAP_VALIDATION = PASS`
+     - `PR02_P0_MANIFEST_INTEGRITY = PASS`
      - `PR02_P0_REMOTE_EXECUTION_READY = false`
+     - `PR02_P0_REMOTE_EXECUTED = false`
+     - `OFFICIAL_PROVENANCE = UNVERIFIED`
      - `PR02_P1_IMPORT_ONLY = true`
      - `PR02_P1_OFFICIAL_EVIDENCE_VERIFIED = NOT_AVAILABLE`
      - `PR02_P1_AUTHORIZATION_GUARD = PASS`
@@ -2244,4 +2251,16 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
      - `REAL_PV2_ENABLED = false`
      - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
      - `PR02_READY_FOR_EMISSION_GO = false`
-     - 124/124 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+     - 147/147 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
+
+Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:
+- **Scope**: `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`.
+- **Target Project Ref**: `acoyfwwmhaeruciyedri`.
+- **Operaciones Permitidas**: `LoginCms` (máximo 1 si no hay TA vigente), `FEParamGetTiposIva` (máximo 1), `FEParamGetCondicionIvaReceptor` (máximo 1). Total máximo: 3 llamadas.
+- **Operaciones Prohibidas**: `FECAESolicitar`, `FECompConsultar`, `FECompUltimoAutorizado`, `FEParamGetPtosVenta` (inalcanzables por diseño).
+- **Entorno y Endpoints**: Exclusivamente `HOMOLOGACION` (`https://wsaahomo.afip.gov.ar/ws/services/LoginCms` y `https://wswhomo.afip.gov.ar/wsfev1/service.asmx`). Producción estrictamente prohibido.
+- **Identidad del Ejecutor**: `scripts/fiscal/execute-pr02-p0-official-evidence.mjs` invocado a través de `scripts/fiscal/run-pr02-p0-staging-private.ps1`.
+- **Condiciones de STOP**: Cualquier error de transporte, timeout, HTTP != 200, SOAP Fault o error de negocio WSFE detiene la ejecución inmediatamente sin reintentos automáticos. Cero escrituras en BD.
+- **Artefactos Producidos**: Guardados en `.fiscal-evidence-pr02` (ignorado en Git): `manifest.json`, `FEParamGetTiposIva_response.xml`, `FEParamGetTiposIva_normalized.json`, `FEParamGetCondicionIvaReceptor_response.xml`, `FEParamGetCondicionIvaReceptor_normalized.json`. Cero secretos.
