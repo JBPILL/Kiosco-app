@@ -659,7 +659,7 @@ export async function executePr02ParametersStaging(options = {}, deps = {}) {
 
       let officialEvidenceVerified = 'NOT_AVAILABLE'
       if (!manifest) {
-        if (!options.allowUnaccreditedForTest) {
+        if (!options.allowUnaccreditedForTest || !deps.client) {
           executionOutcome = PR02_EXECUTION_OUTCOMES.PREFLIGHT_FAILED_NO_WRITE
           throw new Error('OFFICIAL_EVIDENCE_NOT_ACCREDITED: Se requiere manifiesto oficial P0 para importar evidencia en P1')
         }
@@ -670,6 +670,7 @@ export async function executePr02ParametersStaging(options = {}, deps = {}) {
           conditionText,
           now: options.now,
           expectedHashes: options.expectedHashes,
+          expectedHead: cliArgs?.expectedHead || options.expectedHead,
         })
         officialEvidenceVerified = 'PASS'
       }

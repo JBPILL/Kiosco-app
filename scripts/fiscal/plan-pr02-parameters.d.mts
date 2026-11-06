@@ -256,6 +256,8 @@ export function createPr02P0OfficialEvidenceManifest(params?: {
   goAuthorization?: string | unknown
 }): Pr02P0OfficialEvidenceManifest
 
+export function computeP0ManifestDigest(manifest: unknown): string
+
 export function validatePr02P0Manifest(manifest: unknown): boolean
 
 export function validatePr02P1ImportEvidence(options?: {

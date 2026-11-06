@@ -128,7 +128,10 @@ export function validateP0EndpointUrl(url, serviceName = 'ARCA') {
   if (typeof url !== 'string' || url.trim().length === 0) {
     throw new Error(`${serviceName}_URL_INVALID: Endpoint URL vacío o no definido`)
   }
-  const trimmed = url.trim()
+  if (url !== url.trim()) {
+    throw new Error(`EXACT_ENDPOINT_MISMATCH: Endpoint '${url}' contiene espacios no autorizados`)
+  }
+  const trimmed = url
 
   let parsed
   try {
@@ -142,7 +145,14 @@ export function validateP0EndpointUrl(url, serviceName = 'ARCA') {
   }
 
   const hostname = parsed.hostname.toLowerCase()
-  if (hostname === 'servicios1.afip.gov.ar' || hostname === 'wsaa.afip.gov.ar' || (hostname.endsWith('.afip.gob.ar') && !hostname.includes('homo'))) {
+  if (
+    hostname === 'servicios1.afip.gov.ar' ||
+    hostname === 'wsaa.afip.gov.ar' ||
+    ((hostname.endsWith('.afip.gob.ar') || hostname.endsWith('.afip.gov.ar') || hostname.endsWith('.arca.gob.ar')) &&
+      hostname !== 'wsaahomo.afip.gov.ar' &&
+      hostname !== 'wswhomo.afip.gov.ar' &&
+      !hostname.includes('homo'))
+  ) {
     throw new Error('PRODUCTION_ENDPOINT_FORBIDDEN: Se detectó host de PRODUCCION en ejecutor de HOMOLOGACION')
   }
 
@@ -164,12 +174,14 @@ export function validateP0EndpointUrl(url, serviceName = 'ARCA') {
 /**
  * Adaptador oficial de red para llamadas a ARCA.
  * Implementa transporte HTTPS estricto, con timeout, prohibición de redirecciones,
- * límite de tamaño de respuesta y validación de Content-Type.
+ * límite de tamaño de respuesta, validación de Content-Type, allowlist de operaciones SOAP
+ * y límite interno autónomo de llamadas.
  * Sólo puede activarse con un GO explícito futuro (officialGoAuthorized === true).
  */
 export function createOfficialArcaTransport(options = {}) {
   const timeoutMs = options.timeoutMs || 15000
   const maxResponseBytes = options.maxResponseBytes || 2 * 1024 * 1024 // 2MB
+  const internalTracker = createPr02P0CallTracker()
 
   return Object.freeze({
     type: 'OFFICIAL',
@@ -177,10 +189,30 @@ export function createOfficialArcaTransport(options = {}) {
     async postSoap(url, soapAction, soapBody) {
       validateP0EndpointUrl(url)
 
-      if (!options.officialGoAuthorized) {
+      if (options.officialGoAuthorized !== true) {
         throw new Error('OFFICIAL_NETWORK_GO_REQUIRED: La llamada oficial de red a ARCA requiere autorización explícita de un solo uso (GO) y credenciales en entorno seguro')
       }
 
+      const actionStr = String(soapAction ?? '')
+      const bodyStr = String(soapBody ?? '')
+      for (const forbiddenOp of PROHIBITED_ARCA_OPERATIONS) {
+        if (actionStr.includes(forbiddenOp) || bodyStr.includes(forbiddenOp)) {
+          throw new Error(`PROHIBITED_ARCA_OPERATION: Operación fiscal '${forbiddenOp}' está estrictamente prohibida en transporte oficial PR02-P0`)
+        }
+      }
+
+      let operationName = ''
+      if (url === WSAA_HOMO_URL && actionStr === '""') {
+        operationName = 'LoginCms'
+      } else if (url === WSFE_HOMO_URL && actionStr.includes('FEParamGetTiposIva') && bodyStr.includes('FEParamGetTiposIva')) {
+        operationName = 'FEParamGetTiposIva'
+      } else if (url === WSFE_HOMO_URL && actionStr.includes('FEParamGetCondicionIvaReceptor') && bodyStr.includes('FEParamGetCondicionIvaReceptor')) {
+        operationName = 'FEParamGetCondicionIvaReceptor'
+      } else {
+        throw new Error(`DISALLOWED_ARCA_OPERATION: La acción SOAP '${actionStr}' en '${url}' no pertenece al allowlist estricto de PR02-P0`)
+      }
+
+      internalTracker.recordStart(operationName)
       assertNoForbiddenSecrets(soapBody, 'soapBody')
 
       const controller = new AbortController()
@@ -198,7 +230,11 @@ export function createOfficialArcaTransport(options = {}) {
           signal: controller.signal,
         })
 
-        if (response.redirected) {
+        if (
+          response.redirected ||
+          (response.status >= 300 && response.status < 400) ||
+          Boolean(response.headers && response.headers.get && response.headers.get('location'))
+        ) {
           throw new Error('HTTP_REDIRECT_FORBIDDEN: Redirección HTTP detectada en endpoint oficial ARCA')
         }
 
@@ -250,9 +286,25 @@ export function createOfficialArcaTransport(options = {}) {
           throw new Error(`ARCA_HTTP_STATUS_${response.status}`)
         }
 
+        const trimmedText = text.trim()
+        if (trimmedText.length === 0) {
+          throw new Error('EMPTY_RESPONSE_BODY: El cuerpo de respuesta XML está vacío')
+        }
+        if (
+          trimmedText.toLowerCase().startsWith('<!doctype html') ||
+          trimmedText.toLowerCase().startsWith('<html') ||
+          !trimmedText.startsWith('<') ||
+          !trimmedText.endsWith('>')
+        ) {
+          throw new Error('INVALID_XML_PAYLOAD: La respuesta recibida no es un documento XML SOAP bien formado')
+        }
+
+        internalTracker.recordCall(operationName)
         return text
       } catch (err) {
-        if (err.name === 'AbortError' || controller.signal.aborted) {
+        const isTimeout = err.name === 'AbortError' || controller.signal.aborted
+        internalTracker.recordFailure(operationName, isTimeout)
+        if (isTimeout) {
           if (err.message && err.message.includes('RESPONSE_SIZE_EXCEEDED')) {
             throw err
           }
@@ -272,25 +324,28 @@ export function createOfficialArcaTransport(options = {}) {
  * distinción entre intentos, completadas, fallidas e inciertas (timeout), y cero reintentos automáticos.
  */
 export function createPr02P0CallTracker(options = {}) {
-  // Prohibición taxativa de overrides que incrementen límites
-  if (options.loginCmsMax !== undefined && options.loginCmsMax > P0_MAX_LIMITS.loginCmsMax) {
-    throw new Error(`CALL_LIMIT_OVERRIDE_FORBIDDEN: LoginCms no puede superar el límite estricto de ${P0_MAX_LIMITS.loginCmsMax}`)
-  }
-  if (options.tiposIvaMax !== undefined && options.tiposIvaMax > P0_MAX_LIMITS.tiposIvaMax) {
-    throw new Error(`CALL_LIMIT_OVERRIDE_FORBIDDEN: FEParamGetTiposIva no puede superar el límite estricto de ${P0_MAX_LIMITS.tiposIvaMax}`)
-  }
-  if (options.condicionIvaReceptorMax !== undefined && options.condicionIvaReceptorMax > P0_MAX_LIMITS.condicionIvaReceptorMax) {
-    throw new Error(`CALL_LIMIT_OVERRIDE_FORBIDDEN: FEParamGetCondicionIvaReceptor no puede superar el límite estricto de ${P0_MAX_LIMITS.condicionIvaReceptorMax}`)
-  }
-  if (options.totalMax !== undefined && options.totalMax > P0_MAX_LIMITS.totalMax) {
-    throw new Error(`CALL_LIMIT_OVERRIDE_FORBIDDEN: Total de llamadas ARCA no puede superar el límite estricto de ${P0_MAX_LIMITS.totalMax}`)
+  const checkLimitParam = (val, maxAllowed, label) => {
+    if (val === undefined) return maxAllowed
+    if (typeof val !== 'number' || !Number.isInteger(val) || val < 0 || val > maxAllowed) {
+      throw new Error(`CALL_LIMIT_OVERRIDE_FORBIDDEN: ${label} no puede superar el límite estricto de ${maxAllowed} ni ser inválido`)
+    }
+    return val
   }
 
+  const loginCmsMax = checkLimitParam(options.loginCmsMax, P0_MAX_LIMITS.loginCmsMax, 'LoginCms')
+  const tiposIvaMax = checkLimitParam(options.tiposIvaMax, P0_MAX_LIMITS.tiposIvaMax, 'FEParamGetTiposIva')
+  const condicionIvaReceptorMax = checkLimitParam(
+    options.condicionIvaReceptorMax,
+    P0_MAX_LIMITS.condicionIvaReceptorMax,
+    'FEParamGetCondicionIvaReceptor'
+  )
+  const totalMax = checkLimitParam(options.totalMax, P0_MAX_LIMITS.totalMax, 'Total de llamadas ARCA')
+
   const limits = Object.freeze({
-    loginCmsMax: options.loginCmsMax !== undefined ? options.loginCmsMax : P0_MAX_LIMITS.loginCmsMax,
-    tiposIvaMax: P0_MAX_LIMITS.tiposIvaMax,
-    condicionIvaReceptorMax: P0_MAX_LIMITS.condicionIvaReceptorMax,
-    totalMax: options.totalMax !== undefined ? options.totalMax : P0_MAX_LIMITS.totalMax,
+    loginCmsMax,
+    tiposIvaMax,
+    condicionIvaReceptorMax,
+    totalMax,
   })
 
   let attemptedLoginCms = 0
@@ -452,11 +507,18 @@ export function validateEvidenceDirectory(dirPath, repoRoot = process.cwd()) {
     }
   }
 
-  if (fs.existsSync(resolved)) {
-    const stat = fs.lstatSync(resolved)
-    if (stat.isSymbolicLink()) {
-      throw new Error('SYMLINK_FORBIDDEN: El directorio de evidencia no puede ser un enlace simbólico')
+  // Comprobar enlaces simbólicos en toda la cadena de directorios existentes desde resolved hasta la raíz
+  let currentCheck = resolved
+  while (true) {
+    if (fs.existsSync(currentCheck)) {
+      const stat = fs.lstatSync(currentCheck)
+      if (stat.isSymbolicLink()) {
+        throw new Error(`SYMLINK_FORBIDDEN: La ruta de evidencia o su ancestro '${currentCheck}' es un enlace simbólico`)
+      }
     }
+    const parent = path.dirname(currentCheck)
+    if (!parent || parent === currentCheck) break
+    currentCheck = parent
   }
 
   return resolved
@@ -745,6 +807,20 @@ export function loadP0EvidencePackage(evidenceDir = DEFAULT_PRIVATE_EVIDENCE_DIR
 export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) {
   const options = rawOptions || {}
 
+  // Validaciones de tipo y seguridad en opciones programáticas
+  if (options.authorized !== undefined && typeof options.authorized !== 'boolean') {
+    throw new Error('UNAUTHORIZED_EXECUTION: La opción authorized debe ser un booleano estricto')
+  }
+  if (options.dryRun !== undefined && typeof options.dryRun !== 'boolean') {
+    throw new Error('UNAUTHORIZED_EXECUTION: La opción dryRun debe ser un booleano estricto')
+  }
+  if (options.officialGoAuthorized !== undefined && options.officialGoAuthorized !== true) {
+    throw new Error('UNAUTHORIZED_EXECUTION: officialGoAuthorized debe ser true para autorizar ejecución oficial')
+  }
+  if (deps.officialGoAuthorized !== undefined && deps.officialGoAuthorized !== true) {
+    throw new Error('UNAUTHORIZED_EXECUTION: officialGoAuthorized en deps debe ser true para autorizar ejecución oficial')
+  }
+
   let isAuthorized = false
   let isDryRun = true
   let scope = PR02_P0_SCOPE
@@ -768,13 +844,28 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     evidenceDir = cli.evidenceDir || evidenceDir
     saveEvidence = cli.saveEvidence
   } else {
+    // Modo programático: validación estricta de autorización
+    if (options.authorized === false && options.dryRun === false) {
+      throw new Error('UNAUTHORIZED_EXECUTION: No se autoriza ejecución con authorized: false y dryRun: false')
+    }
+    if (options.authorized !== true && options.dryRun === false) {
+      throw new Error('UNAUTHORIZED_EXECUTION: dryRun: false requiere obligatoriamente authorized: true')
+    }
+
     if (options.authorized !== undefined) {
-      isAuthorized = Boolean(options.authorized)
-      isDryRun = options.dryRun !== undefined ? Boolean(options.dryRun) : !isAuthorized
+      isAuthorized = options.authorized
+      isDryRun = options.dryRun !== undefined ? options.dryRun : !isAuthorized
     }
     if (options.dryRun !== undefined) {
-      isDryRun = Boolean(options.dryRun)
+      isDryRun = options.dryRun
     }
+
+    if (isAuthorized) {
+      if (options.scope === undefined || options.projectRef === undefined) {
+        throw new Error('PR02_P0_REQUIRED_EXPLICIT_ARGS: En ejecución autorizada programática se requiere explícitamente scope y projectRef')
+      }
+    }
+
     if (options.scope !== undefined) {
       scope = options.scope
     }
@@ -996,9 +1087,12 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     resolvedCms = fs.readFileSync(resolvedPath, 'utf8').trim()
   }
 
-  if (options.existingTa) {
+  if (options.existingTa !== undefined) {
+    if (!options.existingTa || typeof options.existingTa !== 'object') {
+      throw new Error('TA_INVALID_OR_REVOKED: El objeto existingTa suministrado es inválido')
+    }
     const existing = evaluateExistingTa(options.existingTa, options.now)
-    const rawTa = typeof options.existingTa === 'object' ? options.existingTa : {}
+    const rawTa = options.existingTa
     const hasCreds = Boolean(
       rawTa.token &&
       rawTa.sign &&
@@ -1008,15 +1102,12 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       rawTa.sign.trim().length > 0
     )
 
-    if (existing.reusable && hasCreds) {
-      token = rawTa.token
-      sign = rawTa.sign
-    } else {
-      // Si el TA es revocado o inválido y no hay credenciales CMS, abortar antes de cualquier consulta WSFE
-      if (!resolvedCms && !deps.wsaaLogin && !deps.fetcher) {
-        throw new Error(`TA_INVALID_OR_REVOKED: El Ticket de Acceso no es reutilizable (${existing.reason || 'TA_CREDENTIALS_INCOMPLETE'}) y no se dispone de credenciales para LoginCms`)
-      }
+    if (!existing.reusable || !hasCreds) {
+      throw new Error(`TA_INVALID_OR_REVOKED: El Ticket de Acceso suministrado no es reutilizable (${existing.reason || 'TA_CREDENTIALS_INCOMPLETE'})`)
     }
+
+    token = rawTa.token.trim()
+    sign = rawTa.sign.trim()
   }
 
   // Si no hay TA reutilizable y no es transporte simulado, se exige CMS
@@ -1058,6 +1149,18 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
 
       assertNoForbiddenSecrets(wsaaResponseXml, 'wsaaResponseXml')
       const parsedTa = parseWsaaLoginCmsResponse(wsaaResponseXml, options.now)
+      const parsedTaEvaluation = evaluateExistingTa(
+        {
+          estado: 'DISPONIBLE',
+          token: parsedTa.token,
+          sign: parsedTa.sign,
+          vence_en: parsedTa.expirationTime,
+        },
+        options.now
+      )
+      if (!parsedTaEvaluation.reusable) {
+        throw new Error(`TA_INVALID_OR_REVOKED: El Ticket de Acceso obtenido de WSAA no es reutilizable (${parsedTaEvaluation.reason})`)
+      }
       token = parsedTa.token
       sign = parsedTa.sign
       tracker.recordCall('LoginCms')

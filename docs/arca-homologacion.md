@@ -2351,6 +2351,22 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
       - `PR02_READY_FOR_EMISSION_GO = false`
       - 173 tests PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
 
+13. **Auditoría Técnica Independiente y Remediación de Seguridad PR02-P0 (05/11/2026)**:
+    - **Remediación de Hallazgos Críticos y de Alta Prioridad**:
+      - `[C-01] Integridad de Manifiesto`: Se implementó `computeP0ManifestDigest(manifest)` y se actualizó `validatePr02P0Manifest` para verificar obligatoriamente que `manifest.manifest_sha256` coincida con el digest canónico del manifiesto (excluyendo el campo del hash) y que `manifest.colector_identidad === PR02_P0_COLECTOR_IDENTIDAD` (`P0_MANIFEST_COLLECTOR_IDENTITY_MISMATCH` / `P0_MANIFEST_DIGEST_MISMATCH`).
+      - `[C-02] Vinculación Criptográfica Estricta de Atestación`: `verifyP0Attestation` valida taxativamente que `attestation.executionId === manifest.ejecucion_autorizada_id` y `attestation.consultadoEn === manifest.consultado_en`. Se clarificó documentalmente que la atestación HMAC-SHA256 certifica la custodia y los límites del proceso colector bajo la clave externa del operador (`PR02_P0_AUTHORITY_SECRET`), manteniendo `OFFICIAL_PROVENANCE = UNVERIFIED` en modo local/simulado.
+      - `[C-03] Fail-Closed en Autorización Programática`: `executePr02P0OfficialEvidence` valida estrictamente los tipos booleanos de `authorized`, `dryRun` y `officialGoAuthorized`. Rechaza taxativamente `{ authorized: false, dryRun: false }` o `{ dryRun: false }` sin autorización con `UNAUTHORIZED_EXECUTION`, y exige explícitamente `scope` y `projectRef` en modo autorizados.
+      - `[A-01] Guardas Estrictas de Ticket de Acceso (TA)`: Se eliminó el bypass `|| rec.valido === true` en `evaluateExistingTa`, requiriendo indispensablemente `estado === 'DISPONIBLE'`. Se agregaron validaciones estrictas de servicio (`wsfe`) y CUIT emisor, bloqueando TAs no disponibles o incompatibles.
+      - `[A-02] Eliminación de Fallback Silencioso en TA Inválido`: Si el llamador suministra un `existingTa` que no es reutilizable o válido, `executePr02P0OfficialEvidence` aborta inmediatamente con `TA_INVALID_OR_REVOKED` sin llamar a `LoginCms`. Adicionalmente, tras parsear un nuevo TA de WSAA se valida un margen mínimo de 10 minutos de vigencia antes de autorizar las consultas WSFE.
+      - `[A-03] Tracker Autónomo y Allowlist en Transporte Oficial`: `createOfficialArcaTransport.postSoap` incorpora un tracker autónomo de llamadas (`createPr02P0CallTracker`) con allowlist estricto de operaciones (`LoginCms`, `FEParamGetTiposIva`, `FEParamGetCondicionIvaReceptor`), bloqueo inmediato de operaciones prohibidas (`PROHIBITED_ARCA_OPERATION`), detección y rechazo de redirecciones HTTP 3xx (`HTTP_REDIRECT_FORBIDDEN`), y verificación de payloads XML bien formados (rechazando HTML o respuestas vacías).
+      - `[A-04] Protección de Modo Test en Importador P1`: En `executePr02ParametersStaging`, `allowUnaccreditedForTest` solo se admite si se inyecta un cliente mock de test (`Boolean(deps.client)`). Se asegura el pasaje de `expectedHead` a `validatePr02P1ImportEvidence`.
+      - `[M-03] Prohibición de Enlaces Simbólicos en Ancestros`: `validateEvidenceDirectory` inspecciona no solo el directorio hoja de evidencia sino toda la cadena de directorios ancestros existentes hasta la raíz, bloqueando symlinks con `SYMLINK_FORBIDDEN`.
+      - `[M-04] Wrapper PowerShell Estricto`: `run-pr02-p0-staging-private.ps1` valida `-ExpectedHead` de 40 caracteres hexadecimales contra el HEAD actual aún en modo `-DryRun`.
+    - **Validaciones Locales**:
+      - 48/48 tests PASS en `fiscalPr02P0Collector.test.ts`.
+      - 166/166 tests PASS en la totalidad de suites unitarias fiscales (`fiscalPr02ParametersPlan.test.ts`, `fiscalPr02A0Preflight.test.ts`, `fiscalPr02Preparation.test.ts`, `fiscalPr03cPlan.test.ts`, `fiscalPr03cExecute.test.ts`).
+      - Invariantes preservados: `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`, `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`.
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

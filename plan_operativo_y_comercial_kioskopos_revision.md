@@ -2188,3 +2188,40 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
     - `PR02_READY_FOR_EMISSION_GO = false`
     - 173 tests PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+- **Auditoría Técnica Independiente y Remediación de Seguridad PR02-P0 (05/11/2026)**:
+  - Verificación y remediación local exhaustiva de la implementación previa a cualquier consideración de un futuro GO remoto:
+    - **C-01 (Integridad de Manifiesto P0)**: Incorporado `computeP0ManifestDigest(manifest)` y verificación obligatoria de `colector_identidad` y `manifest_sha256` en `validatePr02P0Manifest`.
+    - **C-02 (Vinculación Criptográfica de Atestación)**: Verificación en `verifyP0Attestation` de coincidencia estricta de `executionId` y `consultadoEn` con el manifiesto. Clarificación de que la atestación HMAC certifica la custodia del proceso colector, manteniendo `OFFICIAL_PROVENANCE = UNVERIFIED` hasta ejecución oficial.
+    - **C-03 (Fail-Closed en Opciones)**: Validación de tipo booleano en `authorized`, `dryRun` y `officialGoAuthorized`. Rechazo de combinaciones no autorizadas con `UNAUTHORIZED_EXECUTION`, y exigencia de `scope` y `projectRef`.
+    - **A-01 (Guardas de Ticket de Acceso)**: Eliminación de bypass en `evaluateExistingTa`, exigiendo `estado === 'DISPONIBLE'` y validación de strings no vacíos para servicio (`wsfe`) y CUIT.
+    - **A-02 (Sin Fallback Silencioso en TA Inválido)**: Rechazo inmediato con `TA_INVALID_OR_REVOKED` si el llamador suministra un `existingTa` no reutilizable, sin invocar `LoginCms`. Validación de 10 min de margen tras parsear nuevo TA de WSAA.
+    - **A-03 (Tracker Autónomo y Allowlist en Transporte Oficial)**: Tracker autónomo interno en `createOfficialArcaTransport.postSoap` con allowlist cerrada de operaciones, rechazo de operaciones prohibidas (`PROHIBITED_ARCA_OPERATION`), rechazo de redirecciones HTTP 3xx y verificación de documento XML SOAP bien formado.
+    - **A-04 (Restricción de Tests en P1)**: `allowUnaccreditedForTest` en `executePr02ParametersStaging` restringido a entornos con `deps.client` inyectado y propagación de `expectedHead`.
+    - **M-03 (Symlinks en Ancestros)**: `validateEvidenceDirectory` verifica symlinks en todos los directorios ancestros existentes hasta la raíz.
+    - **M-04 (Wrapper PowerShell)**: `run-pr02-p0-staging-private.ps1` valida `-ExpectedHead` de 40 caracteres hexadecimales contra HEAD aún en `-DryRun`.
+  - Pruebas de seguridad ampliadas a 48 tests en `fiscalPr02P0Collector.test.ts` (casos 43 al 48 añadidos). Total de pruebas fiscales unitarias: 166/166 PASS.
+  - Estado:
+    - `PR02_P0_INDEPENDENT_AUDIT = PASS`
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+    - `P0_CLI_TRANSPORT_WIRING = PASS`
+    - `P0_WSAA_TA_GUARD = PASS`
+    - `P0_EXACT_ENDPOINT_GUARD = PASS`
+    - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+    - `P0_PROVENANCE_ATTESTATION = PASS`
+    - `P0_FAKE_MANIFEST_REJECTED = PASS`
+    - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+    - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+    - `PR02_P0_REMOTE_GO = NOT_REQUESTED`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `HISTORICAL_042_REEMISSION_FORBIDDEN = true`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`

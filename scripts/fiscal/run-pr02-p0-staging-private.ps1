@@ -60,16 +60,19 @@ try {
         throw "REMOTE_HEAD_MISMATCH: HEAD ($head) difiere de origin/feat/pilot-envases-returns ($remoteHead)"
     }
 
-    if (-not $DryRun) {
-        if ([string]::IsNullOrWhiteSpace($ExpectedHead)) {
-            throw 'MISSING_EXPECTED_HEAD: En ejecucion autorizada se requiere obligatoriamente el parametro -ExpectedHead con un SHA de 40 caracteres hexadecimales'
-        }
+    if ($ExpectedHead) {
         $ExpectedHead = $ExpectedHead.Trim()
         if ($ExpectedHead -notmatch '^[0-9a-fA-F]{40}$') {
             throw "INVALID_EXPECTED_HEAD: -ExpectedHead debe ser un SHA hexadecimal de 40 caracteres, recibido '$ExpectedHead'"
         }
         if ($head -ne $ExpectedHead) {
             throw "EXPECTED_HEAD_MISMATCH: HEAD local ($head) difiere del esperado ($ExpectedHead)"
+        }
+    }
+
+    if (-not $DryRun) {
+        if ([string]::IsNullOrWhiteSpace($ExpectedHead)) {
+            throw 'MISSING_EXPECTED_HEAD: En ejecucion autorizada se requiere obligatoriamente el parametro -ExpectedHead con un SHA de 40 caracteres hexadecimales'
         }
         if ([string]::IsNullOrWhiteSpace($GoFile)) {
             throw 'MISSING_GO_FILE: En ejecucion autorizada se requiere obligatoriamente el parametro -GoFile con la ruta al documento estructurado de autorizacion externa (GO)'
@@ -89,7 +92,11 @@ try {
     # 6. Ejecucion de Node.js
     if ($DryRun) {
         Write-Host 'Ejecutando PR02-P0 en modo DRY-RUN (scope=PR02_P0_OFFICIAL_EVIDENCE_COLLECTION)...' -ForegroundColor Cyan
-        & node scripts/fiscal/execute-pr02-p0-official-evidence.mjs --dry-run --evidence-dir $EvidenceDir
+        $dryArgs = @('--dry-run', '--evidence-dir', $EvidenceDir)
+        if ($ExpectedHead) {
+            $dryArgs += @('--expected-head', $ExpectedHead)
+        }
+        & node scripts/fiscal/execute-pr02-p0-official-evidence.mjs @dryArgs
     } else {
         Write-Host "Iniciando ejecucion AUTORIZADA de PR02-P0 (scope=PR02_P0_OFFICIAL_EVIDENCE_COLLECTION)..." -ForegroundColor Yellow
         $extraArgs = @()

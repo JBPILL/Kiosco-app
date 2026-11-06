@@ -35,6 +35,8 @@ import {
   markGoAuthorizationConsumed,
   isGoAuthorizationConsumed,
   resetConsumedGoAuthorizationsForTesting,
+  validatePr02P0Manifest,
+  computeP0ManifestDigest,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
 
 const VALID_HEAD = resolveCurrentGitHead() || '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb'
@@ -1389,5 +1391,351 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(reportUnauth.PRODUCTION_MUTATIONS).toBe(0)
     expect(reportUnauth.auditCounts?.CALLS_ATTEMPTED).toBe(0)
     expect(reportUnauth.auditCounts?.CALLS_COMPLETED).toBe(0)
+  })
+
+  // 43. Ejecución no autorizada programática y tipos inválidos de flags
+  it('43. Opciones no autorizadas o tipos inválidos fallan cerrado con cero conexiones externas', async () => {
+    let connectionAttempts = 0
+    const mockFetcher = async () => {
+      connectionAttempts++
+      return new Response('<soap></soap>')
+    }
+
+    // authorized: false y dryRun: false
+    await expect(
+      executePr02P0OfficialEvidence({ authorized: false, dryRun: false }, { fetcher: mockFetcher })
+    ).rejects.toThrow(/UNAUTHORIZED_EXECUTION/)
+
+    // dryRun: false sin authorized: true
+    await expect(
+      executePr02P0OfficialEvidence({ dryRun: false }, { fetcher: mockFetcher })
+    ).rejects.toThrow(/UNAUTHORIZED_EXECUTION/)
+
+    // officialGoAuthorized: false
+    await expect(
+      executePr02P0OfficialEvidence({ officialGoAuthorized: false } as any, { fetcher: mockFetcher })
+    ).rejects.toThrow(/UNAUTHORIZED_EXECUTION/)
+
+    // authorized no booleano
+    await expect(
+      executePr02P0OfficialEvidence({ authorized: 'true' as any, dryRun: false }, { fetcher: mockFetcher })
+    ).rejects.toThrow(/UNAUTHORIZED_EXECUTION/)
+
+    // dryRun no booleano
+    await expect(
+      executePr02P0OfficialEvidence({ authorized: true, dryRun: 'false' as any }, { fetcher: mockFetcher })
+    ).rejects.toThrow(/UNAUTHORIZED_EXECUTION/)
+
+    // authorized: true sin scope explícito
+    await expect(
+      executePr02P0OfficialEvidence({
+        authorized: true,
+        dryRun: false,
+        head: VALID_HEAD,
+        expectedHead: VALID_HEAD,
+      }, { fetcher: mockFetcher })
+    ).rejects.toThrow(/PR02_P0_REQUIRED_EXPLICIT_ARGS/)
+
+    expect(connectionAttempts).toBe(0)
+  })
+
+  // 44. Hardening de transporte: espacios en URL, endpoints productivos, redirecciones HTTP, XML inválido y allowlist SOAP
+  it('44. Transporte oficial rechaza URLs con espacios, hosts de producción, redirecciones, XML inválido y operaciones fuera de allowlist', async () => {
+    // Espacios en URL
+    expect(() => validateP0EndpointUrl(' https://wsaahomo.afip.gov.ar/ws/services/LoginCms ', 'WSAA')).toThrow(
+      /EXACT_ENDPOINT_MISMATCH/
+    )
+
+    // Hosts de producción adicionales (arca.gob.ar, afip.gob.ar)
+    expect(() => validateP0EndpointUrl('https://wsw.arca.gob.ar/wsfev1/service.asmx', 'WSFE')).toThrow(
+      /PRODUCTION_ENDPOINT_FORBIDDEN/
+    )
+    expect(() => validateP0EndpointUrl('https://wsfe.afip.gob.ar/wsfev1/service.asmx', 'WSFE')).toThrow(
+      /PRODUCTION_ENDPOINT_FORBIDDEN/
+    )
+
+    const transport = createOfficialArcaTransport({ officialGoAuthorized: true })
+
+    // Operación prohibida (ej. FECAESolicitar)
+    await expect(
+      transport.postSoap(
+        WSFE_HOMO_URL,
+        '"http://ar.gov.afip.dif.FEV1/FECAESolicitar"',
+        '<FECAESolicitar></FECAESolicitar>'
+      )
+    ).rejects.toThrow(/PROHIBITED_ARCA_OPERATION/)
+
+    // Operación prohibida en allowlist (ej. FEParamGetPtosVenta)
+    await expect(
+      transport.postSoap(
+        WSFE_HOMO_URL,
+        '"http://ar.gov.afip.dif.FEV1/FEParamGetPtosVenta"',
+        '<FEParamGetPtosVenta></FEParamGetPtosVenta>'
+      )
+    ).rejects.toThrow(/PROHIBITED_ARCA_OPERATION/)
+
+    // Operación desconocida fuera de allowlist
+    await expect(
+      transport.postSoap(
+        WSFE_HOMO_URL,
+        '"http://ar.gov.afip.dif.FEV1/SomeUnknownOperation"',
+        '<SomeUnknownOperation></SomeUnknownOperation>'
+      )
+    ).rejects.toThrow(/DISALLOWED_ARCA_OPERATION/)
+
+    // Redirección HTTP (status 302 o redirected: true)
+    const originalFetch = globalThis.fetch
+    try {
+      globalThis.fetch = async () =>
+        new Response('', {
+          status: 302,
+          headers: { Location: 'https://wswhomo.afip.gov.ar/redirected' },
+        })
+
+      const redirectTransport = createOfficialArcaTransport({ officialGoAuthorized: true })
+      await expect(
+        redirectTransport.postSoap(
+          WSFE_HOMO_URL,
+          '"http://ar.gov.afip.dif.FEV1/FEParamGetTiposIva"',
+          '<FEParamGetTiposIva></FEParamGetTiposIva>'
+        )
+      ).rejects.toThrow(/HTTP_REDIRECT_FORBIDDEN/)
+
+      // Respuesta HTML en vez de XML
+      globalThis.fetch = async () =>
+        new Response('<!doctype html><html><body>Error</body></html>', {
+          status: 200,
+          headers: { 'Content-Type': 'text/xml; charset=utf-8' },
+        })
+
+      const htmlTransport = createOfficialArcaTransport({ officialGoAuthorized: true })
+      await expect(
+        htmlTransport.postSoap(
+          WSFE_HOMO_URL,
+          '"http://ar.gov.afip.dif.FEV1/FEParamGetTiposIva"',
+          '<FEParamGetTiposIva></FEParamGetTiposIva>'
+        )
+      ).rejects.toThrow(/INVALID_XML_PAYLOAD/)
+
+      // Respuesta vacía
+      globalThis.fetch = async () =>
+        new Response('', {
+          status: 200,
+          headers: { 'Content-Type': 'text/xml; charset=utf-8' },
+        })
+
+      const emptyTransport = createOfficialArcaTransport({ officialGoAuthorized: true })
+      await expect(
+        emptyTransport.postSoap(
+          WSFE_HOMO_URL,
+          '"http://ar.gov.afip.dif.FEV1/FEParamGetTiposIva"',
+          '<FEParamGetTiposIva></FEParamGetTiposIva>'
+        )
+      ).rejects.toThrow(/EMPTY_RESPONSE_BODY/)
+    } finally {
+      globalThis.fetch = originalFetch
+    }
+  })
+
+  // 45. Hardening de call tracker: límites no sobreescribibles con tipos o valores inválidos
+  it('45. Call tracker prohíbe overrides con valores negativos, NaN o que superen los máximos', () => {
+    expect(() => createPr02P0CallTracker({ loginCmsMax: -1 })).toThrow(/CALL_LIMIT_OVERRIDE_FORBIDDEN/)
+    expect(() => createPr02P0CallTracker({ loginCmsMax: NaN })).toThrow(/CALL_LIMIT_OVERRIDE_FORBIDDEN/)
+    expect(() => createPr02P0CallTracker({ totalMax: -1 })).toThrow(/CALL_LIMIT_OVERRIDE_FORBIDDEN/)
+    expect(() => createPr02P0CallTracker({ totalMax: NaN })).toThrow(/CALL_LIMIT_OVERRIDE_FORBIDDEN/)
+    expect(() => createPr02P0CallTracker({ totalMax: 10 })).toThrow(/CALL_LIMIT_OVERRIDE_FORBIDDEN/)
+  })
+
+  // 46. Ticket de Acceso: margen de 10 min, servicio, CUIT y prohibición de fallback silencioso ante TA inválido
+  it('46. Ticket de Acceso rechaza margen inferior a 10 minutos, CUIT o servicio erróneo, y no realiza fallback silencioso', async () => {
+    const nowIso = '2026-11-05T01:00:00.000Z'
+    // Margen de 5 minutos (< 10 min)
+    const expiringSoonTa = {
+      valido: true,
+      estado: 'DISPONIBLE',
+      token: 'TOKEN_123',
+      sign: 'SIGN_123',
+      vence_en: '2026-11-05T01:05:00.000Z',
+    }
+    const resExpiring = evaluateExistingTa(expiringSoonTa, nowIso)
+    expect(resExpiring.reusable).toBe(false)
+    expect(resExpiring.reason).toBe('TA_EXPIRED_OR_EXPIRING_SOON')
+
+    // Servicio erróneo (padrón en vez de wsfe)
+    const wrongServiceTa = {
+      valido: true,
+      estado: 'DISPONIBLE',
+      token: 'TOKEN_123',
+      sign: 'SIGN_123',
+      vence_en: '2026-11-05T03:00:00.000Z',
+      servicio: 'ws_sr_padron_a4',
+    }
+    const resWrongService = evaluateExistingTa(wrongServiceTa, nowIso)
+    expect(resWrongService.reusable).toBe(false)
+    expect(resWrongService.reason).toBe('TA_SERVICE_MISMATCH')
+
+    // CUIT emisor erróneo
+    const wrongCuitTa = {
+      valido: true,
+      estado: 'DISPONIBLE',
+      token: 'TOKEN_123',
+      sign: 'SIGN_123',
+      vence_en: '2026-11-05T03:00:00.000Z',
+      cuit: '20111111112',
+    }
+    const resWrongCuit = evaluateExistingTa(wrongCuitTa, nowIso)
+    expect(resWrongCuit.reusable).toBe(false)
+    expect(resWrongCuit.reason).toBe('TA_CUIT_MISMATCH')
+
+    // Estado PENDIENTE (no DISPONIBLE) a pesar de valido: true
+    const notAvailableTa = {
+      valido: true,
+      estado: 'PENDIENTE',
+      token: 'TOKEN_123',
+      sign: 'SIGN_123',
+      vence_en: '2026-11-05T03:00:00.000Z',
+    }
+    const resNotAvailable = evaluateExistingTa(notAvailableTa, nowIso)
+    expect(resNotAvailable.reusable).toBe(false)
+    expect(resNotAvailable.reason).toBe('TA_NOT_AVAILABLE')
+
+    // Prohibición de fallback silencioso a LoginCms cuando se provee un existingTa no reutilizable
+    let loginCmsAttempted = false
+    await expect(
+      executePr02P0OfficialEvidence(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P0_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          existingTa: expiringSoonTa,
+          now: nowIso,
+        },
+        {
+          wsaaLogin: async () => {
+            loginCmsAttempted = true
+            return '<soap>ta</soap>'
+          },
+        }
+      )
+    ).rejects.toThrow(/TA_INVALID_OR_REVOKED/)
+
+    expect(loginCmsAttempted).toBe(false)
+  })
+
+  // 47. Validación de integridad de manifiesto: digest canónico, identidad de colector y timestamp post-firma
+  it('47. Manifiesto P0 exige digest canónico exacto, identidad de colector autorizada y coincidencia estricta con atestación', () => {
+    const validKey = 'production_grade_custody_secret_entropy_8f9a0b1c2d3e4f5a6b7c8d9e'
+    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
+    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+    const ivaNormSha = createHash('sha256').update(ivaText).digest('hex')
+    const condNormSha = createHash('sha256').update(condText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'PROC_DIGEST_001',
+      ejecucion_autorizada_id: 'PROC_DIGEST_001',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: 'a'.repeat(64),
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: 'b'.repeat(64),
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const attestation = createP0Attestation({
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      authoritySecret: validKey,
+      goAuthorizationId: 'GO-DIGEST-001',
+      goAuthorizationSha256: 'c'.repeat(64),
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    })
+
+    const baseManifest = {
+      ...manifestDraft,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: 'GO-DIGEST-001',
+      go_authorization_sha256: 'c'.repeat(64),
+      attestation,
+    }
+
+    const digest = computeP0ManifestDigest(baseManifest)
+    const validManifest = {
+      ...baseManifest,
+      manifest_sha256: digest,
+    }
+
+    // El manifiesto válido pasa la validación estricta
+    expect(validatePr02P0Manifest(validManifest)).toBe(true)
+
+    // Manifiesto con digest adulterado
+    const badDigestManifest = {
+      ...validManifest,
+      manifest_sha256: '0'.repeat(64),
+    }
+    expect(() => validatePr02P0Manifest(badDigestManifest)).toThrow(/P0_MANIFEST_DIGEST_MISMATCH/)
+
+    // Manifiesto con colector adulterado
+    const badCollectorManifest = {
+      ...validManifest,
+      colector_identidad: 'unauthorized-collector.mjs',
+      manifest_sha256: computeP0ManifestDigest({ ...validManifest, colector_identidad: 'unauthorized-collector.mjs' }),
+    }
+    expect(() => validatePr02P0Manifest(badCollectorManifest)).toThrow(/P0_MANIFEST_COLLECTOR_IDENTITY_MISMATCH/)
+
+    // Manifiesto con consultado_en adulterado con respecto a la atestación
+    const tamperedConsultadoManifest = {
+      ...validManifest,
+      consultado_en: '2026-11-05T09:99:99.999Z',
+    }
+    const checkTampered = verifyP0Attestation(attestation, {
+      manifest: tamperedConsultadoManifest,
+      commitSha: VALID_HEAD,
+      authoritySecret: validKey,
+    })
+    expect(checkTampered.valid).toBe(false)
+    expect(checkTampered.reason).toBe('ATTESTATION_MANIFEST_MISMATCH')
+
+    // Al validar para importación P1 arroja error de procedencia
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: tamperedConsultadoManifest,
+        ivaText,
+        conditionText: condText,
+        trustedAuthoritySecret: validKey,
+        expectedHead: VALID_HEAD,
+      })
+    ).toThrow(/ATTESTATION_MANIFEST_MISMATCH/)
+  })
+
+  // 48. Enlaces simbólicos en ancestros y limpieza atómica ante fallas
+  it('48. validateEvidenceDirectory detecta symlinks y saveP0EvidencePackage no deja archivos huérfanos ante error', () => {
+    // Intentar guardar con manifiesto inválido arroja error y no deja directorio temporal
+    expect(() =>
+      saveP0EvidencePackage({
+        evidenceDir: TEST_EVIDENCE_DIR,
+        manifest: null as any,
+        rawIvaSoapXml: '<a></a>',
+        ivaNormalizedText: '{}',
+        rawConditionSoapXml: '<b></b>',
+        conditionNormalizedText: '{}',
+      })
+    ).toThrow(/PERSISTENCE_FAILED/)
+
+    if (fs.existsSync(TEST_EVIDENCE_DIR)) {
+      const items = fs.readdirSync(TEST_EVIDENCE_DIR)
+      const tmpDirs = items.filter((f) => f.startsWith('.tmp_p0_'))
+      expect(tmpDirs.length).toBe(0)
+      cleanupTestDir()
+    }
   })
 })

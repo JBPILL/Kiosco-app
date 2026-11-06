@@ -1089,3 +1089,41 @@ Robustecimiento integral de la autorización administrativa externa, desacoplami
   - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
   - `PR02_READY_FOR_EMISSION_GO = false`
   - 173 tests PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+### 2026-11-05 - Auditoría Técnica Independiente y Remediación de Seguridad PR02-P0
+
+Auditoría exhaustiva independiente y remediación local definitiva previa a cualquier solicitud de GO remoto:
+- **Remediación C-01 (Integridad de Manifiesto P0)**: `validatePr02P0Manifest` valida obligatoriamente `colector_identidad === PR02_P0_COLECTOR_IDENTIDAD` y `manifest.manifest_sha256 === computeP0ManifestDigest(manifest)`.
+- **Remediación C-02 (Vinculación de Atestación)**: `verifyP0Attestation` comprueba coincidencia unívoca de `executionId` y `consultadoEn` con el manifiesto. Se clarifica documentalmente el rol de la clave HMAC como garantía de custodia interna del proceso colector, manteniendo `OFFICIAL_PROVENANCE = UNVERIFIED` hasta ejecución en el entorno oficial.
+- **Remediación C-03 (Fail-Closed en Opciones)**: `executePr02P0OfficialEvidence` valida tipos booleanos estrictos para `authorized`, `dryRun` y `officialGoAuthorized`. Rechaza `{ authorized: false, dryRun: false }` o `{ dryRun: false }` con `UNAUTHORIZED_EXECUTION`, y exige explícitamente `scope` y `projectRef`.
+- **Remediación A-01 (Ticket de Acceso sin Bypass)**: `evaluateExistingTa` elimina `|| rec.valido === true` exigiendo `estado === 'DISPONIBLE'` y validación de strings no vacíos para `servicio` ('wsfe') y `cuit` emisor.
+- **Remediación A-02 (Sin Fallback Silencioso en TA Inválido)**: Si se pasa un `existingTa` no reutilizable, `executePr02P0OfficialEvidence` arroja `TA_INVALID_OR_REVOKED` sin llamar a `LoginCms`. Se verifica margen mínimo de 10 min tras parsear un TA de WSAA.
+- **Remediación A-03 (Tracker Autónomo y Allowlist en Transporte Oficial)**: `createOfficialArcaTransport.postSoap` incorpora tracker autónomo de llamadas (`createPr02P0CallTracker`), allowlist estricta de métodos, bloqueo inmediato de operaciones prohibidas (`PROHIBITED_ARCA_OPERATION`), rechazo de redirecciones HTTP 3xx y verificación de documento XML SOAP bien formado.
+- **Remediación A-04 (Restricción de Tests en P1)**: `executePr02ParametersStaging` restringe `allowUnaccreditedForTest` a entornos con `deps.client` inyectado y propaga `expectedHead`.
+- **Remediación M-03 (Symlinks en Ancestros)**: `validateEvidenceDirectory` verifica enlaces simbólicos en todos los ancestros existentes de la ruta.
+- **Remediación M-04 (Validación de ExpectedHead en Wrapper)**: `run-pr02-p0-staging-private.ps1` valida `-ExpectedHead` de 40 caracteres hexadecimales contra HEAD aún en `-DryRun`.
+- **Suite de Pruebas**: 6 nuevas pruebas de seguridad (casos 43 al 48) añadidas a `fiscalPr02P0Collector.test.ts`. 48/48 tests PASS. 166 tests unitarios fiscales PASS.
+- **Estado**:
+  - `PR02_P0_INDEPENDENT_AUDIT = PASS`
+  - `PR02_P0_LOCAL_HARDENING = PASS`
+  - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+  - `P0_CLI_TRANSPORT_WIRING = PASS`
+  - `P0_WSAA_TA_GUARD = PASS`
+  - `P0_EXACT_ENDPOINT_GUARD = PASS`
+  - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+  - `P0_PROVENANCE_ATTESTATION = PASS`
+  - `P0_FAKE_MANIFEST_REJECTED = PASS`
+  - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+  - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+  - `PR02_P0_REMOTE_GO = NOT_REQUESTED`
+  - `P0_REMOTE_EXECUTED = false`
+  - `OFFICIAL_PROVENANCE = UNVERIFIED`
+  - `P1_REMOTE_EXECUTION_READY = false`
+  - `P2_REMOTE_EXECUTION_READY = false`
+  - `REAL_PV2_ENABLED = false`
+  - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+  - `HISTORICAL_042_REEMISSION_FORBIDDEN = true`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`

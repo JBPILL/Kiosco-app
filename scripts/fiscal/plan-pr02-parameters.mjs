@@ -498,7 +498,7 @@ export function evaluateExistingTa(taRecord, now = new Date()) {
     })
   }
 
-  const isAvailable = rec.estado === 'DISPONIBLE' || rec.valido === true
+  const isAvailable = estado === 'DISPONIBLE'
   if (!isAvailable || !rec.vence_en) {
     return Object.freeze({
       reusable: false,
@@ -509,8 +509,8 @@ export function evaluateExistingTa(taRecord, now = new Date()) {
   }
 
   // 2. Verificación de servicio y contexto fiscal si están presentes
-  if (rec.servicio && typeof rec.servicio === 'string') {
-    const srv = rec.servicio.toLowerCase().trim()
+  if (rec.servicio !== undefined && rec.servicio !== null) {
+    const srv = typeof rec.servicio === 'string' ? rec.servicio.toLowerCase().trim() : ''
     if (srv !== 'wsfe') {
       return Object.freeze({
         reusable: false,
@@ -521,13 +521,16 @@ export function evaluateExistingTa(taRecord, now = new Date()) {
     }
   }
 
-  if (rec.cuit && String(rec.cuit).trim() !== PR02_PARAMETERS_EXPECTED_ISSUER_CUIT) {
-    return Object.freeze({
-      reusable: false,
-      loginCmsRequired: true,
-      expiration: rec.vence_en ? String(rec.vence_en) : null,
-      reason: 'TA_CUIT_MISMATCH',
-    })
+  if (rec.cuit !== undefined && rec.cuit !== null) {
+    const cuitStr = typeof rec.cuit === 'string' || typeof rec.cuit === 'number' ? String(rec.cuit).trim() : ''
+    if (cuitStr !== PR02_PARAMETERS_EXPECTED_ISSUER_CUIT) {
+      return Object.freeze({
+        reusable: false,
+        loginCmsRequired: true,
+        expiration: rec.vence_en ? String(rec.vence_en) : null,
+        reason: 'TA_CUIT_MISMATCH',
+      })
+    }
   }
 
   // 3. Verificación de completitud de credenciales en memoria si están provistas
@@ -864,9 +867,11 @@ export function verifyP0Attestation(attestation, options = {}) {
       attestation.condNormSha !== manifest.condition_archivo_normalizado_sha256 ||
       attestation.executionScope !== manifest.ejecucion_autorizada_scope ||
       attestation.processId !== manifest.identificador_proceso ||
-      (manifest.entorno && attestation.entorno !== manifest.entorno) ||
-      (manifest.go_authorization_id && attestation.goAuthorizationId !== manifest.go_authorization_id) ||
-      (manifest.go_authorization_sha256 && attestation.goAuthorizationSha256 !== manifest.go_authorization_sha256)
+      (manifest.ejecucion_autorizada_id !== undefined && attestation.executionId !== manifest.ejecucion_autorizada_id) ||
+      (manifest.consultado_en !== undefined && attestation.consultadoEn !== manifest.consultado_en) ||
+      (manifest.entorno !== undefined && attestation.entorno !== manifest.entorno) ||
+      (manifest.go_authorization_id !== undefined && manifest.go_authorization_id !== null && attestation.goAuthorizationId !== manifest.go_authorization_id) ||
+      (manifest.go_authorization_sha256 !== undefined && manifest.go_authorization_sha256 !== null && attestation.goAuthorizationSha256 !== manifest.go_authorization_sha256)
     ) {
       return Object.freeze({ valid: false, reason: 'ATTESTATION_MANIFEST_MISMATCH' })
     }
@@ -1031,6 +1036,8 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     const verified = verifyP0Attestation(attestation, {
       manifest: {
         identificador_proceso: pid,
+        ejecucion_autorizada_id: ejecucionAutorizadaId,
+        consultado_en: params.consultado_en,
         ejecucion_autorizada_scope: ejecucionAutorizadaScope,
         iva_respuesta_original_sha256: params.iva_respuesta_original_sha256,
         iva_archivo_normalizado_sha256: params.iva_archivo_normalizado_sha256,
@@ -1072,12 +1079,42 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     attestation,
   }
 
-  const manifestSha256 = sha256(JSON.stringify(manifestBody))
+  const manifestSha256 = computeP0ManifestDigest(manifestBody)
 
   return Object.freeze({
     ...manifestBody,
     manifest_sha256: manifestSha256,
   })
+}
+
+/**
+ * Calcula el digest canónico SHA-256 del cuerpo del manifiesto P0 (excluyendo manifest_sha256).
+ */
+export function computeP0ManifestDigest(manifest) {
+  if (!manifest || typeof manifest !== 'object') {
+    throw new Error('P0_MANIFEST_INVALID')
+  }
+  const canonicalBody = {
+    entorno: manifest.entorno,
+    operaciones: manifest.operaciones,
+    consultado_en: manifest.consultado_en,
+    identificador_proceso: manifest.identificador_proceso,
+    colector_identidad: manifest.colector_identidad,
+    ejecucion_autorizada_id: manifest.ejecucion_autorizada_id,
+    ejecucion_autorizada_scope: manifest.ejecucion_autorizada_scope,
+    iva_respuesta_original_sha256: manifest.iva_respuesta_original_sha256,
+    iva_archivo_normalizado_sha256: manifest.iva_archivo_normalizado_sha256,
+    condition_respuesta_original_sha256: manifest.condition_respuesta_original_sha256,
+    condition_archivo_normalizado_sha256: manifest.condition_archivo_normalizado_sha256,
+    transporte_validado: manifest.transporte_validado,
+    transport_type: manifest.transport_type,
+    origen_verificado: manifest.origen_verificado,
+    accredited: manifest.accredited,
+    go_authorization_id: manifest.go_authorization_id !== undefined ? manifest.go_authorization_id : null,
+    go_authorization_sha256: manifest.go_authorization_sha256 !== undefined ? manifest.go_authorization_sha256 : null,
+    attestation: manifest.attestation !== undefined ? manifest.attestation : null,
+  }
+  return sha256(JSON.stringify(canonicalBody))
 }
 
 /**
@@ -1109,6 +1146,9 @@ export function validatePr02P0Manifest(manifest) {
   }
   if (!manifest.colector_identidad || typeof manifest.colector_identidad !== 'string' || manifest.colector_identidad.trim().length === 0) {
     throw new Error('P0_MANIFEST_COLLECTOR_IDENTITY_REQUIRED: Falta identidad del colector autorizado')
+  }
+  if (manifest.colector_identidad !== PR02_P0_COLECTOR_IDENTIDAD) {
+    throw new Error(`P0_MANIFEST_COLLECTOR_IDENTITY_MISMATCH: Identidad del colector '${manifest.colector_identidad}' no coincide con '${PR02_P0_COLECTOR_IDENTIDAD}'`)
   }
   if (!manifest.ejecucion_autorizada_id || typeof manifest.ejecucion_autorizada_id !== 'string' || manifest.ejecucion_autorizada_id.trim().length === 0) {
     throw new Error('P0_MANIFEST_EXECUTION_ID_REQUIRED: Falta identificador de ejecución autorizada vinculada')
@@ -1143,6 +1183,12 @@ export function validatePr02P0Manifest(manifest) {
     }
   }
 
+  // Verificar integridad del propio manifiesto (manifest_sha256)
+  const expectedManifestSha = computeP0ManifestDigest(manifest)
+  if (!manifest.manifest_sha256 || !/^[0-9a-f]{64}$/.test(manifest.manifest_sha256) || manifest.manifest_sha256 !== expectedManifestSha) {
+    throw new Error('P0_MANIFEST_DIGEST_MISMATCH: El hash manifest_sha256 es inválido o el manifiesto fue alterado post-creación')
+  }
+
   // Comprobar estrictamente ausencia de secretos
   const str = JSON.stringify(manifest).toLowerCase()
   for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', '-----begin', 'password']) {
@@ -1170,21 +1216,6 @@ export function validatePr02P1ImportEvidence(options = {}) {
 
   if (manifest.authoritySecret || (manifest.attestation && manifest.attestation.authoritySecret)) {
     throw new Error('P1_IMPORT_FORBIDDEN: El manifiesto no puede proveer su propia clave de autoridad')
-  }
-
-  try {
-    validatePr02P0Manifest(manifest)
-  } catch (err) {
-    if (
-      err.message.includes('P0_MANIFEST_NOT_ACCREDITED') ||
-      err.message.includes('P0_MANIFEST_TRANSPORT_NOT_OFFICIAL') ||
-      err.message.includes('P0_MANIFEST_ATTESTATION_MISSING') ||
-      err.message.includes('P0_MANIFEST_GO_ID_REQUIRED') ||
-      err.message.includes('P0_MANIFEST_GO_SHA_REQUIRED')
-    ) {
-      throw new Error(`P1_IMPORT_FORBIDDEN: ${err.message}`)
-    }
-    throw err
   }
 
   if (typeof ivaText !== 'string' || typeof conditionText !== 'string') {
@@ -1223,6 +1254,10 @@ export function validatePr02P1ImportEvidence(options = {}) {
     }
   }
 
+  if (manifest.accredited !== true || manifest.transport_type === 'SIMULATED' || !manifest.attestation) {
+    throw new Error('P1_IMPORT_FORBIDDEN: P0_MANIFEST_NOT_ACCREDITED')
+  }
+
   // Verificación estricta de la atestación de procedencia oficial contra autoridad externa confiable
   const trustedAuthoritySecret = options.trustedAuthoritySecret || options.authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
   const attestationCheck = verifyP0Attestation(manifest.attestation, {
@@ -1232,6 +1267,23 @@ export function validatePr02P1ImportEvidence(options = {}) {
   })
   if (!attestationCheck.valid) {
     throw new Error(`P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada (${attestationCheck.reason}). Importación denegada.`)
+  }
+
+  try {
+    validatePr02P0Manifest(manifest)
+  } catch (err) {
+    if (
+      err.message.includes('P0_MANIFEST_NOT_ACCREDITED') ||
+      err.message.includes('P0_MANIFEST_TRANSPORT_NOT_OFFICIAL') ||
+      err.message.includes('P0_MANIFEST_ATTESTATION_MISSING') ||
+      err.message.includes('P0_MANIFEST_GO_ID_REQUIRED') ||
+      err.message.includes('P0_MANIFEST_GO_SHA_REQUIRED') ||
+      err.message.includes('P0_MANIFEST_DIGEST_MISMATCH') ||
+      err.message.includes('P0_MANIFEST_COLLECTOR_IDENTITY_MISMATCH')
+    ) {
+      throw new Error(`P1_IMPORT_FORBIDDEN: ${err.message}`)
+    }
+    throw err
   }
 
   // Estructura

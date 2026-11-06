@@ -2247,3 +2247,33 @@ Tras el endurecimiento inicial de atestación de PR02-P0, se requirió una revis
 **Consecuencias:**
 `P0_EXTERNAL_GO_VALIDATION = PASS (en prueba) / FAIL (sin GO)`, `P0_GO_SINGLE_USE_GUARD = PASS`, `P0_GO_SECRET_EXPOSURE = NONE`, `P0_TRUSTED_ATTESTATION = PASS`, `P1_UNTRUSTED_SIGNATURE_REJECTION = PASS`, `P0_CALL_AUDIT_ON_FAILURE = PASS`, `GO_AUTHORIZATION = NOT_RUN (dry-run)`, `EVIDENCE_PROVENANCE = UNVERIFIED`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
 173 tests PASS (42 collector, 17 plan, 33 preflight, 9 plan 03c, 37 preparation, 22 execute 03c, etc.), PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+## Auditoría Técnica Independiente y Remediación de Seguridad PR02-P0 (05/11/2026)
+
+**Contexto:**
+Se realizó una auditoría exhaustiva e independiente sobre la implementación del colector oficial de evidencia `PR02-P0` previo a cualquier consideración de un futuro GO remoto. La auditoría identificó áreas que requerían blindaje para garantizar un comportamiento 100% fail-closed frente a entradas manipuladas o no autorizadas:
+1. `validatePr02P0Manifest` validaba la estructura pero no verificaba que `manifest.manifest_sha256` coincidiera con el digest canónico del contenido ni comprobaba `manifest.colector_identidad`.
+2. `verifyP0Attestation` no comprobaba `attestation.executionId === manifest.ejecucion_autorizada_id` ni `attestation.consultadoEn === manifest.consultado_en`.
+3. `executePr02P0OfficialEvidence` admitía parámetros no estrictos en `authorized` y `dryRun`, y retornaba `DRY_RUN` incluso con `{ authorized: false, dryRun: false }`.
+4. `evaluateExistingTa` permitía `rec.valido === true` aun cuando `rec.estado !== 'DISPONIBLE'`, y no validaba obligatoriamente que `servicio` y `cuit` fueran strings no vacíos correspondientes a `wsfe` y al CUIT del emisor.
+5. `executePr02P0OfficialEvidence` realizaba un fallback silencioso a `LoginCms` cuando se le suministraba un `existingTa` no reutilizable si se disponía de CMS/fetcher, y no comprobaba margen de 10 minutos en el TA obtenido de WSAA.
+6. `createOfficialArcaTransport.postSoap` carecía de límites internos autónomos de llamadas y allowlist de operaciones SOAP, y no verificaba exhaustivamente redirecciones HTTP 3xx ni payloads no XML.
+7. `executePr02ParametersStaging` permitía `allowUnaccreditedForTest` sin requerir que `deps.client` estuviera inyectado, y no propagaba `expectedHead` a `validatePr02P1ImportEvidence`.
+8. `validateEvidenceDirectory` solo verificaba enlaces simbólicos sobre el directorio hoja, omitiendo los directorios ancestros.
+9. El wrapper PowerShell `run-pr02-p0-staging-private.ps1` no validaba `-ExpectedHead` en modo `-DryRun`.
+
+**Decisión:**
+1. Se implementó `computeP0ManifestDigest(manifest)` y se reforzó `validatePr02P0Manifest` para verificar `manifest_sha256` y `colector_identidad`.
+2. Se actualizó `verifyP0Attestation` para validar la concordancia exacta de `consultado_en` y `ejecucion_autorizada_id` entre el manifiesto y la atestación firmada.
+3. Se aplicaron validaciones estrictas de tipo booleano a `options.authorized`, `options.dryRun` y `options.officialGoAuthorized`, lanzando `UNAUTHORIZED_EXECUTION` ante cualquier combinación no autorizada o parámetros sin scope/projectRef explícito.
+4. Se endureció `evaluateExistingTa` requiriendo imperativamente `estado === 'DISPONIBLE'`, servicio `'wsfe'` y CUIT coincidente.
+5. Se eliminó el fallback silencioso ante `existingTa` inválido suministrado, abortando inmediatamente con `TA_INVALID_OR_REVOKED`, y se añadió validación de margen mínimo de 10 minutos tras parsear un TA de LoginCms.
+6. Se dotó a `createOfficialArcaTransport.postSoap` de tracker autónomo de llamadas con límites inmutables, allowlist cerrada (`LoginCms`, `FEParamGetTiposIva`, `FEParamGetCondicionIvaReceptor`), bloqueo inmediato de operaciones prohibidas (`PROHIBITED_ARCA_OPERATION`), rechazo de redirecciones HTTP 3xx y verificación de documento XML bien formado.
+7. Se restringió `allowUnaccreditedForTest` en `executePr02ParametersStaging` a entornos con `deps.client` mock inyectado, y se propagó `expectedHead`.
+8. Se extendió `validateEvidenceDirectory` para comprobar enlaces simbólicos en todos los directorios ancestros existentes hasta la raíz.
+9. Se incorporó la validación estricta de `-ExpectedHead` en el wrapper PowerShell incluso en modo `-DryRun`.
+10. Se agregaron 6 pruebas unitarias y de seguridad adicionales (casos 43 al 48) en `fiscalPr02P0Collector.test.ts`.
+
+**Consecuencias:**
+`PR02_P0_LOCAL_HARDENING = PASS`, `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`, `P0_CLI_TRANSPORT_WIRING = PASS`, `P0_WSAA_TA_GUARD = PASS`, `P0_EXACT_ENDPOINT_GUARD = PASS`, `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`, `P0_PROVENANCE_ATTESTATION = PASS`, `P0_FAKE_MANIFEST_REJECTED = PASS`, `P0_PRIVATE_EVIDENCE_STORAGE = PASS`, `P0_AUDIT_COUNTS_ACCURATE = PASS`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
+48/48 tests PASS en `fiscalPr02P0Collector.test.ts`, 166 tests unitarios fiscales PASS. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
