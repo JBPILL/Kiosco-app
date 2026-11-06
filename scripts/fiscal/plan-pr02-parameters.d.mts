@@ -98,10 +98,68 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
 }
 
 export const PR02_P0_AUTHORITY_ENV: string
+export const PR02_P0_GO_AUTHORITY_ENV: string
 export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
 
 export function isTestAuthorityKey(secret: unknown): boolean
 export function validateP0AuthoritySecret(secret: unknown): string
+export function validateP0GoAuthoritySecret(secret: unknown, allowTestKeys?: boolean): string
+
+export function markGoAuthorizationConsumed(authId: unknown): void
+export function isGoAuthorizationConsumed(authId: unknown): boolean
+export function resetConsumedGoAuthorizationsForTesting(): void
+
+export interface Pr02P0GoAuthorizationDoc {
+  readonly version?: string
+  readonly identificador?: string
+  readonly aprobador_identidad?: string
+  readonly scope?: string
+  readonly project_ref?: string
+  readonly entorno?: string
+  readonly commit_sha?: string
+  readonly operaciones_permitidas?: readonly string[]
+  readonly limites?: {
+    readonly loginCmsMax: number
+    readonly tiposIvaMax: number
+    readonly condicionIvaReceptorMax: number
+    readonly totalMax: number
+  }
+  readonly emitido_en?: string
+  readonly vence_en?: string
+  readonly single_use_nonce?: string
+}
+
+export interface Pr02P0SignedGoAuthorization {
+  readonly authorization: Pr02P0GoAuthorizationDoc
+  readonly signature: string
+}
+
+export function createSignedPr02P0GoAuthorization(
+  doc?: Partial<Pr02P0GoAuthorizationDoc>,
+  secret?: string
+): Pr02P0SignedGoAuthorization
+
+export function validatePr02P0GoAuthorization(
+  signedGoDoc: unknown,
+  options?: {
+    expectedHead?: string
+    trustedGoAuthoritySecret?: string
+    allowTestKeys?: boolean
+    now?: string | number | Date
+  }
+): {
+  readonly valid: true
+  readonly authorizationId: string
+  readonly approverId: string
+  readonly scope: string
+  readonly projectRef: string
+  readonly commitSha: string
+  readonly documentSha256: string
+  readonly canonicalDocument: Pr02P0GoAuthorizationDoc
+  readonly expiresAt: string
+  readonly issuedAt: string
+  readonly singleUseNonce: string
+}
 
 export interface Pr02P0Attestation {
   readonly version: string
@@ -118,6 +176,8 @@ export interface Pr02P0Attestation {
   readonly ivaNormSha: string
   readonly condRawSha: string
   readonly condNormSha: string
+  readonly goAuthorizationId?: string | null
+  readonly goAuthorizationSha256?: string | null
   readonly goAuthorization?: string | null
   readonly issuedAt: string
   readonly signature: string | null
@@ -130,7 +190,9 @@ export function createP0Attestation(params?: {
   commitSha?: string
   transportType?: string
   authoritySecret?: string
-  goAuthorization?: string
+  goAuthorizationId?: string
+  goAuthorizationSha256?: string
+  goAuthorization?: string | unknown
   executorIdentity?: string
   operacionesWsfe?: readonly string[]
   now?: string | number | Date
@@ -142,6 +204,8 @@ export function verifyP0Attestation(
     manifest?: unknown
     commitSha?: string
     authoritySecret?: string
+    goAuthorizationId?: string
+    goAuthorizationSha256?: string
   }
 ): { readonly valid: boolean; readonly reason?: string }
 
@@ -161,6 +225,8 @@ export interface Pr02P0OfficialEvidenceManifest {
   readonly transport_type?: string
   readonly origen_verificado: string
   readonly accredited: boolean
+  readonly go_authorization_id?: string | null
+  readonly go_authorization_sha256?: string | null
   readonly attestation?: Pr02P0Attestation | null
   readonly manifest_sha256: string
 }
@@ -185,7 +251,9 @@ export function createPr02P0OfficialEvidenceManifest(params?: {
   attestation?: Pr02P0Attestation
   commit_sha?: string
   authoritySecret?: string
-  goAuthorization?: string
+  go_authorization_id?: string
+  go_authorization_sha256?: string
+  goAuthorization?: string | unknown
 }): Pr02P0OfficialEvidenceManifest
 
 export function validatePr02P0Manifest(manifest: unknown): boolean
@@ -200,6 +268,7 @@ export function validatePr02P1ImportEvidence(options?: {
   expectedHead?: string
   head?: string
   authoritySecret?: string
+  trustedAuthoritySecret?: string
   expectedHashes?: { iva?: string; condition?: string }
 }): {
   readonly status: 'PASS'

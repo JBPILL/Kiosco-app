@@ -9,7 +9,7 @@
 // 7. Toda llamada remota futura exige GO específico de un solo uso.
 
 import { execSync } from 'node:child_process'
-import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
+import { createHash, createHmac, timingSafeEqual, randomUUID } from 'node:crypto'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
 
 export const PR02_P0_AUTHORITY_ENV = 'PR02_P0_AUTHORITY_SECRET'
@@ -54,6 +54,239 @@ export function validateP0AuthoritySecret(secret) {
     throw new Error('P0_ATTESTATION_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba o simulación para atestación oficial')
   }
   return trimmed
+}
+
+export const PR02_P0_GO_AUTHORITY_ENV = 'PR02_P0_GO_AUTHORITY_SECRET'
+
+/**
+ * Validador estricto de la clave de autoridad de aprobación GO (separada de la clave de atestación del colector).
+ */
+export function validateP0GoAuthoritySecret(secret, allowTestKeys = false) {
+  if (!secret || typeof secret !== 'string' || secret.trim().length === 0) {
+    throw new Error('P0_GO_AUTHORITY_KEY_MISSING: Se requiere una clave de autoridad de aprobación GO custodiada fuera del repositorio')
+  }
+  const trimmed = secret.trim()
+  for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
+    if (trimmed === compromised || trimmed.toLowerCase() === compromised.toLowerCase()) {
+      throw new Error('P0_GO_AUTHORITY_KEY_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa')
+    }
+  }
+  if (trimmed.length < 32) {
+    throw new Error('P0_GO_AUTHORITY_KEY_INSUFFICIENT_ENTROPY: La clave de autoridad de aprobación GO debe tener al menos 32 caracteres de alta entropía')
+  }
+  if (!allowTestKeys && isTestAuthorityKey(trimmed)) {
+    throw new Error('P0_GO_AUTHORITY_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba para la aprobación oficial de GO')
+  }
+  return trimmed
+}
+
+// Registro en memoria de autorizaciones GO consumidas (Protección contra reutilización / Single-use)
+const consumedGoAuthorizations = new Set()
+
+export function markGoAuthorizationConsumed(authId) {
+  if (!authId || typeof authId !== 'string') return
+  consumedGoAuthorizations.add(authId.trim())
+}
+
+export function isGoAuthorizationConsumed(authId) {
+  if (!authId || typeof authId !== 'string') return false
+  return consumedGoAuthorizations.has(authId.trim())
+}
+
+export function resetConsumedGoAuthorizationsForTesting() {
+  consumedGoAuthorizations.clear()
+}
+
+/**
+ * Genera y firma un documento de autorización externa GO para PR02-P0.
+ */
+export function createSignedPr02P0GoAuthorization(doc = {}, secret) {
+  const validSecret = validateP0GoAuthoritySecret(secret, true)
+  const canonical = {
+    version: doc.version || '1.0',
+    identificador: doc.identificador || `GO-P0-${randomUUID()}`,
+    aprobador_identidad: doc.aprobador_identidad || 'OWNER_OFFICIAL_APPROVER_2026',
+    scope: doc.scope || PR02_P0_SCOPE,
+    project_ref: doc.project_ref || PR02_PARAMETERS_TARGET_PROJECT_REF,
+    entorno: doc.entorno || 'HOMOLOGACION',
+    commit_sha: doc.commit_sha ? String(doc.commit_sha).toLowerCase() : '0'.repeat(40),
+    operaciones_permitidas: doc.operaciones_permitidas || Object.freeze(['LoginCms', 'FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
+    limites: doc.limites || {
+      loginCmsMax: 1,
+      tiposIvaMax: 1,
+      condicionIvaReceptorMax: 1,
+      totalMax: 3,
+    },
+    emitido_en: doc.emitido_en || new Date().toISOString(),
+    vence_en: doc.vence_en || new Date(Date.now() + 3600000).toISOString(),
+    single_use_nonce: doc.single_use_nonce || createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32),
+  }
+
+  const canonicalJson = JSON.stringify(canonical)
+  const signature = createHmac('sha256', validSecret).update(canonicalJson).digest('hex')
+
+  return Object.freeze({
+    authorization: canonical,
+    signature,
+  })
+}
+
+/**
+ * Validador exhaustivo de autorización externa GO para PR02-P0.
+ * Verifica identidad del aprobador, scope, project-ref, entorno, commit SHA exacto,
+ * operaciones permitidas exactas, límites inmutables, vigencia (vence_en),
+ * protección contra reutilización (single-use) y firma HMAC de la autoridad externa.
+ */
+export function validatePr02P0GoAuthorization(signedGoDoc, options = {}) {
+  if (!signedGoDoc) {
+    throw new Error('GO_AUTHORIZATION_MISSING: Se requiere documento de autorización externa (GO)')
+  }
+
+  let raw = signedGoDoc
+  if (typeof raw === 'string') {
+    try {
+      raw = JSON.parse(raw)
+    } catch {
+      throw new Error('GO_AUTHORIZATION_INVALID_FORMAT: El documento de autorización GO no posee el formato estructurado requerido')
+    }
+  }
+
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new Error('GO_AUTHORIZATION_INVALID_FORMAT: El documento de autorización GO no posee el formato estructurado requerido')
+  }
+
+  const payload = raw.authorization || raw
+  const signature = raw.signature || payload.signature
+
+  if (!payload || typeof payload !== 'object' || !signature || typeof signature !== 'string' || !/^[0-9a-fA-F]{64}$/.test(signature)) {
+    throw new Error('GO_AUTHORIZATION_INVALID_FORMAT: El documento de autorización GO carece de payload o firma criptográfica válida de 64 hex')
+  }
+
+  const id = payload.identificador || payload.authorizationId
+  if (!id || typeof id !== 'string' || id.trim().length === 0) {
+    throw new Error('GO_AUTHORIZATION_ID_REQUIRED: Se requiere identificador único no secreto en la autorización GO')
+  }
+  const cleanId = id.trim()
+
+  const approver = payload.aprobador_identidad || payload.approverId
+  if (!approver || typeof approver !== 'string' || approver.trim().length === 0) {
+    throw new Error('GO_AUTHORIZATION_APPROVER_REQUIRED: Se requiere la identidad del aprobador oficial')
+  }
+
+  const scope = payload.scope
+  if (scope !== PR02_P0_SCOPE) {
+    throw new Error(`GO_AUTHORIZATION_SCOPE_MISMATCH: El scope del GO ('${scope}') no coincide con '${PR02_P0_SCOPE}'`)
+  }
+
+  const projectRef = payload.project_ref || payload.projectRef
+  if (projectRef !== PR02_PARAMETERS_TARGET_PROJECT_REF) {
+    throw new Error(`GO_AUTHORIZATION_PROJECT_MISMATCH: Target del GO ('${projectRef}') no coincide con '${PR02_PARAMETERS_TARGET_PROJECT_REF}'`)
+  }
+
+  const entorno = payload.entorno || payload.environment
+  if (entorno !== 'HOMOLOGACION') {
+    throw new Error(`GO_AUTHORIZATION_ENTORNO_MISMATCH: Entorno del GO ('${entorno}') debe ser 'HOMOLOGACION'`)
+  }
+
+  const commitSha = payload.commit_sha || payload.commitSha
+  if (!commitSha || !/^[0-9a-fA-F]{40}$/.test(commitSha)) {
+    throw new Error('GO_AUTHORIZATION_COMMIT_INVALID: El commit SHA del GO debe ser un hash hexadecimal de 40 caracteres')
+  }
+  if (options.expectedHead) {
+    if (String(commitSha).toLowerCase() !== String(options.expectedHead).toLowerCase()) {
+      throw new Error(`GO_AUTHORIZATION_COMMIT_MISMATCH: Commit SHA del GO ('${commitSha}') difiere del commit esperado ('${options.expectedHead}')`)
+    }
+  }
+
+  const ops = payload.operaciones_permitidas || payload.allowedMethods
+  if (!Array.isArray(ops) || ops.length !== 3 ||
+      !ops.includes('LoginCms') || !ops.includes('FEParamGetTiposIva') || !ops.includes('FEParamGetCondicionIvaReceptor')) {
+    throw new Error('GO_AUTHORIZATION_OPERATIONS_FORBIDDEN: El GO contiene operaciones no permitidas o prohíbe las requeridas')
+  }
+
+  const limits = payload.limites || payload.callLimits
+  if (!limits || typeof limits !== 'object') {
+    throw new Error('GO_AUTHORIZATION_LIMITS_REQUIRED: Se requieren límites estrictos de llamadas en el GO')
+  }
+  if (limits.loginCmsMax > 1 || limits.tiposIvaMax > 1 || limits.condicionIvaReceptorMax > 1 || limits.totalMax > 3) {
+    throw new Error('GO_AUTHORIZATION_LIMITS_EXCEEDED: Los límites de llamadas del GO exceden el máximo estricto permitido (loginCms<=1, tiposIva<=1, condicion<=1, total<=3)')
+  }
+
+  const nowMs = options.now ? new Date(options.now).getTime() : Date.now()
+
+  const emitidoEn = payload.emitido_en || payload.issuedAt
+  if (!emitidoEn || !Number.isFinite(Date.parse(emitidoEn))) {
+    throw new Error('GO_AUTHORIZATION_ISSUED_INVALID: Fecha emitido_en inválida')
+  }
+  if (Date.parse(emitidoEn) > nowMs + 60000) {
+    throw new Error('GO_AUTHORIZATION_ISSUED_IN_FUTURE: La fecha de emisión del GO se encuentra en el futuro')
+  }
+
+  const venceEn = payload.vence_en || payload.expiresAt
+  if (!venceEn || !Number.isFinite(Date.parse(venceEn))) {
+    throw new Error('GO_AUTHORIZATION_EXPIRES_INVALID: Fecha vence_en inválida')
+  }
+  if (Date.parse(venceEn) <= nowMs) {
+    throw new Error(`GO_AUTHORIZATION_EXPIRED: La autorización GO venció en ${venceEn} (evaluado contra ${new Date(nowMs).toISOString()})`)
+  }
+
+  const nonce = payload.single_use_nonce || payload.singleUseNonce
+  if (!nonce || typeof nonce !== 'string' || nonce.trim().length < 16) {
+    throw new Error('GO_AUTHORIZATION_NONCE_INVALID: Se requiere nonce de protección contra reutilización de al menos 16 caracteres')
+  }
+
+  // Verificación de reutilización (Single-use guard)
+  if (isGoAuthorizationConsumed(cleanId)) {
+    throw new Error(`GO_AUTHORIZATION_ALREADY_CONSUMED: La autorización GO '${cleanId}' ya fue consumida previamente (single-use violado)`)
+  }
+
+  // Verificación de firma criptográfica contra la autoridad externa
+  const rawSecret = options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV]
+  const validSecret = validateP0GoAuthoritySecret(rawSecret, Boolean(options.allowTestKeys))
+
+  const canonicalPayload = {
+    version: payload.version || '1.0',
+    identificador: cleanId,
+    aprobador_identidad: approver.trim(),
+    scope,
+    project_ref: projectRef,
+    entorno,
+    commit_sha: String(commitSha).toLowerCase(),
+    operaciones_permitidas: Object.freeze([...ops]),
+    limites: Object.freeze({
+      loginCmsMax: limits.loginCmsMax,
+      tiposIvaMax: limits.tiposIvaMax,
+      condicionIvaReceptorMax: limits.condicionIvaReceptorMax,
+      totalMax: limits.totalMax,
+    }),
+    emitido_en: new Date(emitidoEn).toISOString(),
+    vence_en: new Date(venceEn).toISOString(),
+    single_use_nonce: nonce.trim(),
+  }
+
+  const canonicalJson = JSON.stringify(canonicalPayload)
+  const expectedSig = createHmac('sha256', validSecret).update(canonicalJson).digest('hex')
+
+  const sigBuf = Buffer.from(signature.toLowerCase(), 'hex')
+  const expBuf = Buffer.from(expectedSig.toLowerCase(), 'hex')
+
+  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+    throw new Error('GO_AUTHORIZATION_SIGNATURE_INVALID: La firma criptográfica de la autorización GO es inválida o fue manipulada')
+  }
+
+  return Object.freeze({
+    valid: true,
+    authorizationId: cleanId,
+    approverId: approver.trim(),
+    scope,
+    projectRef,
+    commitSha: String(commitSha).toLowerCase(),
+    documentSha256: sha256(canonicalJson),
+    canonicalDocument: Object.freeze(canonicalPayload),
+    expiresAt: new Date(venceEn).toISOString(),
+    issuedAt: new Date(emitidoEn).toISOString(),
+    singleUseNonce: nonce.trim(),
+  })
 }
 
 export const PR02_P0_SCOPE = 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
@@ -484,6 +717,8 @@ export function createP0Attestation(params = {}) {
     commitSha,
     transportType = 'SIMULATED',
     authoritySecret,
+    goAuthorizationId,
+    goAuthorizationSha256,
     goAuthorization,
     executorIdentity,
     operacionesWsfe,
@@ -496,6 +731,20 @@ export function createP0Attestation(params = {}) {
 
   const isOfficialTransport = transportType === 'OFFICIAL'
   const issuedAt = typeof now === 'string' || typeof now === 'number' ? new Date(now).toISOString() : now.toISOString()
+
+  // Extracción de identificador no secreto y digest de autorización GO
+  let authId = goAuthorizationId ? String(goAuthorizationId).trim() : null
+  let authSha = goAuthorizationSha256 ? String(goAuthorizationSha256).trim().toLowerCase() : null
+
+  if (!authId || !authSha) {
+    if (goAuthorization && typeof goAuthorization === 'object') {
+      authId = goAuthorization.identificador || goAuthorization.authorizationId || null
+      authSha = goAuthorization.documentSha256 || sha256(JSON.stringify(goAuthorization))
+    } else if (goAuthorization && typeof goAuthorization === 'string') {
+      authId = goAuthorization.trim()
+      authSha = sha256(goAuthorization.trim())
+    }
+  }
 
   // Si el transporte es simulado o mock, no se emite atestación oficial acreditada
   if (!isOfficialTransport) {
@@ -514,7 +763,8 @@ export function createP0Attestation(params = {}) {
       ivaNormSha: manifest.iva_archivo_normalizado_sha256 || '0'.repeat(64),
       condRawSha: manifest.condition_respuesta_original_sha256 || '0'.repeat(64),
       condNormSha: manifest.condition_archivo_normalizado_sha256 || '0'.repeat(64),
-      goAuthorization: null,
+      goAuthorizationId: authId || null,
+      goAuthorizationSha256: authSha || null,
       issuedAt,
       signature: null,
       accredited: false,
@@ -527,9 +777,12 @@ export function createP0Attestation(params = {}) {
     throw new Error('P0_ATTESTATION_COMMIT_SHA_REQUIRED: Se requiere commitSha hexadecimal de 40 caracteres para atestación oficial')
   }
 
-  // Validación de GO externo autorizado
-  if (!goAuthorization || typeof goAuthorization !== 'string' || goAuthorization.trim().length === 0) {
-    throw new Error('P0_ATTESTATION_GO_REQUIRED: Se requiere evidencia de GO externo autorizado para emitir atestación oficial')
+  // Validación de GO externo autorizado (se almacena únicamente id no secreto y digest)
+  if (!authId || typeof authId !== 'string' || authId.length === 0) {
+    throw new Error('P0_ATTESTATION_GO_ID_REQUIRED: Se requiere identificador no secreto de autorización GO externa')
+  }
+  if (!authSha || !/^[0-9a-f]{64}$/.test(authSha)) {
+    throw new Error('P0_ATTESTATION_GO_SHA_REQUIRED: Se requiere digest SHA-256 de 64 caracteres de autorización GO externa')
   }
 
   // Validación de identidad del ejecutor confiable
@@ -557,7 +810,8 @@ export function createP0Attestation(params = {}) {
     ivaNormSha: manifest.iva_archivo_normalizado_sha256,
     condRawSha: manifest.condition_respuesta_original_sha256,
     condNormSha: manifest.condition_archivo_normalizado_sha256,
-    goAuthorization: goAuthorization.trim(),
+    goAuthorizationId: authId,
+    goAuthorizationSha256: authSha,
     issuedAt,
   }
 
@@ -593,8 +847,11 @@ export function verifyP0Attestation(attestation, options = {}) {
   if (attestation.executorIdentity !== PR02_P0_COLECTOR_IDENTIDAD) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_EXECUTOR_MISMATCH' })
   }
-  if (!attestation.goAuthorization || typeof attestation.goAuthorization !== 'string' || attestation.goAuthorization.trim().length === 0) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_GO_MISSING' })
+  if (!attestation.goAuthorizationId || typeof attestation.goAuthorizationId !== 'string' || attestation.goAuthorizationId.trim().length === 0) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_GO_ID_MISSING' })
+  }
+  if (!attestation.goAuthorizationSha256 || typeof attestation.goAuthorizationSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(attestation.goAuthorizationSha256)) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_GO_SHA_INVALID' })
   }
 
   const { manifest, commitSha, authoritySecret } = options
@@ -607,7 +864,9 @@ export function verifyP0Attestation(attestation, options = {}) {
       attestation.condNormSha !== manifest.condition_archivo_normalizado_sha256 ||
       attestation.executionScope !== manifest.ejecucion_autorizada_scope ||
       attestation.processId !== manifest.identificador_proceso ||
-      (manifest.entorno && attestation.entorno !== manifest.entorno)
+      (manifest.entorno && attestation.entorno !== manifest.entorno) ||
+      (manifest.go_authorization_id && attestation.goAuthorizationId !== manifest.go_authorization_id) ||
+      (manifest.go_authorization_sha256 && attestation.goAuthorizationSha256 !== manifest.go_authorization_sha256)
     ) {
       return Object.freeze({ valid: false, reason: 'ATTESTATION_MANIFEST_MISMATCH' })
     }
@@ -730,6 +989,13 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
   const isSimulated = params.transport_type === 'SIMULATED' || params.isSimulated === true
   let attestation = params.attestation || null
 
+  let goAuthId = params.go_authorization_id || (params.goAuthorization && typeof params.goAuthorization === 'object' ? (params.goAuthorization.identificador || params.goAuthorization.authorizationId) : null) || null
+  let goAuthSha = params.go_authorization_sha256 || (params.goAuthorization && typeof params.goAuthorization === 'object' ? params.goAuthorization.documentSha256 : null) || null
+  if (!goAuthId && params.goAuthorization && typeof params.goAuthorization === 'string') {
+    goAuthId = params.goAuthorization.trim()
+    goAuthSha = sha256(params.goAuthorization.trim())
+  }
+
   // Si no se proporcionó atestación previa, se genera
   if (!attestation) {
     attestation = createP0Attestation({
@@ -747,10 +1013,16 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
       commitSha: params.commit_sha || resolveCurrentGitHead() || '0'.repeat(40),
       transportType: isSimulated ? 'SIMULATED' : (params.transport_type || 'SIMULATED'),
       authoritySecret: params.authoritySecret,
-      goAuthorization: params.goAuthorization,
+      goAuthorizationId: goAuthId,
+      goAuthorizationSha256: goAuthSha,
       executorIdentity: colectorIdentidad,
       now: params.now,
     })
+  }
+
+  if (attestation) {
+    if (!goAuthId && attestation.goAuthorizationId) goAuthId = attestation.goAuthorizationId
+    if (!goAuthSha && attestation.goAuthorizationSha256) goAuthSha = attestation.goAuthorizationSha256
   }
 
   // Comprobar si está acreditada: requiere transporte oficial y verificación válida de atestación
@@ -765,6 +1037,8 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
         condition_respuesta_original_sha256: params.condition_respuesta_original_sha256,
         condition_archivo_normalizado_sha256: params.condition_archivo_normalizado_sha256,
         entorno,
+        go_authorization_id: goAuthId,
+        go_authorization_sha256: goAuthSha,
       },
       authoritySecret: params.authoritySecret,
       commitSha: params.commit_sha,
@@ -793,6 +1067,8 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
     transport_type: isSimulated || !isAccredited ? 'SIMULATED' : (params.transport_type || 'OFFICIAL'),
     origen_verificado: origen,
     accredited: isAccredited,
+    go_authorization_id: goAuthId || null,
+    go_authorization_sha256: goAuthSha || null,
     attestation,
   }
 
@@ -858,6 +1134,15 @@ export function validatePr02P0Manifest(manifest) {
     }
   }
 
+  if (manifest.accredited === true) {
+    if (!manifest.go_authorization_id || typeof manifest.go_authorization_id !== 'string' || manifest.go_authorization_id.trim().length === 0) {
+      throw new Error('P0_MANIFEST_GO_ID_REQUIRED: Se requiere go_authorization_id en manifiesto acreditado')
+    }
+    if (!manifest.go_authorization_sha256 || typeof manifest.go_authorization_sha256 !== 'string' || !/^[0-9a-f]{64}$/.test(manifest.go_authorization_sha256)) {
+      throw new Error('P0_MANIFEST_GO_SHA_REQUIRED: Se requiere go_authorization_sha256 de 64 caracteres en manifiesto acreditado')
+    }
+  }
+
   // Comprobar estrictamente ausencia de secretos
   const str = JSON.stringify(manifest).toLowerCase()
   for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', '-----begin', 'password']) {
@@ -883,13 +1168,19 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_MANIFEST_REQUIRED: Se requiere manifiesto oficial P0 para importar evidencia en P1')
   }
 
+  if (manifest.authoritySecret || (manifest.attestation && manifest.attestation.authoritySecret)) {
+    throw new Error('P1_IMPORT_FORBIDDEN: El manifiesto no puede proveer su propia clave de autoridad')
+  }
+
   try {
     validatePr02P0Manifest(manifest)
   } catch (err) {
     if (
       err.message.includes('P0_MANIFEST_NOT_ACCREDITED') ||
       err.message.includes('P0_MANIFEST_TRANSPORT_NOT_OFFICIAL') ||
-      err.message.includes('P0_MANIFEST_ATTESTATION_MISSING')
+      err.message.includes('P0_MANIFEST_ATTESTATION_MISSING') ||
+      err.message.includes('P0_MANIFEST_GO_ID_REQUIRED') ||
+      err.message.includes('P0_MANIFEST_GO_SHA_REQUIRED')
     ) {
       throw new Error(`P1_IMPORT_FORBIDDEN: ${err.message}`)
     }
@@ -932,11 +1223,12 @@ export function validatePr02P1ImportEvidence(options = {}) {
     }
   }
 
-  // Verificación estricta de la atestación de procedencia oficial
+  // Verificación estricta de la atestación de procedencia oficial contra autoridad externa confiable
+  const trustedAuthoritySecret = options.trustedAuthoritySecret || options.authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
   const attestationCheck = verifyP0Attestation(manifest.attestation, {
     manifest,
     commitSha: options.expectedHead || options.head,
-    authoritySecret: options.authoritySecret,
+    authoritySecret: trustedAuthoritySecret,
   })
   if (!attestationCheck.valid) {
     throw new Error(`P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada (${attestationCheck.reason}). Importación denegada.`)

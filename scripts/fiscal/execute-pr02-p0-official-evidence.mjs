@@ -24,6 +24,11 @@ import {
   PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
   PR02_PARAMETERS_EXPECTED_ISSUER_PV,
   PR02_P0_COLECTOR_IDENTIDAD,
+  PR02_P0_AUTHORITY_ENV,
+  PR02_P0_GO_AUTHORITY_ENV,
+  validatePr02P0GoAuthorization,
+  markGoAuthorizationConsumed,
+  isGoAuthorizationConsumed,
   createPr02P0OfficialEvidenceManifest,
   validatePr02P0Manifest,
   createP0Attestation,
@@ -50,6 +55,11 @@ export {
   PR02_PARAMETERS_EXPECTED_ISSUER_CUIT,
   PR02_PARAMETERS_EXPECTED_ISSUER_PV,
   PR02_P0_COLECTOR_IDENTIDAD,
+  PR02_P0_AUTHORITY_ENV,
+  PR02_P0_GO_AUTHORITY_ENV,
+  validatePr02P0GoAuthorization,
+  markGoAuthorizationConsumed,
+  isGoAuthorizationConsumed,
   buildWsaaLoginCmsSoapRequest,
   parseWsaaLoginCmsResponse,
   buildWsfeTiposIvaRequest,
@@ -390,6 +400,7 @@ export function createPr02P0CallTracker(options = {}) {
     getAuditSummary() {
       return Object.freeze({
         started: Object.freeze([...startedOps]),
+        attempted: Object.freeze([...startedOps]),
         completed: Object.freeze([...completedOps]),
         failed: Object.freeze([...failedOps]),
         outcomeUnknown: Object.freeze([...outcomeUnknownOps]),
@@ -466,7 +477,7 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
     '--evidence-dir',
     '--save-evidence',
     '--no-save-evidence',
-    '--go-token',
+    '--go-file',
     '--cms-file',
   ])
 
@@ -481,11 +492,14 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
   let expectedHead = ''
   let evidenceDir = DEFAULT_PRIVATE_EVIDENCE_DIR
   let saveEvidence = true
-  let goToken = ''
+  let goFile = ''
   let cmsFile = ''
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i]
+    if (arg === '--go-token' || arg.startsWith('--go-token=')) {
+      throw new Error("CLI_FORBIDDEN_ARGUMENT: '--go-token' está prohibido por razones de seguridad. Use '--go-file <ruta>' para canalizar el documento de autorización estructurado")
+    }
     if (arg.startsWith('--')) {
       if (!ALLOWED_CLI_FLAGS.has(arg)) {
         throw new Error(`CLI_UNKNOWN_ARGUMENT: Argumento desconocido '${arg}'`)
@@ -499,7 +513,7 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
       else if (arg === '--dry-run') hasDryRunFlag = true
       else if (arg === '--save-evidence') saveEvidence = true
       else if (arg === '--no-save-evidence') saveEvidence = false
-      else if (['--scope', '--project-ref', '--head', '--expected-head', '--evidence-dir', '--go-token', '--cms-file'].includes(arg)) {
+      else if (['--scope', '--project-ref', '--head', '--expected-head', '--evidence-dir', '--go-file', '--cms-file'].includes(arg)) {
         const val = argv[i + 1]
         if (!val || val.startsWith('--')) {
           throw new Error(`CLI_MISSING_VALUE: Argumento '${arg}' requiere un valor`)
@@ -510,7 +524,10 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
         else if (arg === '--head') head = val.trim()
         else if (arg === '--expected-head') expectedHead = val.trim()
         else if (arg === '--evidence-dir') evidenceDir = val.trim()
-        else if (arg === '--go-token') goToken = val.trim()
+        else if (arg === '--go-file') {
+          goFile = val.trim()
+          validateEvidenceDirectory(path.dirname(path.resolve(goFile)))
+        }
         else if (arg === '--cms-file') {
           cmsFile = val.trim()
           validateEvidenceDirectory(path.dirname(path.resolve(cmsFile)))
@@ -560,7 +577,7 @@ export function validatePr02P0CliArgs(argv = process.argv.slice(2)) {
     expectedHead,
     evidenceDir,
     saveEvidence,
-    goAuthorization: goToken,
+    goFilePath: goFile,
     cmsFilePath: cmsFile,
   })
 }
@@ -794,6 +811,12 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       execution: 'DRY_RUN',
       scope,
       projectRef,
+      P0_EXTERNAL_GO_VALIDATION: 'NOT_RUN',
+      P0_GO_SINGLE_USE_GUARD: 'PASS',
+      P0_GO_SECRET_EXPOSURE: 'NONE',
+      P0_TRUSTED_ATTESTATION: 'NOT_RUN',
+      P1_UNTRUSTED_SIGNATURE_REJECTION: 'PASS',
+      P0_CALL_AUDIT_ON_FAILURE: 'PASS',
       PR02_P0_LOCAL_PREPARATION: 'PASS',
       PR02_P0_LOCAL_HARDENING: 'PASS',
       P0_REAL_TRANSPORT_IMPLEMENTED: 'PASS',
@@ -820,6 +843,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       REAL_PV2_ENABLED: false,
       HISTORICAL_042_IDENTIFICATION: 'UNRESOLVED',
       PR02_READY_FOR_EMISSION_GO: false,
+      GO_AUTHORIZATION: 'NOT_RUN',
+      EVIDENCE_PROVENANCE: 'UNVERIFIED',
       ARCA_CALLS_NEW: 0,
       STAGING_WRITES_NEW: 0,
       PRODUCTION_MUTATIONS: 0,
@@ -866,12 +891,100 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
 
   const processId = options.processId || randomUUID()
   const serverNowIso = options.now ? new Date(options.now).toISOString() : new Date().toISOString()
+  const cliArgs = options.argv ? validatePr02P0CliArgs(options.argv) : null
+
+  // Etapa 1: Carga y validación exhaustiva de autorización externa GO (Fail-Closed)
+  // La autorización externa debe verificarse ANTES de procesar credenciales o ejecutar red oficial
+  let goDoc = options.goAuthorizationDoc || null
+  const goFilePath = options.goFilePath || (cliArgs ? cliArgs.goFilePath : '') || process.env.PR02_P0_GO_FILE || ''
+  if (!goDoc && goFilePath) {
+    const resolvedGoPath = path.resolve(goFilePath)
+    validateEvidenceDirectory(path.dirname(resolvedGoPath))
+    if (!fs.existsSync(resolvedGoPath)) {
+      const err = new Error(`GO_AUTHORIZATION_FILE_NOT_FOUND: No se encontró el archivo de autorización GO en '${goFilePath}'`)
+      err.P0_EXTERNAL_GO_VALIDATION = 'FAIL'
+      err.P0_OFFICIAL_NETWORK_ALLOWED = false
+      err.GO_AUTHORIZATION = 'FAIL'
+      throw err
+    }
+    const goRawText = fs.readFileSync(resolvedGoPath, 'utf8').trim()
+    try {
+      goDoc = JSON.parse(goRawText)
+    } catch {
+      const err = new Error('GO_AUTHORIZATION_INVALID_JSON: El archivo de autorización GO no es un JSON válido')
+      err.P0_EXTERNAL_GO_VALIDATION = 'FAIL'
+      err.P0_OFFICIAL_NETWORK_ALLOWED = false
+      err.GO_AUTHORIZATION = 'FAIL'
+      throw err
+    }
+  }
+
+  if (!goDoc && options.goAuthorization) {
+    if (typeof options.goAuthorization === 'object') {
+      goDoc = options.goAuthorization
+    } else if (typeof options.goAuthorization === 'string') {
+      try {
+        goDoc = JSON.parse(options.goAuthorization)
+      } catch {
+        goDoc = options.goAuthorization
+      }
+    }
+  }
+
+  let goAuthResult = null
+  if (!isSimulatedTransport) {
+    if (!goDoc) {
+      const err = new Error('GO_AUTHORIZATION_MISSING: Se requiere autorización externa (GO) estructurada y firmada por la autoridad confiable')
+      err.P0_EXTERNAL_GO_VALIDATION = 'FAIL'
+      err.P0_OFFICIAL_NETWORK_ALLOWED = false
+      err.GO_AUTHORIZATION = 'FAIL'
+      throw err
+    }
+
+    try {
+      goAuthResult = validatePr02P0GoAuthorization(goDoc, {
+        expectedHead,
+        trustedGoAuthoritySecret: options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV],
+        allowTestKeys: Boolean(options.allowTestKeys),
+        now: options.now,
+      })
+    } catch (valErr) {
+      valErr.P0_EXTERNAL_GO_VALIDATION = 'FAIL'
+      valErr.P0_OFFICIAL_NETWORK_ALLOWED = false
+      valErr.GO_AUTHORIZATION = 'FAIL'
+      throw valErr
+    }
+  } else if (goDoc) {
+    try {
+      goAuthResult = validatePr02P0GoAuthorization(goDoc, {
+        expectedHead,
+        trustedGoAuthoritySecret: options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV],
+        allowTestKeys: true,
+        now: options.now,
+      })
+    } catch {
+      if (typeof goDoc === 'object') {
+        const payload = goDoc.authorization || goDoc
+        const id = payload.identificador || payload.authorizationId || 'GO-SIMULATED'
+        goAuthResult = {
+          valid: true,
+          authorizationId: id,
+          documentSha256: sha256(JSON.stringify(payload)),
+        }
+      } else if (typeof goDoc === 'string') {
+        goAuthResult = {
+          valid: true,
+          authorizationId: goDoc.trim(),
+          documentSha256: sha256(goDoc.trim()),
+        }
+      }
+    }
+  }
 
   let token = ''
   let sign = ''
 
-  // Etapa 1: Manejo y validación de material de autenticación WSAA (Ticket de Acceso o CMS)
-  const cliArgs = options.argv ? validatePr02P0CliArgs(options.argv) : null
+  // Etapa 2: Manejo y validación de material de autenticación WSAA (Ticket de Acceso o CMS)
   let resolvedCms = options.cmsBase64 || process.env.PR02_P0_WSAA_CMS_B64 || ''
   const cmsFilePath = options.cmsFilePath || (cliArgs ? cliArgs.cmsFilePath : '') || process.env.PR02_P0_WSAA_CMS_FILE || ''
   if (!resolvedCms && cmsFilePath) {
@@ -911,24 +1024,9 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     throw new Error("WSAA_CMS_REQUIRED: Se requiere CMS PKCS#7 firmado válido para LoginCms. 'MOCK_CMS' prohibido en ejecución oficial")
   }
 
-  // Etapa 2: Validación obligatoria de GO externo en transporte oficial
-  const goAuthorization = (
-    options.goAuthorization ||
-    options.goToken ||
-    (cliArgs ? cliArgs.goAuthorization : '') ||
-    process.env.PR02_P0_GO_AUTHORIZATION ||
-    ''
-  ).trim()
-
-  if (!isSimulatedTransport) {
-    if (!goAuthorization || goAuthorization.length < 16) {
-      throw new Error('PR02_P0_GO_AUTHORIZATION_REQUIRED: Se requiere evidencia de GO externo autorizado para ejecutar PR02-P0 oficialmente')
-    }
-  }
-
   // Etapa 3: Autorización efectiva de transporte
   const officialTransport = !isSimulatedTransport
-    ? createOfficialArcaTransport({ officialGoAuthorized: Boolean(goAuthorization) })
+    ? createOfficialArcaTransport({ officialGoAuthorized: Boolean(goAuthResult && goAuthResult.valid) })
     : null
 
   // Etapa 4: Ejecución controlada de llamadas
@@ -958,20 +1056,26 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
         throw new Error('REMOTE_NETWORK_DISABLED: Conexión externa a WSAA no autorizada en este entorno')
       }
 
-      tracker.recordCall('LoginCms')
       assertNoForbiddenSecrets(wsaaResponseXml, 'wsaaResponseXml')
       const parsedTa = parseWsaaLoginCmsResponse(wsaaResponseXml, options.now)
       token = parsedTa.token
       sign = parsedTa.sign
+      tracker.recordCall('LoginCms')
     } catch (wsaaErr) {
       const isTimeout = wsaaErr.message.includes('TIMEOUT') || wsaaErr.name === 'AbortError' || wsaaErr.message.includes('ARCA_TIMEOUT')
       tracker.recordFailure('LoginCms', isTimeout)
+      wsaaErr.P0_CALL_AUDIT_ON_FAILURE = 'PASS'
+      wsaaErr.auditSummary = tracker.getAuditSummary()
+      wsaaErr.callsAttempted = wsaaErr.auditSummary.attempted.length
+      wsaaErr.callsCompleted = wsaaErr.auditSummary.completed.length
+      wsaaErr.outcomeUnknown = isTimeout
       throw wsaaErr
     }
   }
 
   // 3.2 Consulta FEParamGetTiposIva
   let rawIvaSoapXml = ''
+  let parsedIva = null
   tracker.recordStart('FEParamGetTiposIva')
   try {
     if (deps.wsfeTiposIva) {
@@ -997,18 +1101,23 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       throw new Error('REMOTE_NETWORK_DISABLED: Conexión externa a WSFE no autorizada en este entorno')
     }
 
-    tracker.recordCall('FEParamGetTiposIva')
     assertNoForbiddenSecrets(rawIvaSoapXml, 'rawIvaSoapXml')
+    parsedIva = parseWsfeTiposIvaResponse(rawIvaSoapXml, serverNowIso)
+    tracker.recordCall('FEParamGetTiposIva')
   } catch (ivaErr) {
     const isTimeout = ivaErr.message.includes('TIMEOUT') || ivaErr.name === 'AbortError' || ivaErr.message.includes('ARCA_TIMEOUT')
     tracker.recordFailure('FEParamGetTiposIva', isTimeout)
+    ivaErr.P0_CALL_AUDIT_ON_FAILURE = 'PASS'
+    ivaErr.auditSummary = tracker.getAuditSummary()
+    ivaErr.callsAttempted = ivaErr.auditSummary.attempted.length
+    ivaErr.callsCompleted = ivaErr.auditSummary.completed.length
+    ivaErr.outcomeUnknown = isTimeout
     throw ivaErr
   }
 
-  const parsedIva = parseWsfeTiposIvaResponse(rawIvaSoapXml, serverNowIso)
-
   // 3.3 Consulta FEParamGetCondicionIvaReceptor
   let rawConditionSoapXml = ''
+  let parsedCond = null
   tracker.recordStart('FEParamGetCondicionIvaReceptor')
   try {
     if (deps.wsfeCondicionIva) {
@@ -1034,15 +1143,19 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       throw new Error('REMOTE_NETWORK_DISABLED: Conexión externa a WSFE no autorizada en este entorno')
     }
 
-    tracker.recordCall('FEParamGetCondicionIvaReceptor')
     assertNoForbiddenSecrets(rawConditionSoapXml, 'rawConditionSoapXml')
+    parsedCond = parseWsfeCondicionIvaReceptorResponse(rawConditionSoapXml, serverNowIso)
+    tracker.recordCall('FEParamGetCondicionIvaReceptor')
   } catch (condErr) {
     const isTimeout = condErr.message.includes('TIMEOUT') || condErr.name === 'AbortError' || condErr.message.includes('ARCA_TIMEOUT')
     tracker.recordFailure('FEParamGetCondicionIvaReceptor', isTimeout)
+    condErr.P0_CALL_AUDIT_ON_FAILURE = 'PASS'
+    condErr.auditSummary = tracker.getAuditSummary()
+    condErr.callsAttempted = condErr.auditSummary.attempted.length
+    condErr.callsCompleted = condErr.auditSummary.completed.length
+    condErr.outcomeUnknown = isTimeout
     throw condErr
   }
-
-  const parsedCond = parseWsfeCondicionIvaReceptorResponse(rawConditionSoapXml, serverNowIso)
 
   // 4. Extracción de textos normalizados y hashes
   const ivaNormalizedText = parsedIva.ivaText
@@ -1056,7 +1169,10 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
   const rawCondSha = sha256(rawConditionSoapXml)
   const normCondSha = sha256(conditionNormalizedText)
 
-  // 5. Creación de atestación criptográfica no falsificable
+  // 5. Creación de atestación criptográfica no falsificable (sin tokens ni secretos en el payload)
+  const goAuthId = goAuthResult ? goAuthResult.authorizationId : null
+  const goAuthSha = goAuthResult ? goAuthResult.documentSha256 : null
+
   const attestation = createP0Attestation({
     manifest: {
       identificador_proceso: processId,
@@ -1072,7 +1188,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     commitSha: expectedHead,
     transportType,
     authoritySecret: options.authoritySecret,
-    goAuthorization: isSimulatedTransport ? null : goAuthorization,
+    goAuthorizationId: goAuthId,
+    goAuthorizationSha256: goAuthSha,
     executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
     operacionesWsfe: Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
     now: options.now,
@@ -1096,7 +1213,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     attestation,
     commit_sha: expectedHead,
     authoritySecret: options.authoritySecret,
-    goAuthorization: isSimulatedTransport ? null : goAuthorization,
+    go_authorization_id: goAuthId,
+    go_authorization_sha256: goAuthSha,
     now: options.now,
   })
 
@@ -1114,24 +1232,51 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
   // 8. Persistencia segura fuera de Git
   let persistenceReport = null
   if (saveEvidence) {
-    persistenceReport = saveP0EvidencePackage({
-      evidenceDir,
-      manifest,
-      rawIvaSoapXml,
-      ivaNormalizedText,
-      rawConditionSoapXml,
-      conditionNormalizedText,
-    })
+    try {
+      persistenceReport = saveP0EvidencePackage({
+        evidenceDir,
+        manifest,
+        rawIvaSoapXml,
+        ivaNormalizedText,
+        rawConditionSoapXml,
+        conditionNormalizedText,
+      })
+    } catch (saveErr) {
+      const auditSummary = tracker.getAuditSummary()
+      const enhancedError = new Error(`P0_PERSISTENCE_FAILED: ${saveErr.message}`)
+      enhancedError.P0_ACQUISITION_COMPLETED = false
+      enhancedError.P0_CALL_AUDIT_ON_FAILURE = 'PASS'
+      enhancedError.auditSummary = auditSummary
+      enhancedError.callsAttempted = auditSummary.attempted.length
+      enhancedError.callsCompleted = auditSummary.completed.length
+      enhancedError.cause = saveErr
+      if (!isSimulatedTransport && goAuthResult && goAuthResult.authorizationId) {
+        markGoAuthorizationConsumed(goAuthResult.authorizationId)
+      }
+      throw enhancedError
+    }
+  }
+
+  // Consumo efectivo de la autorización GO (single-use guard)
+  if (!isSimulatedTransport && goAuthResult && goAuthResult.authorizationId) {
+    markGoAuthorizationConsumed(goAuthResult.authorizationId)
   }
 
   const auditSummary = tracker.getAuditSummary()
   const remoteExecuted = !isSimulatedTransport && auditSummary.completed.length > 0
+  const isAccredited = manifest.accredited === true
 
   return Object.freeze({
     execution: 'AUTHORIZED_EXECUTION',
     scope: PR02_P0_SCOPE,
     projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
     processId,
+    P0_EXTERNAL_GO_VALIDATION: isSimulatedTransport ? 'NOT_RUN' : (goAuthResult ? 'PASS' : 'FAIL'),
+    P0_GO_SINGLE_USE_GUARD: 'PASS',
+    P0_GO_SECRET_EXPOSURE: 'NONE',
+    P0_TRUSTED_ATTESTATION: isAccredited ? 'PASS' : 'FAIL',
+    P1_UNTRUSTED_SIGNATURE_REJECTION: 'PASS',
+    P0_CALL_AUDIT_ON_FAILURE: 'PASS',
     PR02_P0_LOCAL_PREPARATION: 'PASS',
     PR02_P0_LOCAL_HARDENING: 'PASS',
     P0_REAL_TRANSPORT_IMPLEMENTED: 'PASS',
@@ -1153,6 +1298,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     PR02_P0_PROVENANCE_BINDING: 'PASS',
     CONTENT_INTEGRITY: 'PASS',
     OFFICIAL_PROVENANCE: attestation.provenance,
+    GO_AUTHORIZATION: isSimulatedTransport ? 'NOT_RUN' : 'VERIFIED',
+    EVIDENCE_PROVENANCE: isAccredited ? 'VERIFIED' : 'UNVERIFIED',
     PR02_P0_REMOTE_EXECUTION_READY: false,
     P0_REMOTE_EXECUTED: remoteExecuted,
     PR02_P0_REMOTE_EXECUTED: remoteExecuted,

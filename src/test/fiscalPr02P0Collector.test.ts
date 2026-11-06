@@ -30,6 +30,11 @@ import {
   validateP0AuthoritySecret,
   PR02_P0_COMPROMISED_SECRETS,
   isTestAuthorityKey,
+  createSignedPr02P0GoAuthorization,
+  validatePr02P0GoAuthorization,
+  markGoAuthorizationConsumed,
+  isGoAuthorizationConsumed,
+  resetConsumedGoAuthorizationsForTesting,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
 
 const VALID_HEAD = resolveCurrentGitHead() || '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb'
@@ -72,6 +77,15 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(report.PR02_P0_SOAP_VALIDATION).toBe('NOT_RUN')
     expect(report.PR02_P0_MANIFEST_INTEGRITY).toBe('NOT_RUN')
     expect(report.PR02_P0_PROVENANCE_BINDING).toBe('NOT_RUN')
+
+    expect(report.P0_EXTERNAL_GO_VALIDATION).toBe('NOT_RUN')
+    expect(report.P0_GO_SINGLE_USE_GUARD).toBe('PASS')
+    expect(report.P0_GO_SECRET_EXPOSURE).toBe('NONE')
+    expect(report.P0_TRUSTED_ATTESTATION).toBe('NOT_RUN')
+    expect(report.P1_UNTRUSTED_SIGNATURE_REJECTION).toBe('PASS')
+    expect(report.P0_CALL_AUDIT_ON_FAILURE).toBe('PASS')
+    expect(report.GO_AUTHORIZATION).toBe('NOT_RUN')
+    expect(report.EVIDENCE_PROVENANCE).toBe('UNVERIFIED')
 
     expect(report.PR02_P0_REMOTE_EXECUTION_READY).toBe(false)
     expect(report.P0_REMOTE_EXECUTED).toBe(false)
@@ -235,6 +249,13 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       vence_en: '2020-01-01T00:00:00.000Z',
     }
 
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      emitido_en: '2026-11-05T00:00:00.000Z',
+      vence_en: '2026-11-05T03:00:00.000Z',
+    }, authoritySecret)
+
     await expect(
       executePr02P0OfficialEvidence({
         authorized: true,
@@ -245,6 +266,9 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         expectedHead: VALID_HEAD,
         existingTa: expiredTa,
         now: '2026-11-05T01:00:00.000Z',
+        goAuthorizationDoc: signedDoc,
+        trustedGoAuthoritySecret: authoritySecret,
+        allowTestKeys: true,
       })
     ).rejects.toThrow(/TA_INVALID_OR_REVOKED/)
   })
@@ -420,6 +444,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(() => validatePr02P0CliArgs(['--dry-run', '--dry-run'])).toThrow(/CLI_DUPLICATE_ARGUMENT/)
     // Contradicción
     expect(() => validatePr02P0CliArgs(['--authorized', '--dry-run'])).toThrow(/CLI_ARGUMENT_CONFLICT/)
+    // Prohibición de --go-token por seguridad
+    expect(() => validatePr02P0CliArgs(['--go-token', 'my-secret-token'])).toThrow(/CLI_FORBIDDEN_ARGUMENT/)
     // Secreto en argumento CLI
     expect(() => validatePr02P0CliArgs(['--scope', 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION', '--head', 'password=secret'])).toThrow(
       /SECURITY_VIOLATION/
@@ -794,5 +820,574 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(summary.completed).toEqual(['LoginCms'])
     expect(summary.failed).toEqual(['FEParamGetTiposIva'])
     expect(summary.outcomeUnknown).toEqual(['FEParamGetTiposIva'])
+  })
+
+  // 29. (Regresión 1) GO arbitrario de longitud suficiente rechazado
+  it('29. (Regresión 1) GO arbitrario de longitud suficiente (>32 chars) es rechazado por falta de autenticidad verificable', async () => {
+    const arbitraryToken = 'abcdef0123456789abcdef0123456789abcdef01'
+    expect(() => validatePr02P0GoAuthorization(arbitraryToken)).toThrow(/GO_AUTHORIZATION_INVALID_FORMAT/)
+
+    const fakeDoc = {
+      authorization: {
+        identificador: 'GO-FAKE-001',
+        aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+        scope: PR02_P0_SCOPE,
+        project_ref: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        entorno: 'HOMOLOGACION',
+        commit_sha: VALID_HEAD,
+        operaciones_permitidas: ['LoginCms', 'FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+        limites: { loginCmsMax: 1, tiposIvaMax: 1, condicionIvaReceptorMax: 1, totalMax: 3 },
+        emitido_en: new Date().toISOString(),
+        vence_en: new Date(Date.now() + 3600000).toISOString(),
+        single_use_nonce: '0123456789abcdef0123456789abcdef',
+      },
+      signature: '0'.repeat(64),
+    }
+    expect(() => validatePr02P0GoAuthorization(fakeDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID',
+      allowTestKeys: true,
+    })).toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
+
+    await expect(
+      executePr02P0OfficialEvidence({
+        authorized: true,
+        dryRun: false,
+        scope: PR02_P0_SCOPE,
+        projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        head: VALID_HEAD,
+        expectedHead: VALID_HEAD,
+        goAuthorizationDoc: fakeDoc,
+        trustedGoAuthoritySecret: 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID',
+        allowTestKeys: true,
+      })
+    ).rejects.toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
+  })
+
+  // 30. (Regresión 2) GO con scope incorrecto rechazado
+  it('30. (Regresión 2) GO con scope incorrecto es rechazado y bloquea la red oficial', async () => {
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      scope: 'PR02_P1_VERIFIED_CATALOG_IMPORT',
+      commit_sha: VALID_HEAD,
+    }, authoritySecret)
+
+    expect(() => validatePr02P0GoAuthorization(signedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: authoritySecret,
+      allowTestKeys: true,
+    })).toThrow(/GO_AUTHORIZATION_SCOPE_MISMATCH/)
+
+    await expect(
+      executePr02P0OfficialEvidence({
+        authorized: true,
+        dryRun: false,
+        scope: PR02_P0_SCOPE,
+        projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        head: VALID_HEAD,
+        expectedHead: VALID_HEAD,
+        goAuthorizationDoc: signedDoc,
+        trustedGoAuthoritySecret: authoritySecret,
+        allowTestKeys: true,
+      })
+    ).rejects.toThrow(/GO_AUTHORIZATION_SCOPE_MISMATCH/)
+  })
+
+  // 31. (Regresión 3) GO con SHA diferente rechazado
+  it('31. (Regresión 3) GO con SHA diferente del HEAD esperado es rechazado', async () => {
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const differentHead = 'e'.repeat(40)
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      commit_sha: differentHead,
+    }, authoritySecret)
+
+    expect(() => validatePr02P0GoAuthorization(signedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: authoritySecret,
+      allowTestKeys: true,
+    })).toThrow(/GO_AUTHORIZATION_COMMIT_MISMATCH/)
+
+    await expect(
+      executePr02P0OfficialEvidence({
+        authorized: true,
+        dryRun: false,
+        scope: PR02_P0_SCOPE,
+        projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        head: VALID_HEAD,
+        expectedHead: VALID_HEAD,
+        goAuthorizationDoc: signedDoc,
+        trustedGoAuthoritySecret: authoritySecret,
+        allowTestKeys: true,
+      })
+    ).rejects.toThrow(/GO_AUTHORIZATION_COMMIT_MISMATCH/)
+  })
+
+  // 32. (Regresión 4) GO vencido rechazado
+  it('32. (Regresión 4) GO vencido es rechazado por vencimiento temporal', async () => {
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const nowIso = '2026-11-05T01:00:00.000Z'
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      emitido_en: '2026-11-04T00:00:00.000Z',
+      vence_en: '2026-11-04T02:00:00.000Z',
+    }, authoritySecret)
+
+    expect(() => validatePr02P0GoAuthorization(signedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: authoritySecret,
+      allowTestKeys: true,
+      now: nowIso,
+    })).toThrow(/GO_AUTHORIZATION_EXPIRED/)
+
+    await expect(
+      executePr02P0OfficialEvidence({
+        authorized: true,
+        dryRun: false,
+        scope: PR02_P0_SCOPE,
+        projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        head: VALID_HEAD,
+        expectedHead: VALID_HEAD,
+        now: nowIso,
+        goAuthorizationDoc: signedDoc,
+        trustedGoAuthoritySecret: authoritySecret,
+        allowTestKeys: true,
+      })
+    ).rejects.toThrow(/GO_AUTHORIZATION_EXPIRED/)
+  })
+
+  // 33. (Regresión 5) GO reutilizado rechazado
+  it('33. (Regresión 5) GO reutilizado es rechazado por protección de un solo uso (single-use guard)', () => {
+    resetConsumedGoAuthorizationsForTesting()
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      identificador: 'GO-TEST-SINGLE-USE-001',
+      commit_sha: VALID_HEAD,
+    }, authoritySecret)
+
+    // Primera validación: pasa
+    const firstCheck = validatePr02P0GoAuthorization(signedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: authoritySecret,
+      allowTestKeys: true,
+    })
+    expect(firstCheck.valid).toBe(true)
+
+    // Se marca como consumido
+    markGoAuthorizationConsumed('GO-TEST-SINGLE-USE-001')
+    expect(isGoAuthorizationConsumed('GO-TEST-SINGLE-USE-001')).toBe(true)
+
+    // Segunda validación: falla
+    expect(() => validatePr02P0GoAuthorization(signedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: authoritySecret,
+      allowTestKeys: true,
+    })).toThrow(/GO_AUTHORIZATION_ALREADY_CONSUMED/)
+  })
+
+  // 34. (Regresión 6) GO con firma inválida rechazado
+  it('34. (Regresión 6) GO con firma adulterada o clave incorrecta es rechazado', () => {
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      emitido_en: '2026-11-05T00:00:00.000Z',
+      vence_en: '2026-11-05T03:00:00.000Z',
+    }, authoritySecret)
+
+    // Alterar firma (manteniendo 64 hex de longitud)
+    const tamperedSig = signedDoc.signature.slice(0, -1) + (signedDoc.signature.endsWith('0') ? '1' : '0')
+    const tamperedDoc = {
+      authorization: signedDoc.authorization,
+      signature: tamperedSig,
+    }
+
+    expect(() => validatePr02P0GoAuthorization(tamperedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: authoritySecret,
+      allowTestKeys: true,
+      now: '2026-11-05T01:00:00.000Z',
+    })).toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
+
+    // Alterar contenido manteniendo la firma
+    const tamperedContentDoc = {
+      authorization: {
+        ...signedDoc.authorization,
+        entorno: 'PRODUCCION',
+      },
+      signature: signedDoc.signature,
+    }
+    expect(() => validatePr02P0GoAuthorization(tamperedContentDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoAuthoritySecret: authoritySecret,
+      allowTestKeys: true,
+      now: '2026-11-05T01:00:00.000Z',
+    })).toThrow(/GO_AUTHORIZATION_ENTORNO_MISMATCH/)
+  })
+
+  // 35. (Regresión 7) Token original ausente de manifiestos y archivos
+  it('35. (Regresión 7) El token/nonce original no aparece en ninguno de los artefactos generados', async () => {
+    cleanupTestDir()
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const attestationSecret = 'ATT_KEY_RANDOM_ENTROPY_HEX_abcdef01234567890'
+    const secretNonce = 'SECRET_NONCE_VALUE_DO_NOT_LEAK_9876543210'
+
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      identificador: 'GO-P0-AUDIT-SAFE-ID-001',
+      commit_sha: VALID_HEAD,
+      single_use_nonce: secretNonce,
+      emitido_en: '2026-11-05T01:00:00.000Z',
+      vence_en: '2026-11-05T05:00:00.000Z',
+    }, authoritySecret)
+
+    const res = await executePr02P0OfficialEvidence(
+      {
+        authorized: true,
+        dryRun: false,
+        scope: PR02_P0_SCOPE,
+        projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        head: VALID_HEAD,
+        expectedHead: VALID_HEAD,
+        now: '2026-11-05T02:00:00.000Z',
+        evidenceDir: TEST_EVIDENCE_DIR,
+        saveEvidence: true,
+        goAuthorizationDoc: signedDoc,
+        trustedGoAuthoritySecret: authoritySecret,
+        authoritySecret: attestationSecret,
+        allowTestKeys: true,
+        existingTa: {
+          token: 'TOKEN_VALID_REUSED',
+          sign: 'SIGN_VALID_REUSED',
+          vence_en: '2026-11-05T06:00:00.000Z',
+          estado: 'DISPONIBLE',
+        },
+      },
+      {
+        wsfeTiposIva: async () => SYNTHETIC_TIPOS_IVA_RESPONSE,
+        wsfeCondicionIva: async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+      }
+    )
+
+    expect(res.execution).toBe('AUTHORIZED_EXECUTION')
+    expect(res.P0_GO_SECRET_EXPOSURE).toBe('NONE')
+
+    // Verificar en manifest en memoria
+    const manifestJson = JSON.stringify(res.manifest)
+    expect(manifestJson.includes(secretNonce)).toBe(false)
+    expect(manifestJson.includes(signedDoc.signature)).toBe(false)
+    expect(res.manifest?.go_authorization_id).toBe('GO-P0-AUDIT-SAFE-ID-001')
+    expect(res.manifest?.go_authorization_sha256).toMatch(/^[0-9a-f]{64}$/)
+
+    // Verificar en archivos físicos en disco
+    const files = fs.readdirSync(TEST_EVIDENCE_DIR)
+    expect(files.length).toBeGreaterThan(0)
+    for (const file of files) {
+      const content = fs.readFileSync(path.join(TEST_EVIDENCE_DIR, file), 'utf8')
+      expect(content.includes(secretNonce)).toBe(false)
+      expect(content.includes(signedDoc.signature)).toBe(false)
+    }
+
+    cleanupTestDir()
+  })
+
+  // 36. (Regresión 8) Clave HMAC no expuesta
+  it('36. (Regresión 8) Claves HMAC de autoridad no se exponen en artefactos y el importador P1 rechaza manifiestos que suministren su propia clave', () => {
+    const rawSecret = 'SUPER_SECRET_HMAC_KEY_99999999999999999999'
+    const manifestWithKey = {
+      entorno: 'HOMOLOGACION',
+      origen_verificado: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      identificador_proceso: 'pid-1',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      ejecucion_autorizada_id: 'pid-1',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      iva_respuesta_original_sha256: 'a'.repeat(64),
+      iva_archivo_normalizado_sha256: 'b'.repeat(64),
+      condition_respuesta_original_sha256: 'c'.repeat(64),
+      condition_archivo_normalizado_sha256: 'd'.repeat(64),
+      transporte_validado: true,
+      accredited: true,
+      go_authorization_id: 'GO-ID-1',
+      go_authorization_sha256: 'e'.repeat(64),
+      authoritySecret: rawSecret, // Prohibido: el manifiesto suministrando su propia clave
+      attestation: {
+        version: '1.0',
+        processId: 'pid-1',
+        executionId: 'pid-1',
+        executionScope: PR02_P0_SCOPE,
+        commitSha: VALID_HEAD,
+        consultadoEn: '2026-11-05T01:00:00.000Z',
+        entorno: 'HOMOLOGACION',
+        transportType: 'OFFICIAL',
+        executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+        ivaRawSha: 'a'.repeat(64),
+        ivaNormSha: 'b'.repeat(64),
+        condRawSha: 'c'.repeat(64),
+        condNormSha: 'd'.repeat(64),
+        goAuthorizationId: 'GO-ID-1',
+        goAuthorizationSha256: 'e'.repeat(64),
+        issuedAt: '2026-11-05T01:00:00.000Z',
+        signature: 'f'.repeat(64),
+        accredited: true,
+        provenance: 'VERIFIED',
+      },
+    }
+
+    expect(() => validatePr02P1ImportEvidence({
+      manifest: manifestWithKey,
+      ivaText: 'iva',
+      conditionText: 'cond',
+    })).toThrow(/P1_IMPORT_FORBIDDEN: El manifiesto no puede proveer su propia clave de autoridad/)
+  })
+
+  // 37. (Regresión 9) Atestación firmada por autoridad no confiable rechazada en P1
+  it('37. (Regresión 9) Atestación firmada por autoridad apócrifa/no confiable es rechazada en P1', () => {
+    const trustedKey = 'TRUSTED_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
+    const attackerKey = 'ATTACKER_FAKE_AUTHORITY_KEY_HEX_9999999999_XY'
+
+    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
+    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+    const ivaNormSha = createHash('sha256').update(ivaText).digest('hex')
+    const condNormSha = createHash('sha256').update(condText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-attacker-001',
+      ejecucion_autorizada_id: 'pid-attacker-001',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_archivo_normalizado_sha256: condNormSha,
+    }
+
+    const attackerAttestation = createP0Attestation({
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      authoritySecret: attackerKey,
+      goAuthorizationId: 'GO-ATTACKER-ID',
+      goAuthorizationSha256: '3'.repeat(64),
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    })
+
+    const attackerManifest = {
+      ...manifestDraft,
+      origen_verificado: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: 'GO-ATTACKER-ID',
+      go_authorization_sha256: '3'.repeat(64),
+      attestation: attackerAttestation,
+      manifest_sha256: '4'.repeat(64),
+    }
+
+    expect(() => validatePr02P1ImportEvidence({
+      manifest: attackerManifest,
+      ivaText,
+      conditionText: condText,
+      trustedAuthoritySecret: trustedKey,
+      expectedHead: VALID_HEAD,
+    })).toThrow(/P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada/)
+  })
+
+  // 38. (Regresión 10) Evidencia fabricada con hashes correctos rechazada
+  it('38. (Regresión 10) Evidencia fabricada con hashes de contenido exactos pero atestación inválida es rechazada en P1', () => {
+    const trustedKey = 'TRUSTED_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
+    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
+    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+
+    const ivaNormSha = createHash('sha256').update(ivaText).digest('hex')
+    const condNormSha = createHash('sha256').update(condText).digest('hex')
+
+    const fabricatedManifest = {
+      entorno: 'HOMOLOGACION',
+      origen_verificado: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      identificador_proceso: 'pid-fabricated',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      ejecucion_autorizada_id: 'pid-fabricated',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_archivo_normalizado_sha256: condNormSha,
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: 'GO-FAKE-001',
+      go_authorization_sha256: '3'.repeat(64),
+      attestation: {
+        version: '1.0',
+        processId: 'pid-fabricated',
+        executionId: 'pid-fabricated',
+        executionScope: PR02_P0_SCOPE,
+        commitSha: VALID_HEAD,
+        consultadoEn: '2026-11-05T01:00:00.000Z',
+        entorno: 'HOMOLOGACION',
+        transportType: 'OFFICIAL',
+        executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+        ivaRawSha: '1'.repeat(64),
+        ivaNormSha,
+        condRawSha: '2'.repeat(64),
+        condNormSha,
+        goAuthorizationId: 'GO-FAKE-001',
+        goAuthorizationSha256: '3'.repeat(64),
+        issuedAt: '2026-11-05T01:00:00.000Z',
+        signature: '0'.repeat(64), // Firma falsa
+        accredited: true,
+        provenance: 'VERIFIED',
+      },
+    }
+
+    expect(() => validatePr02P1ImportEvidence({
+      manifest: fabricatedManifest,
+      ivaText,
+      conditionText: condText,
+      trustedAuthoritySecret: trustedKey,
+      expectedHead: VALID_HEAD,
+    })).toThrow(/P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada/)
+  })
+
+  // 39. (Regresión 11) Timeout con llamada iniciada y resultado incierto
+  it('39. (Regresión 11) Timeout registra llamada iniciada con resultado incierto (outcomeUnknown) sin reintentos', async () => {
+    let capturedErr: any = null
+    try {
+      await executePr02P0OfficialEvidence(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P0_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          now: '2026-11-05T02:00:00.000Z',
+        },
+        {
+          fetcher: async () => {
+            const err = new Error('ARCA_TIMEOUT_HTTP_REQUEST')
+            err.name = 'AbortError'
+            throw err
+          },
+        }
+      )
+    } catch (err) {
+      capturedErr = err
+    }
+
+    expect(capturedErr).not.toBeNull()
+    expect(capturedErr.P0_CALL_AUDIT_ON_FAILURE).toBe('PASS')
+    expect(capturedErr.outcomeUnknown).toBe(true)
+    expect(capturedErr.callsAttempted).toBe(1)
+    expect(capturedErr.callsCompleted).toBe(0)
+    expect(capturedErr.auditSummary.CALLS_OUTCOME_UNKNOWN).toBe(1)
+    expect(capturedErr.auditSummary.outcomeUnknown).toEqual(['LoginCms'])
+  })
+
+  // 40. (Regresión 12) SOAP Fault sin reintento
+  it('40. (Regresión 12) SOAP Fault registra fallo sin reintento automático', async () => {
+    let capturedErr: any = null
+    const faultXml = `<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"><soap:Body><soap:Fault><faultcode>soap:Server</faultcode><faultstring>Error interno ARCA</faultstring></soap:Fault></soap:Body></soap:Envelope>`
+
+    try {
+      await executePr02P0OfficialEvidence(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P0_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          now: '2026-11-05T02:00:00.000Z',
+        },
+        {
+          wsaaLogin: async () => faultXml,
+        }
+      )
+    } catch (err) {
+      capturedErr = err
+    }
+
+    expect(capturedErr).not.toBeNull()
+    expect(capturedErr.message).toContain('WSAA_FAULT:soap:Server')
+    expect(capturedErr.P0_CALL_AUDIT_ON_FAILURE).toBe('PASS')
+    expect(capturedErr.callsAttempted).toBe(1)
+    expect(capturedErr.callsCompleted).toBe(0)
+    expect(capturedErr.auditSummary.CALLS_ATTEMPTED).toBe(1)
+    expect(capturedErr.auditSummary.CALLS_FAILED).toBe(1)
+  })
+
+  // 41. (Regresión 13) Fallo de persistencia local después de respuestas oficiales
+  it('41. (Regresión 13) Fallo de persistencia tras llamadas exitosas preserva auditoría y no declara adquisición completa', async () => {
+    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const signedDoc = createSignedPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      emitido_en: '2026-11-05T00:00:00.000Z',
+      vence_en: '2026-11-05T03:00:00.000Z',
+    }, authoritySecret)
+
+    let capturedErr: any = null
+    try {
+      await executePr02P0OfficialEvidence(
+        {
+          authorized: true,
+          dryRun: false,
+          scope: PR02_P0_SCOPE,
+          projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+          head: VALID_HEAD,
+          expectedHead: VALID_HEAD,
+          now: '2026-11-05T02:00:00.000Z',
+          evidenceDir: 'src/forbidden-evidence-dir',
+          saveEvidence: true,
+          goAuthorizationDoc: signedDoc,
+          trustedGoAuthoritySecret: authoritySecret,
+          allowTestKeys: true,
+          existingTa: {
+            token: 'TOKEN_VALID',
+            sign: 'SIGN_VALID',
+            vence_en: '2026-11-05T06:00:00.000Z',
+            estado: 'DISPONIBLE',
+          },
+        },
+        {
+          wsfeTiposIva: async () => SYNTHETIC_TIPOS_IVA_RESPONSE,
+          wsfeCondicionIva: async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        }
+      )
+    } catch (err) {
+      capturedErr = err
+    }
+
+    expect(capturedErr).not.toBeNull()
+    expect(capturedErr.message).toContain('P0_PERSISTENCE_FAILED')
+    expect(capturedErr.P0_ACQUISITION_COMPLETED).toBe(false)
+    expect(capturedErr.P0_CALL_AUDIT_ON_FAILURE).toBe('PASS')
+    expect(capturedErr.callsAttempted).toBe(2)
+    expect(capturedErr.callsCompleted).toBe(2)
+  })
+
+  // 42. (Regresión 14) Dry-run con cero conexiones externas
+  it('42. (Regresión 14) Dry-run garantiza cero conexiones externas, cero escrituras y cero llamadas ARCA', async () => {
+    const reportDry = await executePr02P0OfficialEvidence({ dryRun: true })
+    expect(reportDry.execution).toBe('DRY_RUN')
+    expect(reportDry.ARCA_CALLS_NEW).toBe(0)
+    expect(reportDry.STAGING_WRITES_NEW).toBe(0)
+    expect(reportDry.PRODUCTION_MUTATIONS).toBe(0)
+    expect(reportDry.auditCounts?.CALLS_ATTEMPTED).toBe(0)
+    expect(reportDry.auditCounts?.CALLS_COMPLETED).toBe(0)
+    expect(reportDry.P0_EXTERNAL_GO_VALIDATION).toBe('NOT_RUN')
+    expect(reportDry.GO_AUTHORIZATION).toBe('NOT_RUN')
+    expect(reportDry.EVIDENCE_PROVENANCE).toBe('UNVERIFIED')
+
+    const reportUnauth = await executePr02P0OfficialEvidence({ authorized: false })
+    expect(reportUnauth.execution).toBe('DRY_RUN')
+    expect(reportUnauth.ARCA_CALLS_NEW).toBe(0)
+    expect(reportUnauth.STAGING_WRITES_NEW).toBe(0)
+    expect(reportUnauth.PRODUCTION_MUTATIONS).toBe(0)
+    expect(reportUnauth.auditCounts?.CALLS_ATTEMPTED).toBe(0)
+    expect(reportUnauth.auditCounts?.CALLS_COMPLETED).toBe(0)
   })
 })

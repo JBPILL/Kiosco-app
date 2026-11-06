@@ -2160,3 +2160,31 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
     - `PR02_READY_FOR_EMISSION_GO = false`
     - 159/159 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+- **Hardening Final de Autorización Externa, Custodia y Procedencia PR02-P0 (05/11/2026)**:
+  - Eliminación total de pasaje de secretos por argumentos: sustitución obligatoria de `-GoToken` / `--go-token` por `-GoFile` / `--go-file` en el wrapper PowerShell y la CLI. La bandera `--go-token` es prohibida con `CLI_FORBIDDEN_ARGUMENT`.
+  - Ni el token en crudo, ni la firma HMAC ni el nonce sensible se incorporan en `createP0Attestation` ni en `manifest.json`. Solo se persisten `go_authorization_id` y `go_authorization_sha256` (hash SHA-256 del documento canónico firmado). Test de regresión confirma que no se filtran secretos en archivos generados.
+  - Validación estructurada del documento GO externo mediante `validatePr02P0GoAuthorization`: verificación criptográfica HMAC contra `PR02_P0_GO_AUTHORITY_SECRET`, exigiendo entorno `HOMOLOGACION`, commit SHA de 40 hex coincidente con HEAD, operaciones permitidas (`LoginCms`, `FEParamGetTiposIva`, `FEParamGetCondicionIvaReceptor`), límites estrictos (`loginCmsMax <= 1, tiposIvaMax <= 1, condicionIvaReceptorMax <= 1, totalMax <= 3`), y nonce de un solo uso.
+  - Registro de consumo anti-replay (`markGoAuthorizationConsumed`, `isGoAuthorizationConsumed`). Reutilizar un GO lanza `GO_AUTHORIZATION_ALREADY_CONSUMED`.
+  - Fail-closed en Etapa 1: validación obligatoria de la autorización antes de procesar credenciales o CMS (`P0_EXTERNAL_GO_VALIDATION = FAIL`).
+  - Separación conceptual estricta: `GO_AUTHORIZATION = VERIFIED` (previa a la red) y `EVIDENCE_PROVENANCE = VERIFIED` (posterior a la atestación oficial).
+  - Rechazo en P1 a manifiestos que suministren su propia clave de autoridad (`P1_IMPORT_FORBIDDEN`).
+  - El tracker computa llamadas completadas únicamente tras el parseo exitoso de respuestas SOAP. Fallos y SOAP Faults se registran como fallidos pero nunca como completados. Ante fallos de persistencia en disco se preservan los contadores y se adjunta `P0_ACQUISITION_COMPLETED = false`.
+  - Suite de tests ampliada a 42 tests en `fiscalPr02P0Collector.test.ts` (14 nuevos tests de regresión).
+  - Estado:
+    - `P0_EXTERNAL_GO_VALIDATION = PASS (en prueba) / FAIL (sin GO)`
+    - `P0_GO_SINGLE_USE_GUARD = PASS`
+    - `P0_GO_SECRET_EXPOSURE = NONE`
+    - `P0_TRUSTED_ATTESTATION = PASS`
+    - `P1_UNTRUSTED_SIGNATURE_REJECTION = PASS`
+    - `P0_CALL_AUDIT_ON_FAILURE = PASS`
+    - `GO_AUTHORIZATION = NOT_RUN (dry-run)`
+    - `EVIDENCE_PROVENANCE = UNVERIFIED`
+    - `PR02_P0_REMOTE_EXECUTION_READY = false`
+    - `P0_REMOTE_EXECUTED = false`
+    - `PR02_P1_REMOTE_EXECUTION_READY = false`
+    - `PR02_P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - 173 tests PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

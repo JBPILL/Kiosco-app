@@ -77,6 +77,32 @@ export function createPr02P0CallTracker(options?: {
   totalMax?: number
 }): Pr02P0CallTracker
 
+export const PR02_P0_AUTHORITY_ENV: string
+export const PR02_P0_GO_AUTHORITY_ENV: string
+export function validatePr02P0GoAuthorization(
+  signedGoDoc: unknown,
+  options?: {
+    expectedHead?: string
+    trustedGoAuthoritySecret?: string
+    allowTestKeys?: boolean
+    now?: string | number | Date
+  }
+): {
+  readonly valid: true
+  readonly authorizationId: string
+  readonly approverId: string
+  readonly scope: string
+  readonly projectRef: string
+  readonly commitSha: string
+  readonly documentSha256: string
+  readonly canonicalDocument: unknown
+  readonly expiresAt: string
+  readonly issuedAt: string
+  readonly singleUseNonce: string
+}
+export function markGoAuthorizationConsumed(authId: unknown): void
+export function isGoAuthorizationConsumed(authId: unknown): boolean
+
 export interface Pr02P0CliArgs {
   readonly authorized: boolean
   readonly dryRun: boolean
@@ -86,7 +112,7 @@ export interface Pr02P0CliArgs {
   readonly expectedHead: string
   readonly evidenceDir: string
   readonly saveEvidence: boolean
-  readonly goAuthorization: string
+  readonly goFilePath?: string
   readonly cmsFilePath: string
 }
 
@@ -124,6 +150,12 @@ export interface Pr02P0ExecutionOptions {
   evidenceDir?: string
   saveEvidence?: boolean
   cmsBase64?: string
+  cmsFilePath?: string
+  goFilePath?: string
+  goAuthorizationDoc?: unknown
+  goAuthorization?: string | unknown
+  trustedGoAuthoritySecret?: string
+  allowTestKeys?: boolean
   existingTa?: string | {
     token?: string
     sign?: string
@@ -155,11 +187,30 @@ export interface Pr02P0ExecutionDeps {
   transportType?: string
 }
 
+export interface Pr02P0ExecutionAuditCounts {
+  readonly CALLS_ATTEMPTED: number
+  readonly CALLS_COMPLETED: number
+  readonly CALLS_FAILED?: number
+  readonly CALLS_OUTCOME_UNKNOWN?: number
+  readonly LOGIN_CMS_CALLS?: number
+  readonly TIPOS_IVA_CALLS?: number
+  readonly CONDICION_IVA_CALLS?: number
+  readonly TOTAL_CALLS?: number
+}
+
 export interface Pr02P0ExecutionReport {
   readonly execution: string
   readonly scope: string
   readonly projectRef: string
   readonly processId?: string
+  readonly P0_EXTERNAL_GO_VALIDATION?: string
+  readonly P0_GO_SINGLE_USE_GUARD?: string
+  readonly P0_GO_SECRET_EXPOSURE?: string
+  readonly P0_TRUSTED_ATTESTATION?: string
+  readonly P1_UNTRUSTED_SIGNATURE_REJECTION?: string
+  readonly P0_CALL_AUDIT_ON_FAILURE?: string
+  readonly GO_AUTHORIZATION?: string
+  readonly EVIDENCE_PROVENANCE?: string
   readonly PR02_P0_EXECUTION?: string
   readonly PR02_P0_LOCAL_PREPARATION: string
   readonly PR02_P0_LOCAL_HARDENING: string
@@ -193,7 +244,7 @@ export interface Pr02P0ExecutionReport {
   readonly STAGING_WRITES_NEW: number
   readonly PRODUCTION_MUTATIONS: number
   readonly UNAUTHORIZED_CONNECTION_ATTEMPTS?: number
-  readonly auditCounts?: unknown
+  readonly auditCounts?: Pr02P0ExecutionAuditCounts
   readonly manifest?: Pr02P0OfficialEvidenceManifest
   readonly evidenceFiles?: readonly string[]
 }

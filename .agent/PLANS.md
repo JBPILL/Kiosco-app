@@ -1046,3 +1046,46 @@ Blindaje de atestación criptográfica, transporte en streaming y trazabilidad d
   - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
   - `PR02_READY_FOR_EMISSION_GO = false`
   - 159/159 tests PASS, PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+
+### 2026-11-05 - Hardening Final de Autorización Externa, Custodia y Procedencia PR02-P0
+
+Robustecimiento integral de la autorización administrativa externa, desacoplamiento de tokens sensibles y custodia estricta de procedencia:
+- **Eliminación Total de GO Sensible en Argumentos y Manifiestos**:
+  - Reemplazo de `--go-token` por `--go-file <ruta>` en `run-pr02-p0-staging-private.ps1` y `execute-pr02-p0-official-evidence.mjs`.
+  - Prohibición explícita de `--go-token` en CLI con `CLI_FORBIDDEN_ARGUMENT`.
+  - Ni el token en crudo, ni la firma HMAC ni el nonce sensible se incorporan en `createP0Attestation` ni en `manifest.json`. Solo se persisten `go_authorization_id` y `go_authorization_sha256` (hash SHA-256 del documento canónico firmado).
+  - Test de regresión confirma que ninguna cadena del token/firma/nonce aparece en `manifest.json` ni en los archivos XML/JSON de evidencia generados.
+- **Validación Estructurada y Criptográfica de la Autorización Externa**:
+  - Esquema estricto y canónico para el documento GO: `aprobador_identidad`, `scope = PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`, `project_ref = acoyfwwmhaeruciyedri`, `entorno = HOMOLOGACION`, `commit_sha` de 40 hex coincidente con HEAD, operaciones permitidas (`LoginCms`, `FEParamGetTiposIva`, `FEParamGetCondicionIvaReceptor`), límites estrictos (`loginCmsMax <= 1, tiposIvaMax <= 1, condicionIvaReceptorMax <= 1, totalMax <= 3`), `identificador`, `vence_en` (> now), `emitido_en` (<= now), y `single_use_nonce` (>= 16 caracteres).
+  - Verificación HMAC-SHA256 contra la clave externa `PR02_P0_GO_AUTHORITY_SECRET`. Claves de prueba son rechazadas para autorización oficial.
+  - Protección anti-replay: registro en memoria de autorizaciones consumidas (`markGoAuthorizationConsumed`, `isGoAuthorizationConsumed`). Reutilizar un GO lanza `GO_AUTHORIZATION_ALREADY_CONSUMED`.
+  - Fail-closed en Etapa 1: validación del documento GO previa a cualquier lectura de credenciales o CMS; sin autorización válida, `P0_EXTERNAL_GO_VALIDATION = FAIL` y `P0_OFFICIAL_NETWORK_ALLOWED = false`, deteniéndose inmediatamente.
+- **Separación Conceptual entre Autorización GO y Atestación de Procedencia**:
+  - `GO_AUTHORIZATION = VERIFIED`: valida la autorización administrativa previa a la conexión oficial.
+  - `EVIDENCE_PROVENANCE = VERIFIED`: certifica la autenticidad e integridad de la evidencia tras recibir y procesar las respuestas oficiales de ARCA mediante el colector confiable.
+  - Llamadores no confiables no pueden auto-declarar `transportType = OFFICIAL` ni generar evidencia aceptada por P1.
+- **Custodia de Claves en Importador P1**:
+  - `validatePr02P1ImportEvidence` rechaza manifiestos que suministren su propia clave de autoridad (`P1_IMPORT_FORBIDDEN: El manifiesto no puede proveer su propia clave de autoridad`). La verificación se realiza siempre contra la clave de autoridad externa confiable.
+- **Trazabilidad de Llamadas y Registro de Fallos**:
+  - El tracker computa llamadas completadas (`recordCall`) únicamente tras el parseo exitoso de la respuesta SOAP (`parseWsaaLoginCmsResponse`, `parseWsfeTiposIvaResponse`, `parseWsfeCondicionIvaResponse`). SOAP Faults y errores de respuesta se registran como fallidas, nunca como completadas.
+  - Fallos de persistencia en disco adjuntan `P0_ACQUISITION_COMPLETED = false` preservando el resumen de auditoría de llamadas intentadas/completadas.
+- **Pruebas de Regresión**:
+  - 14 nuevas pruebas de regresión en `fiscalPr02P0Collector.test.ts` (casos 29 al 42), alcanzando 42 pruebas unitarias/seguridad para P0.
+- **Estado**:
+  - `P0_EXTERNAL_GO_VALIDATION = PASS (en prueba) / FAIL (sin GO)`
+  - `P0_GO_SINGLE_USE_GUARD = PASS`
+  - `P0_GO_SECRET_EXPOSURE = NONE`
+  - `P0_TRUSTED_ATTESTATION = PASS`
+  - `P1_UNTRUSTED_SIGNATURE_REJECTION = PASS`
+  - `P0_CALL_AUDIT_ON_FAILURE = PASS`
+  - `GO_AUTHORIZATION = NOT_RUN (dry-run)`
+  - `EVIDENCE_PROVENANCE = UNVERIFIED`
+  - `PR02_P0_REMOTE_EXECUTION_READY = false`
+  - `P0_REMOTE_EXECUTED = false`
+  - `PR02_P1_REMOTE_EXECUTION_READY = false`
+  - `PR02_P2_REMOTE_EXECUTION_READY = false`
+  - `REAL_PV2_ENABLED = false`
+  - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - 173 tests PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

@@ -2214,3 +2214,36 @@ Tras la auditoría de hardening del colector PR02-P0, se identificaron vulnerabi
 **Consecuencias:**
 `P0_HARDCODED_HMAC_SECRET = REMOVED`, `P0_UNTRUSTED_ATTESTATION_REJECTED = PASS`, `P0_OFFICIAL_PROVENANCE_GUARD = PASS`, `P0_CLI_WSAA_AUTH_PREPARED = PASS`, `P0_CALL_AUDIT_ACCURATE = PASS`, `P0_HTTP_RESPONSE_LIMIT = PASS`, `P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `P1_IMPORT_ALLOWED = false`, `P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
 159/159 tests PASS (28 collector, 17 plan, 29 postgres integration P1/P2, 33 preflight, 9 plan 03c, 37 preparation, 6 postgres A0), PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+### Decisión: Hardening Final de Autorización Externa, Custodia y Procedencia PR02-P0 (05/11/2026)
+
+**Contexto:**
+Tras el endurecimiento inicial de atestación de PR02-P0, se requirió una revisión exhaustiva sobre los siguientes vectores de seguridad:
+1. El pasaje de tokens de autorización mediante `--go-token` / `-GoToken`, exponiéndolos en argumentos de línea de comandos (`argv`).
+2. La falta de validación estructurada y verificación criptográfica HMAC de la autorización externa emitida por el aprobador, así como la falta de protección anti-reutilización (replay).
+3. La inclusión de valores sensibles del GO en la atestación o el manifiesto en lugar de un digest seguro no secreto.
+4. El riesgo de que un manifiesto suministre su propia clave de autoridad en la etapa P1 de importación para auto-acreditarse.
+5. El conteo de llamadas en el audit tracker, donde un fallo SOAP o error de respuesta podía contabilizarse erróneamente como llamada completada (`CALLS_COMPLETED`).
+
+**Decisión:**
+1. **Eliminación Total de GO Sensible en Argumentos y Manifiestos**:
+   - Se reemplazó `--go-token` por `--go-file <ruta>` en `run-pr02-p0-staging-private.ps1` y `execute-pr02-p0-official-evidence.mjs`.
+   - Se prohibió explícitamente `--go-token` con error `CLI_FORBIDDEN_ARGUMENT`.
+   - `createP0Attestation` y `manifest.json` solo almacenan identificadores no secretos (`go_authorization_id`) y digests SHA-256 (`go_authorization_sha256`) del documento canónico firmado; jamás tokens, firmas ni nonces en texto claro.
+2. **Validación Estructurada y Criptográfica de Autorización Externa**:
+   - `validatePr02P0GoAuthorization` valida el esquema canónico del GO: `aprobador_identidad`, `scope`, `project_ref`, `entorno = HOMOLOGACION`, `commit_sha` de 40 hex coincidente con HEAD, operaciones permitidas (`LoginCms`, `FEParamGetTiposIva`, `FEParamGetCondicionIvaReceptor`), límites estrictos (`loginCmsMax <= 1, tiposIvaMax <= 1, condicionIvaReceptorMax <= 1, totalMax <= 3`), vencimiento, emisión y nonce de un solo uso.
+   - Verificación HMAC-SHA256 contra la clave externa `PR02_P0_GO_AUTHORITY_SECRET`.
+   - Protección anti-replay en memoria (`markGoAuthorizationConsumed`, `isGoAuthorizationConsumed`).
+   - Validación fail-closed en Etapa 1 antes de cualquier operación de red o lectura de CMS (`P0_EXTERNAL_GO_VALIDATION = FAIL`).
+3. **Separación de Autorización y Procedencia**:
+   - `GO_AUTHORIZATION = VERIFIED` certifica la aprobación administrativa previa a la conexión.
+   - `EVIDENCE_PROVENANCE = VERIFIED` certifica la integridad de la evidencia posterior a la consulta oficial.
+4. **Custodia Estricta en Importador P1**:
+   - `validatePr02P1ImportEvidence` rechaza tajantemente cualquier manifiesto que provea su propia clave de autoridad (`P1_IMPORT_FORBIDDEN`).
+5. **Auditoría de Llamadas y Registro de Fallos**:
+   - `recordCall` se computa como completada únicamente tras parsear con éxito la respuesta SOAP. Errores o SOAP Faults computan como fallidas, nunca como completadas.
+   - En fallos de persistencia en disco se preservan los contadores de auditoría y se adjunta `P0_ACQUISITION_COMPLETED = false`.
+
+**Consecuencias:**
+`P0_EXTERNAL_GO_VALIDATION = PASS (en prueba) / FAIL (sin GO)`, `P0_GO_SINGLE_USE_GUARD = PASS`, `P0_GO_SECRET_EXPOSURE = NONE`, `P0_TRUSTED_ATTESTATION = PASS`, `P1_UNTRUSTED_SIGNATURE_REJECTION = PASS`, `P0_CALL_AUDIT_ON_FAILURE = PASS`, `GO_AUTHORIZATION = NOT_RUN (dry-run)`, `EVIDENCE_PROVENANCE = UNVERIFIED`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
+173 tests PASS (42 collector, 17 plan, 33 preflight, 9 plan 03c, 37 preparation, 22 execute 03c, etc.), PostgreSQL 17 PASS, build Vite exitoso, secret scan limpio. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

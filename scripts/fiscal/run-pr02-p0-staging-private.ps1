@@ -3,7 +3,7 @@
 param(
     [switch]$DryRun,
     [string]$ExpectedHead,
-    [string]$GoToken,
+    [string]$GoFile,
     [string]$CmsFile,
     [string]$EvidenceDir = '.fiscal-evidence-pr02'
 )
@@ -71,10 +71,13 @@ try {
         if ($head -ne $ExpectedHead) {
             throw "EXPECTED_HEAD_MISMATCH: HEAD local ($head) difiere del esperado ($ExpectedHead)"
         }
-        if ([string]::IsNullOrWhiteSpace($GoToken)) {
-            throw 'MISSING_GO_TOKEN: En ejecucion autorizada se requiere obligatoriamente el parametro -GoToken con la autorizacion externa de GO'
+        if ([string]::IsNullOrWhiteSpace($GoFile)) {
+            throw 'MISSING_GO_FILE: En ejecucion autorizada se requiere obligatoriamente el parametro -GoFile con la ruta al documento estructurado de autorizacion externa (GO)'
         }
-        $GoToken = $GoToken.Trim()
+        $GoFile = $GoFile.Trim()
+        if (-not (Test-Path $GoFile)) {
+            throw "GO_FILE_NOT_FOUND: No se encontro el archivo de autorizacion GO en '$GoFile'"
+        }
     }
 
     # 5. Validacion de version de Node.js
@@ -90,8 +93,8 @@ try {
     } else {
         Write-Host "Iniciando ejecucion AUTORIZADA de PR02-P0 (scope=PR02_P0_OFFICIAL_EVIDENCE_COLLECTION)..." -ForegroundColor Yellow
         $extraArgs = @()
-        if ($GoToken) {
-            $extraArgs += @('--go-token', $GoToken)
+        if ($GoFile) {
+            $extraArgs += @('--go-file', $GoFile)
         }
         if ($CmsFile) {
             $extraArgs += @('--cms-file', $CmsFile)
