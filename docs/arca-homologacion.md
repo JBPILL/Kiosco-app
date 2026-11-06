@@ -2390,6 +2390,37 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
       - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
       - `PR02_READY_FOR_EMISSION_GO = false`
 
+15. **Separación Criptográfica Asimétrica Ed25519 de Autoridades y Anti-Replay Durable (06/11/2026)**:
+    - **Separación Criptográfica Asimétrica Ed25519**:
+      - Eliminación total de HMAC de respaldo y secretos simétricos compartidos entre autoridades y el colector.
+      - Implementación de criptografía asimétrica Ed25519 nativa de Node.js (RFC 8032) con firmas de 64 bytes (128 hex).
+      - La autoridad externa de aprobación administrativa (GO Authority) custodia su clave privada fuera del colector y el colector P0 valida la autorización únicamente con la clave pública de GO (`PR02_P0_GO_PUBLIC_KEY`).
+      - La autoridad externa de atestación (Attestation Authority) custodia su propia clave privada independiente fuera del colector, y el verificador de importación P1 valida la procedencia exclusivamente con la clave pública de atestación (`PR02_P0_ATTESTATION_PUBLIC_KEY`).
+    - **Eliminación Absoluta de Bypasses Booleanos**:
+      - `createOfficialArcaTransport` requiere taxativamente un objeto de autorización GO validado y acreditado (`valid === true`, `authorizationId`, `scope === PR02_P0_SCOPE`), rechazando cualquier objeto o booleano apócrifo (`officialGoAuthorized: true`).
+      - La función `createOfficialArcaTransport` fue desexportada de la interfaz pública externa TypeScript (`.d.mts`).
+    - **Modelo de Confianza Fail-Closed**:
+      - Toda atestación generada internamente por el colector local es catalogada taxativamente como `trustModel: 'SELF_ATTESTED'`, `provenance: 'UNVERIFIED'`, `accredited: false` y `TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED'`.
+      - `validatePr02P1ImportEvidence` rechaza categóricamente cualquier evidencia `SELF_ATTESTED` con `P1_IMPORT_FORBIDDEN: INDEPENDENT_ATTESTATION_REQUIRED`, exigiendo atestación independiente acreditada emitida por la Attestation Authority.
+    - **Remoción de Capacidades de Firma del Runtime**:
+      - Las funciones `createSignedPr02P0GoAuthorization`, `createSignedTestIndependentAttestation` y reseteos en memoria fueron eliminadas de `scripts/fiscal/plan-pr02-parameters.mjs` y trasladadas exclusivamente a `src/test/helpers/fiscalEd25519Signer.ts`.
+    - **Protección Anti-Replay Atómica y Durable**:
+      - Nivel de garantía: `ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'`.
+      - El consumo de la autorización se persiste atómicamente en disco antes de despachar la primera llamada externa de red usando creación exclusiva de archivo (`flag: 'wx'`, `O_CREAT | O_EXCL`) en `.fiscal-evidence-pr02/.consumed-authorizations/consumed-${sha256(authId)}.json`, con validación estricta de directorio contra symlinks y path traversal.
+    - **Endurecimiento Estricto de Validación P1**:
+      - `validatePr02P1ImportEvidence` exige obligatoriamente: `goAuthorizationDoc`, `expectedHead`, `rawIvaSoapText` y `rawConditionSoapText`.
+      - Realiza parsing independiente de los XML SOAP recibidos contra los archivos normalizados JSON para detectar cualquier discrepancia o manipulación de parámetros con `P1_IMPORT_SOAP_PAYLOAD_DISCREPANCY`.
+    - **Suite de Pruebas Adversariales**:
+      - 19 pruebas de seguridad adversarial (casos 55 al 73) cubriendo intentos de bypass booleano, firmas adulteradas, claves públicas cruzadas, expiración, operaciones no autorizadas, repetición durable y discrepancias XML.
+      - 73/73 tests PASS en `fiscalPr02P0Collector.test.ts` y 90/90 tests PR02 totales.
+    - **Invariantes Preservados**:
+      - `ARCA_CALLS_NEW = 0`
+      - `STAGING_WRITES_NEW = 0`
+      - `PRODUCTION_MUTATIONS = 0`
+      - `REAL_PV2_ENABLED = false`
+      - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+      - `PR02_READY_FOR_EMISSION_GO = false`
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

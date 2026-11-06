@@ -98,26 +98,40 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
 }
 
 export const PR02_P0_AUTHORITY_ENV: string
+export const PR02_P0_GO_PUBLIC_KEY_ENV: string
+export const PR02_P0_ATTESTATION_PUBLIC_KEY_ENV: string
+export const PR02_P0_AUTHORITY_ENV: string
 export const PR02_P0_GO_AUTHORITY_ENV: string
 export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
-export const ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
+export const PR02_P0_COMPROMISED_KEYS: readonly string[]
+export const ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 
 export function isTestAuthorityKey(secret: unknown): boolean
-export function validateP0AuthoritySecret(secret: unknown): string
-export function validateP0GoAuthoritySecret(secret: unknown, allowTestKeys?: boolean): string
+export function parseEd25519PublicKey(raw: unknown, name?: string): import('node:crypto').KeyObject
+export function validateP0GoPublicKey(keyInput: unknown, allowTestKeys?: boolean): import('node:crypto').KeyObject
+export function validateP0AttestationPublicKey(keyInput: unknown, allowTestKeys?: boolean): import('node:crypto').KeyObject
+export function validateP0AuthoritySecret(secret: unknown, allowTestKeys?: boolean): import('node:crypto').KeyObject
+export function validateP0GoAuthoritySecret(secret: unknown, allowTestKeys?: boolean): import('node:crypto').KeyObject
 
-export function markGoAuthorizationConsumed(authId: unknown): void
-export function isGoAuthorizationConsumed(authId: unknown): boolean
-export function resetConsumedGoAuthorizationsForTesting(): void
+export function getConsumedAuthorizationFilePath(authId: unknown, options?: { consumedAuthorizationsDir?: string }): {
+  targetPath: string
+  realBase: string
+  cleanId: string
+  idDigest: string
+}
+export function isGoAuthorizationConsumedDurable(authId: unknown, options?: { consumedAuthorizationsDir?: string }): boolean
+export function consumeGoAuthorizationDurable(authId: unknown, options?: { consumedAuthorizationsDir?: string; now?: string | number | Date }): void
+export function markGoAuthorizationConsumed(authId: unknown, options?: { consumedAuthorizationsDir?: string }): void
+export function isGoAuthorizationConsumed(authId: unknown, options?: { consumedAuthorizationsDir?: string }): boolean
 
 export interface GoAuthorityInterface {
   readonly validateAuthorization: typeof validatePr02P0GoAuthorization
-  readonly createAuthorization: typeof createSignedPr02P0GoAuthorization
-  readonly validateSecret: typeof validateP0GoAuthoritySecret
-  readonly markConsumed: typeof markGoAuthorizationConsumed
-  readonly isConsumed: typeof isGoAuthorizationConsumed
-  readonly resetConsumedForTesting: typeof resetConsumedGoAuthorizationsForTesting
-  readonly ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly validatePublicKey: typeof validateP0GoPublicKey
+  readonly validateSecret: typeof validateP0GoPublicKey
+  readonly consumeAuthorizationDurable: typeof consumeGoAuthorizationDurable
+  readonly isConsumed: typeof isGoAuthorizationConsumedDurable
+  readonly markConsumed: typeof consumeGoAuthorizationDurable
+  readonly ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 }
 export const GoAuthority: GoAuthorityInterface
 
@@ -146,17 +160,14 @@ export interface Pr02P0SignedGoAuthorization {
   readonly signature: string
 }
 
-export function createSignedPr02P0GoAuthorization(
-  doc?: Partial<Pr02P0GoAuthorizationDoc>,
-  secret?: string
-): Pr02P0SignedGoAuthorization
-
 export function validatePr02P0GoAuthorization(
   signedGoDoc: unknown,
   options?: {
     expectedHead?: string
-    trustedGoAuthoritySecret?: string
+    trustedGoPublicKey?: unknown
+    trustedGoAuthoritySecret?: unknown
     allowTestKeys?: boolean
+    consumedAuthorizationsDir?: string
     now?: string | number | Date
   }
 ): {
@@ -221,17 +232,21 @@ export function verifyP0Attestation(
   options?: {
     manifest?: unknown
     commitSha?: string
-    authoritySecret?: string
+    trustedAttestationPublicKey?: unknown
+    authoritySecret?: unknown
     goAuthorizationId?: string
     goAuthorizationSha256?: string
+    allowTestKeys?: boolean
   }
-): { readonly valid: boolean; readonly reason?: string; readonly errorCategory?: string }
+): { readonly valid: boolean; readonly reason?: string; readonly errorCategory?: string; readonly trustModel?: string }
 
 export interface AttestationAuthorityInterface {
-  readonly validateSecret: typeof validateP0AuthoritySecret
+  readonly validatePublicKey: typeof validateP0AttestationPublicKey
+  readonly validateSecret: typeof validateP0AttestationPublicKey
   readonly createAttestation: typeof createP0Attestation
   readonly verifyAttestation: typeof verifyP0Attestation
-  readonly isAuthorityAvailable: () => boolean
+  readonly isAuthorityAvailable: (options?: { trustedAttestationPublicKey?: unknown; allowTestKeys?: boolean }) => boolean
+  readonly PUBLIC_KEY_ENV: string
   readonly AUTHORITY_ENV: string
 }
 export const AttestationAuthority: AttestationAuthorityInterface
@@ -278,6 +293,8 @@ export function createPr02P0OfficialEvidenceManifest(params?: {
   attestation?: Pr02P0Attestation
   commit_sha?: string
   authoritySecret?: string
+  trustedAttestationPublicKey?: unknown
+  allowTestKeys?: boolean
   go_authorization_id?: string
   go_authorization_sha256?: string
   goAuthorization?: string | unknown
@@ -285,7 +302,7 @@ export function createPr02P0OfficialEvidenceManifest(params?: {
 
 export function computeP0ManifestDigest(manifest: unknown): string
 
-export function validatePr02P0Manifest(manifest: unknown): boolean
+export function validatePr02P0Manifest(manifest: unknown, options?: { allowUnaccredited?: boolean }): boolean
 
 export function validatePr02P1ImportEvidence(options?: {
   manifest?: unknown
@@ -296,11 +313,15 @@ export function validatePr02P1ImportEvidence(options?: {
   now?: string | number | Date
   expectedHead?: string
   head?: string
-  authoritySecret?: string
-  trustedAuthoritySecret?: string
-  trustedGoAuthoritySecret?: string
+  authoritySecret?: unknown
+  trustedAuthoritySecret?: unknown
+  trustedAttestationPublicKey?: unknown
+  trustedGoPublicKey?: unknown
+  trustedGoAuthoritySecret?: unknown
   goAuthorizationDoc?: unknown
+  independentAttestation?: unknown
   allowTestKeys?: boolean
+  consumedAuthorizationsDir?: string
   expectedHashes?: { iva?: string; condition?: string }
 }): {
   readonly status: 'PASS'
@@ -311,7 +332,7 @@ export function validatePr02P1ImportEvidence(options?: {
   readonly TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED'
   readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false
   readonly trustModel: 'LIMITED'
-  readonly ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
   readonly consultado_en: string
   readonly ivaSha256: string
   readonly conditionSha256: string
@@ -390,4 +411,14 @@ export function verifyPr02P2Postcheck(raw: unknown, expected?: { fuenteSha256?: 
   readonly rev4HashMatch: true
   readonly rev3Unchanged: true
   readonly expectedIssuerEnabled: false
+}
+
+export function parseWsfeTiposIvaResponse(rawXml: string, consultadoEn?: string): {
+  ivaText: string
+  alicuotas: unknown[]
+}
+
+export function parseWsfeCondicionIvaReceptorResponse(rawXml: string, consultadoEn?: string): {
+  conditionText: string
+  condiciones: unknown[]
 }

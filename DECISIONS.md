@@ -2311,3 +2311,41 @@ El modelo de atestación de PR02-P0 requería eliminar garantías meramente decl
 **Consecuencias:**
 `PR02_P0_LOCAL_HARDENING = PASS`, `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`, `P0_CLI_TRANSPORT_WIRING = PASS`, `P0_WSAA_TA_GUARD = PASS`, `P0_EXACT_ENDPOINT_GUARD = PASS`, `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`, `P0_PROVENANCE_ATTESTATION = PASS`, `P0_FAKE_MANIFEST_REJECTED = PASS`, `P0_PRIVATE_EVIDENCE_STORAGE = PASS`, `P0_AUDIT_COUNTS_ACCURATE = PASS`, `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`, `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`, `ANTI_REPLAY_GUARANTEE_LEVEL = PROCESS_LOCAL_ONE_TIME_USE`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
 54/54 tests PASS en `fiscalPr02P0Collector.test.ts`, 71/71 tests PR02 PASS. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+## Separación Criptográfica Asimétrica Ed25519 de Autoridades y Protección Anti-Replay Durable (06/11/2026)
+
+**Contexto:**
+Una auditoría técnica adversarial e independiente identificó seis hallazgos críticos de diseño en la frontera de confianza y mecanismos de atestación de PR02-P0:
+1. **Hallazgo A (Bypass booleano en transporte oficial)**: `createOfficialArcaTransport` admitía una opción `{ officialGoAuthorized: true }` sin requerir la validación de un documento GO firmado por la autoridad administrativa externa.
+2. **Hallazgo B (Modelo de confianza autocertificado)**: El propio colector generaba y firmaba atestaciones marcadas como `accredited: true` y `provenance: 'VERIFIED'`, permitiendo que un proceso comprometido declarase acreditación oficial sin intervención de una autoridad independiente.
+3. **Hallazgo C (Criptografía simétrica HMAC compartida)**: Uso de clave secreta simétrica compartida entre emisor de GO, colector y validador P1, exponiendo el sistema a falsificación total si la clave se filtraba.
+4. **Hallazgo D (Capacidades de firma expuestas en runtime)**: `scripts/fiscal/plan-pr02-parameters.mjs` exportaba funciones para firmar autorizaciones GO (`createSignedPr02P0GoAuthorization`), crear atestaciones y resetear en memoria los consumos de un solo uso.
+5. **Hallazgo E (Confianza ciega en JSON normalizado en P1)**: `validatePr02P1ImportEvidence` no verificaba independientemente el contenido de los XML SOAP crudos ni exigía de forma obligatoria el documento GO original firmado.
+6. **Hallazgo F (Garantía anti-replay efímera en memoria)**: El registro de un solo uso se mantenía en un Set en memoria, reiniciándose ante cada ejecución del proceso.
+
+**Decisión:**
+1. **Criptografía Asimétrica Ed25519 (RFC 8032)**:
+   - Se reemplazó completamente HMAC por Ed25519 nativo de Node.js con firmas estándar de 64 bytes (128 caracteres hexadecimales).
+   - Se implementó separación estricta de pares de claves:
+     - `GO Authority`: Custodia su clave privada fuera del colector y el repositorio. P0 verifica la autorización con `PR02_P0_GO_PUBLIC_KEY`.
+     - `Attestation Authority`: Custodia su clave privada independiente fuera del colector y el repositorio. P1 verifica la atestación con `PR02_P0_ATTESTATION_PUBLIC_KEY`.
+2. **Eliminación Total del Bypass Booleano**:
+   - `createOfficialArcaTransport(verifiedGoAuth)` requiere imperativamente un objeto de autorización GO validado y acreditado (`valid === true`, `authorizationId`, `scope === PR02_P0_SCOPE`).
+   - Se desexportó `createOfficialArcaTransport` de la declaración TypeScript pública (`.d.mts`).
+3. **Redefinición Fail-Closed del Modelo de Confianza**:
+   - Toda atestación local generada por el colector es taxativamente catalogada como `trustModel: 'SELF_ATTESTED'`, `provenance: 'UNVERIFIED'`, `accredited: false` y `TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED'`.
+   - `validatePr02P1ImportEvidence` rechaza taxativamente atestaciones locales con `P1_IMPORT_FORBIDDEN: INDEPENDENT_ATTESTATION_REQUIRED`, exigiendo atestación independiente emitida por la Attestation Authority (`INDEPENDENT_ATTESTED`).
+4. **Aislamiento de Capacidades de Firma**:
+   - Se eliminaron las funciones de firma y reseteo de replay del runtime de producción (`plan-pr02-parameters.mjs`) y se confinaron a `src/test/helpers/fiscalEd25519Signer.ts`.
+5. **Endurecimiento Estricto del Validador P1**:
+   - `validatePr02P1ImportEvidence` exige obligatoriamente: `goAuthorizationDoc`, `expectedHead`, `rawIvaSoapText` y `rawConditionSoapText`.
+   - Implementa un parser XML independiente sobre los SOAP crudos y compara los parámetros reconstruidos con el JSON normalizado, detectando cualquier adulteración con `P1_IMPORT_SOAP_PAYLOAD_DISCREPANCY`.
+6. **Protección Anti-Replay Durable y Atómica**:
+   - Se elevó la garantía a `ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'`.
+   - Se persiste el consumo atómicamente en disco antes de realizar la primera llamada de red (`flag: 'wx'`, `O_CREAT | O_EXCL`) en `.fiscal-evidence-pr02/.consumed-authorizations/consumed-${sha256(authId)}.json`, con validación estricta de directorio contra symlinks y path traversal.
+7. **Pruebas Adversariales**:
+   - Se incorporaron 19 pruebas de seguridad adversarial (casos 55 al 73) cubriendo intentos de bypass booleano, firmas adulteradas, claves públicas cruzadas, expiración, operaciones no autorizadas, repetición durable y discrepancias XML.
+
+**Consecuencias:**
+`PR02_P0_LOCAL_HARDENING = PASS`, `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`, `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`, `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
+73/73 tests PASS en `fiscalPr02P0Collector.test.ts`, 90/90 tests PR02 PASS. Build TypeScript limpio PASS. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

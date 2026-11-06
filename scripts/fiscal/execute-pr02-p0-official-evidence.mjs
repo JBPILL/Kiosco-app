@@ -26,8 +26,11 @@ import {
   PR02_P0_COLECTOR_IDENTIDAD,
   PR02_P0_AUTHORITY_ENV,
   PR02_P0_GO_AUTHORITY_ENV,
+  PR02_P0_GO_PUBLIC_KEY_ENV,
+  PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   ANTI_REPLAY_GUARANTEE_LEVEL,
   validatePr02P0GoAuthorization,
+  consumeGoAuthorizationDurable,
   markGoAuthorizationConsumed,
   isGoAuthorizationConsumed,
   createPr02P0OfficialEvidenceManifest,
@@ -58,8 +61,11 @@ export {
   PR02_P0_COLECTOR_IDENTIDAD,
   PR02_P0_AUTHORITY_ENV,
   PR02_P0_GO_AUTHORITY_ENV,
+  PR02_P0_GO_PUBLIC_KEY_ENV,
+  PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   ANTI_REPLAY_GUARANTEE_LEVEL,
   validatePr02P0GoAuthorization,
+  consumeGoAuthorizationDurable,
   markGoAuthorizationConsumed,
   isGoAuthorizationConsumed,
   buildWsaaLoginCmsSoapRequest,
@@ -178,9 +184,20 @@ export function validateP0EndpointUrl(url, serviceName = 'ARCA') {
  * Implementa transporte HTTPS estricto, con timeout, prohibición de redirecciones,
  * límite de tamaño de respuesta, validación de Content-Type, allowlist de operaciones SOAP
  * y límite interno autónomo de llamadas.
- * Sólo puede activarse con un GO explícito futuro (officialGoAuthorized === true).
+ * Sólo puede instanciarse con un objeto de autorización GO previamente verificado.
  */
-export function createOfficialArcaTransport(options = {}) {
+export function createOfficialArcaTransport(verifiedGoAuth, options = {}) {
+  if (
+    !verifiedGoAuth ||
+    typeof verifiedGoAuth !== 'object' ||
+    verifiedGoAuth.valid !== true ||
+    !verifiedGoAuth.authorizationId ||
+    typeof verifiedGoAuth.authorizationId !== 'string' ||
+    verifiedGoAuth.scope !== PR02_P0_SCOPE
+  ) {
+    throw new Error('OFFICIAL_NETWORK_GO_REQUIRED: El transporte oficial de red a ARCA requiere un objeto de autorización GO previamente verificado (validatePr02P0GoAuthorization)')
+  }
+
   const timeoutMs = options.timeoutMs || 15000
   const maxResponseBytes = options.maxResponseBytes || 2 * 1024 * 1024 // 2MB
   const internalTracker = createPr02P0CallTracker()
@@ -191,8 +208,13 @@ export function createOfficialArcaTransport(options = {}) {
     async postSoap(url, soapAction, soapBody) {
       validateP0EndpointUrl(url)
 
-      if (options.officialGoAuthorized !== true) {
-        throw new Error('OFFICIAL_NETWORK_GO_REQUIRED: La llamada oficial de red a ARCA requiere autorización explícita de un solo uso (GO) y credenciales en entorno seguro')
+      if (
+        !verifiedGoAuth ||
+        verifiedGoAuth.valid !== true ||
+        !verifiedGoAuth.authorizationId ||
+        verifiedGoAuth.scope !== PR02_P0_SCOPE
+      ) {
+        throw new Error('OFFICIAL_NETWORK_GO_REQUIRED: La llamada oficial de red a ARCA requiere autorización explícita de un solo uso (GO) previamente verificada')
       }
 
       const actionStr = String(soapAction ?? '')
@@ -1042,9 +1064,16 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     }
 
     try {
+      const goPubKey =
+        options.trustedGoPublicKey ||
+        options.trustedGoAuthoritySecret ||
+        process.env[PR02_P0_GO_PUBLIC_KEY_ENV] ||
+        process.env[PR02_P0_GO_AUTHORITY_ENV]
+
       goAuthResult = validatePr02P0GoAuthorization(goDoc, {
         expectedHead,
-        trustedGoAuthoritySecret: options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV],
+        trustedGoPublicKey: goPubKey,
+        consumedAuthorizationsDir: options.consumedAuthorizationsDir,
         allowTestKeys: Boolean(options.allowTestKeys),
         now: options.now,
       })
@@ -1056,9 +1085,16 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     }
   } else if (goDoc) {
     try {
+      const goPubKey =
+        options.trustedGoPublicKey ||
+        options.trustedGoAuthoritySecret ||
+        process.env[PR02_P0_GO_PUBLIC_KEY_ENV] ||
+        process.env[PR02_P0_GO_AUTHORITY_ENV]
+
       goAuthResult = validatePr02P0GoAuthorization(goDoc, {
         expectedHead,
-        trustedGoAuthoritySecret: options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV],
+        trustedGoPublicKey: goPubKey,
+        consumedAuthorizationsDir: options.consumedAuthorizationsDir,
         allowTestKeys: true,
         now: options.now,
       })
@@ -1124,10 +1160,22 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     throw new Error("WSAA_CMS_REQUIRED: Se requiere CMS PKCS#7 firmado válido para LoginCms. 'MOCK_CMS' prohibido en ejecución oficial")
   }
 
-  // Etapa 3: Autorización efectiva de transporte
-  const officialTransport = !isSimulatedTransport
-    ? createOfficialArcaTransport({ officialGoAuthorized: Boolean(goAuthResult && goAuthResult.valid) })
-    : null
+  // Etapa 3: Autorización efectiva de transporte y consumo durable previo a llamadas
+  let officialTransport = null
+  if (!isSimulatedTransport) {
+    if (!goAuthResult || goAuthResult.valid !== true) {
+      throw new Error('OFFICIAL_NETWORK_GO_REQUIRED: Se requiere autorización GO válida para ejecutar transporte oficial')
+    }
+    // Consumo DURABLE y ATÓMICO antes de cualquier llamada externa (anti-replay guard)
+    consumeGoAuthorizationDurable(goAuthResult.authorizationId, {
+      consumedAuthorizationsDir: options.consumedAuthorizationsDir,
+      now: options.now,
+    })
+    officialTransport = createOfficialArcaTransport(goAuthResult, {
+      timeoutMs: options.timeoutMs,
+      maxResponseBytes: options.maxResponseBytes,
+    })
+  }
 
   // Etapa 4: Ejecución controlada de llamadas
   // Si no hay TA reutilizable, ejecutar LoginCms
@@ -1362,16 +1410,8 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       enhancedError.callsAttempted = auditSummary.attempted.length
       enhancedError.callsCompleted = auditSummary.completed.length
       enhancedError.cause = saveErr
-      if (!isSimulatedTransport && goAuthResult && goAuthResult.authorizationId) {
-        markGoAuthorizationConsumed(goAuthResult.authorizationId)
-      }
       throw enhancedError
     }
-  }
-
-  // Consumo efectivo de la autorización GO (single-use guard)
-  if (!isSimulatedTransport && goAuthResult && goAuthResult.authorizationId) {
-    markGoAuthorizationConsumed(goAuthResult.authorizationId)
   }
 
   const auditSummary = tracker.getAuditSummary()
@@ -1386,7 +1426,7 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     P0_EXTERNAL_GO_VALIDATION: isSimulatedTransport ? 'NOT_RUN' : (goAuthResult ? 'PASS' : 'FAIL'),
     P0_GO_SINGLE_USE_GUARD: 'PASS',
     P0_GO_SECRET_EXPOSURE: 'NONE',
-    P0_TRUSTED_ATTESTATION: isAccredited ? 'PASS' : 'FAIL',
+    P0_TRUSTED_ATTESTATION: isAccredited ? 'PASS' : 'UNACCREDITED_LOCAL',
     P1_UNTRUSTED_SIGNATURE_REJECTION: 'PASS',
     P0_CALL_AUDIT_ON_FAILURE: 'PASS',
     PR02_P0_LOCAL_PREPARATION: 'PASS',
@@ -1411,11 +1451,11 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     CONTENT_INTEGRITY: 'PASS',
     OFFICIAL_PROVENANCE: attestation.provenance,
     GO_AUTHORIZATION: isSimulatedTransport ? 'NOT_RUN' : 'VERIFIED',
-    EVIDENCE_PROVENANCE: isAccredited ? 'VERIFIED' : 'UNVERIFIED',
+    EVIDENCE_PROVENANCE: 'UNVERIFIED',
     ANTI_REPLAY_GUARANTEE_LEVEL,
-    EVIDENCE_INTEGRITY: 'PASS',
-    EVIDENCE_CUSTODY_ATTESTED: isAccredited,
-    TRUSTED_EXECUTION_BOUNDARY: isSimulatedTransport ? 'UNVERIFIED' : 'VERIFIED',
+    EVIDENCE_INTEGRITY: isDryRun ? 'NOT_RUN' : 'PASS',
+    EVIDENCE_CUSTODY_ATTESTED: false,
+    TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
     ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
     P0_PROVENANCE_TRUST_MODEL: 'SELF_ATTESTED',
     P1_OFFICIAL_PROVENANCE_TRUST: 'LIMITED',

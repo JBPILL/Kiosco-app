@@ -45,7 +45,17 @@ import {
   verifyPr02P1Postcheck,
   verifyPr02P2InTxGuard,
   verifyPr02P2Postcheck,
+  parseWsfeTiposIvaResponse,
+  parseWsfeCondicionIvaReceptorResponse,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
+import {
+  generateEphemeralGoAuthorityKeyPair,
+  generateEphemeralAttestationKeyPair,
+  createSignedTestPr02P0GoAuthorization,
+  createSignedTestIndependentAttestation,
+  SYNTHETIC_TIPOS_IVA_RESPONSE,
+  SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+} from './helpers/fiscalEd25519Signer'
 import {
   PR02_TARGET_CATALOG_REVISION_R4,
   PR02_SUPPORTED_CATALOG_REVISIONS,
@@ -391,9 +401,35 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
 
   // 7. P0 Manifest creation and validation
   it('creates and validates P0 official evidence manifest (zero secrets allowed)', () => {
-    const trustedAuthoritySecret = 'authority-secret-20261105-prov-7f8e9d0a1b2c3d4e5f6a'
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const { privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const commitSha = '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb'
     const ivaHash = 'a'.repeat(64)
     const condHash = 'b'.repeat(64)
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      commit_sha: commitSha,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+      emitido_en: '2026-11-04T12:00:00.000Z',
+      vence_en: '2026-11-04T16:00:00.000Z',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'P0_PROC_001',
+      executionId: 'e1000000-2026-4011-a001-000000000001',
+      commitSha,
+      consultadoEn: '2026-11-04T12:00:00.000Z',
+      ivaRawSha: ivaHash,
+      ivaNormSha: ivaHash,
+      condRawSha: condHash,
+      condNormSha: condHash,
+      goAuthorizationId: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      goAuthorizationSha256: goAuthSha,
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    }, attPriv)
+
     const manifest = createPr02P0OfficialEvidenceManifest({
       consultado_en: '2026-11-04T12:00:00.000Z',
       identificador_proceso: 'P0_PROC_001',
@@ -406,9 +442,12 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
       condition_archivo_normalizado_sha256: condHash,
       transporte_validado: true,
       transport_type: 'OFFICIAL',
-      commit_sha: '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb',
-      goAuthorization: 'GO-PR02-P0-HOMOLOGACION-20261105',
-      authoritySecret: trustedAuthoritySecret,
+      commit_sha: commitSha,
+      go_authorization_id: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      go_authorization_sha256: goAuthSha,
+      attestation,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
 
     expect(manifest.entorno).toBe('HOMOLOGACION')
@@ -480,38 +519,78 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
 
   // 8. P1 Import evidence validation
   it('validates P1 import evidence against P0 manifest', () => {
-    const trustedAuthoritySecret = 'authority-secret-20261105-prov-7f8e9d0a1b2c3d4e5f6a'
-    const ivaSha = 'a'.repeat(64)
-    const condSha = 'b'.repeat(64)
-    const expectedIvaSha = createHash('sha256').update(SYNTHETIC_IVA_EVIDENCE).digest('hex')
-    const expectedCondSha = createHash('sha256').update(SYNTHETIC_CONDITION_EVIDENCE).digest('hex')
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const commitSha = '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb'
 
-    // Crear evidencias con hashes predecibles
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-04T12:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-04T12:00:00.000Z')
+    const ivaText = ivaParsed.ivaText
+    const condText = condParsed.conditionText
+    const rawIvaSoapText = SYNTHETIC_TIPOS_IVA_RESPONSE
+    const rawConditionSoapText = SYNTHETIC_CONDICIONES_IVA_RESPONSE
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      commit_sha: commitSha,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+      emitido_en: '2026-11-04T12:00:00.000Z',
+      vence_en: '2026-11-04T16:00:00.000Z',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const rawIvaSha = createHash('sha256').update(rawIvaSoapText).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaText).digest('hex')
+    const rawCondSha = createHash('sha256').update(rawConditionSoapText).digest('hex')
+    const condNormSha = createHash('sha256').update(condText).digest('hex')
+
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'P0_TEST_PROC_002',
+      executionId: 'e1000000-2026-4011-a001-000000000002',
+      commitSha,
+      consultadoEn: '2026-11-04T12:00:00.000Z',
+      ivaRawSha: rawIvaSha,
+      ivaNormSha,
+      condRawSha: rawCondSha,
+      condNormSha,
+      goAuthorizationId: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      goAuthorizationSha256: goAuthSha,
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    }, attPriv)
+
     const manifest = createPr02P0OfficialEvidenceManifest({
       consultado_en: '2026-11-04T12:00:00.000Z',
       identificador_proceso: 'P0_TEST_PROC_002',
       colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
       ejecucion_autorizada_id: 'e1000000-2026-4011-a001-000000000002',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
-      iva_respuesta_original_sha256: ivaSha,
-      iva_archivo_normalizado_sha256: expectedIvaSha,
-      condition_respuesta_original_sha256: condSha,
-      condition_archivo_normalizado_sha256: expectedCondSha,
+      iva_respuesta_original_sha256: rawIvaSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: rawCondSha,
+      condition_archivo_normalizado_sha256: condNormSha,
       transporte_validado: true,
       transport_type: 'OFFICIAL',
-      commit_sha: '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb',
-      goAuthorization: 'GO-PR02-P0-HOMOLOGACION-20261105',
-      authoritySecret: trustedAuthoritySecret,
+      commit_sha: commitSha,
+      go_authorization_id: 'GO-PR02-P0-HOMOLOGACION-20261105',
+      go_authorization_sha256: goAuthSha,
+      attestation,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
 
     // Importación con hashes coincidentes
     const importRes = validatePr02P1ImportEvidence({
       manifest,
-      ivaText: SYNTHETIC_IVA_EVIDENCE,
-      conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+      ivaText,
+      conditionText: condText,
+      rawIvaSoapText,
+      rawConditionSoapText,
+      goAuthorizationDoc: goDoc,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      expectedHead: commitSha,
+      allowTestKeys: true,
       now: '2026-11-04T14:00:00.000Z',
-      authoritySecret: trustedAuthoritySecret,
-      expectedHead: '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb',
     })
     expect(importRes.status).toBe('PASS')
     expect(importRes.officialEvidenceVerified).toBe(true)
@@ -520,8 +599,15 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
     expect(() =>
       validatePr02P1ImportEvidence({
         manifest: null,
-        ivaText: SYNTHETIC_IVA_EVIDENCE,
-        conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+        ivaText,
+        conditionText: condText,
+        rawIvaSoapText,
+        rawConditionSoapText,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: commitSha,
+        allowTestKeys: true,
       })
     ).toThrow(/P1_IMPORT_MANIFEST_REQUIRED/)
 
@@ -533,8 +619,15 @@ describe('PR02 Parameters Plan & Catalog Refresh Unit Tests', () => {
     expect(() =>
       validatePr02P1ImportEvidence({
         manifest: alteredManifest,
-        ivaText: SYNTHETIC_IVA_EVIDENCE,
-        conditionText: SYNTHETIC_CONDITION_EVIDENCE,
+        ivaText,
+        conditionText: condText,
+        rawIvaSoapText,
+        rawConditionSoapText,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: commitSha,
+        allowTestKeys: true,
       })
     ).toThrow(/P1_IMPORT_IVA_HASH_MISMATCH/)
   })

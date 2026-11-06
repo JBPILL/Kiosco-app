@@ -2225,6 +2225,39 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `ARCA_CALLS_NEW = 0`
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
+- **Auditoría Adversarial y Separación Criptográfica Ed25519 de Autoridades PR02-P0 (06/11/2026)**:
+  - Remediación de las 6 vulnerabilidades de frontera:
+    1. Reemplazo de HMAC por Ed25519 nativo (RFC 8032, 128 hex): Clave privada GO aislada externamente, verificada con `PR02_P0_GO_PUBLIC_KEY`. Clave privada de Atestación aislada externamente, verificada con `PR02_P0_ATTESTATION_PUBLIC_KEY`.
+    2. Eliminación de bypass booleano en `createOfficialArcaTransport`: Requiere objeto GO verificado (`valid === true`, `authorizationId`, `scope === PR02_P0_SCOPE`). Desexportada de `.d.mts`.
+    3. Modelo de confianza fail-closed: Atestaciones del colector son `trustModel: 'SELF_ATTESTED'`, `provenance: 'UNVERIFIED'`, `accredited: false`. `validatePr02P1ImportEvidence` rechaza atestaciones locales y exige atestación independiente acreditada (`INDEPENDENT_ATTESTED`).
+    4. Remoción de helpers de firma del runtime: Confinados exclusivamente a `src/test/helpers/fiscalEd25519Signer.ts`.
+    5. Endurecimiento de importador P1: Exige obligatoriamente `goAuthorizationDoc`, `expectedHead`, `rawIvaSoapText` y `rawConditionSoapText`; parseo XML independiente para detectar discrepancias con `P1_IMPORT_SOAP_PAYLOAD_DISCREPANCY`.
+    6. Protección anti-replay durable y atómica: `ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'` persistido en disco previo a cualquier llamada de red.
+  - Pruebas y Build: 19 pruebas adversariales añadidas (casos 55 al 73), 73/73 tests PASS en `fiscalPr02P0Collector.test.ts`, 90/90 tests PR02 totales PASS, `npm run build` PASS (tsc -b && vite build con exit code 0).
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+    - `P0_CLI_TRANSPORT_WIRING = PASS`
+    - `P0_WSAA_TA_GUARD = PASS`
+    - `P0_EXACT_ENDPOINT_GUARD = PASS`
+    - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+    - `P0_PROVENANCE_ATTESTATION = PASS`
+    - `P0_FAKE_MANIFEST_REJECTED = PASS`
+    - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+    - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+    - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+    - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+    - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
 
 - **Remediación del Modelo de Confianza y Separación de Fronteras PR02-P0 (06/11/2026)**:
   - Blindaje formal y eliminación de garantías meramente declarativas en el colector oficial de evidencia:
@@ -2254,6 +2287,39 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
     - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
     - `ANTI_REPLAY_GUARANTEE_LEVEL = PROCESS_LOCAL_ONE_TIME_USE`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+- **Auditoría Adversarial y Separación Criptográfica Ed25519 de Autoridades PR02-P0 (06/11/2026)**:
+  - Remediación de las 6 vulnerabilidades de frontera:
+    1. Reemplazo de HMAC por Ed25519 nativo (RFC 8032, 128 hex): Clave privada GO aislada externamente, verificada con `PR02_P0_GO_PUBLIC_KEY`. Clave privada de Atestación aislada externamente, verificada con `PR02_P0_ATTESTATION_PUBLIC_KEY`.
+    2. Eliminación de bypass booleano en `createOfficialArcaTransport`: Requiere objeto GO verificado (`valid === true`, `authorizationId`, `scope === PR02_P0_SCOPE`). Desexportada de `.d.mts`.
+    3. Modelo de confianza fail-closed: Atestaciones del colector son `trustModel: 'SELF_ATTESTED'`, `provenance: 'UNVERIFIED'`, `accredited: false`. `validatePr02P1ImportEvidence` rechaza atestaciones locales y exige atestación independiente acreditada (`INDEPENDENT_ATTESTED`).
+    4. Remoción de helpers de firma del runtime: Confinados exclusivamente a `src/test/helpers/fiscalEd25519Signer.ts`.
+    5. Endurecimiento de importador P1: Exige obligatoriamente `goAuthorizationDoc`, `expectedHead`, `rawIvaSoapText` y `rawConditionSoapText`; parseo XML independiente para detectar discrepancias con `P1_IMPORT_SOAP_PAYLOAD_DISCREPANCY`.
+    6. Protección anti-replay durable y atómica: `ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'` persistido en disco previo a cualquier llamada de red.
+  - Pruebas y Build: 19 pruebas adversariales añadidas (casos 55 al 73), 73/73 tests PASS en `fiscalPr02P0Collector.test.ts`, 90/90 tests PR02 totales PASS, `npm run build` PASS (tsc -b && vite build con exit code 0).
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+    - `P0_CLI_TRANSPORT_WIRING = PASS`
+    - `P0_WSAA_TA_GUARD = PASS`
+    - `P0_EXACT_ENDPOINT_GUARD = PASS`
+    - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+    - `P0_PROVENANCE_ATTESTATION = PASS`
+    - `P0_FAKE_MANIFEST_REJECTED = PASS`
+    - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+    - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+    - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+    - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+    - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
     - `P0_REMOTE_EXECUTED = false`
     - `OFFICIAL_PROVENANCE = UNVERIFIED`
     - `P1_REMOTE_EXECUTION_READY = false`

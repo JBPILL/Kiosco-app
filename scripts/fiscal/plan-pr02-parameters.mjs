@@ -8,20 +8,37 @@
 // 6. Cero credenciales ni tokens expuestos en logs o paquetes.
 // 7. Toda llamada remota futura exige GO específico de un solo uso.
 
+import fs from 'node:fs'
+import path from 'node:path'
 import { execSync } from 'node:child_process'
-import { createHash, createHmac, timingSafeEqual, randomUUID } from 'node:crypto'
+import crypto, { createHash, randomUUID } from 'node:crypto'
 import { planFiscalParameters } from '../plan-fiscal-parameters.mjs'
+import {
+  parseWsfeTiposIvaResponse,
+  parseWsfeCondicionIvaReceptorResponse,
+} from './execute-pr03-c-staging.mjs'
 
-export const PR02_P0_AUTHORITY_ENV = 'PR02_P0_AUTHORITY_SECRET'
+export {
+  parseWsfeTiposIvaResponse,
+  parseWsfeCondicionIvaReceptorResponse,
+}
+
+export const PR02_P0_GO_PUBLIC_KEY_ENV = 'PR02_P0_GO_PUBLIC_KEY'
+export const PR02_P0_ATTESTATION_PUBLIC_KEY_ENV = 'PR02_P0_ATTESTATION_PUBLIC_KEY'
+export const PR02_P0_AUTHORITY_ENV = 'PR02_P0_ATTESTATION_PUBLIC_KEY'
+export const PR02_P0_GO_AUTHORITY_ENV = 'PR02_P0_GO_PUBLIC_KEY'
+
 export const PR02_P0_COMPROMISED_SECRETS = Object.freeze([
   'kioskopos-pr02-p0-official-custody-secret-2026',
 ])
+export const PR02_P0_COMPROMISED_KEYS = PR02_P0_COMPROMISED_SECRETS
 
 /**
  * Detecta si una clave es un marcador o clave de prueba no confiable.
  */
 export function isTestAuthorityKey(secret) {
-  if (!secret || typeof secret !== 'string') return false
+  if (!secret) return false
+  if (typeof secret !== 'string') return false
   const lower = secret.toLowerCase()
   return (
     lower.includes('test') ||
@@ -33,111 +50,204 @@ export function isTestAuthorityKey(secret) {
   )
 }
 
-export const ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'
+export const ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 
 /**
- * Validador estricto de la clave de autoridad de atestación oficial P0.
- * Exige alta entropía (>= 32 caracteres), custodia externa, y rechaza claves comprometidas o de prueba.
+ * Parsea y normaliza una clave pública Ed25519 a un KeyObject nativo de Node.js.
+ * Acepta PEM SPKI, KeyObject nativo, o digest raw de 64 caracteres hex.
  */
-export function validateP0AuthoritySecret(secret) {
-  if (!secret || typeof secret !== 'string' || secret.trim().length === 0) {
-    throw new Error('ATTESTATION_AUTHORITY_NOT_AVAILABLE: P0_ATTESTATION_KEY_MISSING: Se requiere una clave de atestación oficial custodiada fuera del repositorio')
+export function parseEd25519PublicKey(raw, name = 'PUBLIC_KEY') {
+  if (!raw) {
+    throw new Error(`${name}_MISSING: Se requiere clave pública Ed25519 custodiada fuera del repositorio`)
   }
-  const trimmed = secret.trim()
+  if (typeof raw === 'object' && raw !== null && raw.asymmetricKeyType) {
+    if (raw.asymmetricKeyType !== 'ed25519') {
+      throw new Error(`${name}_ALGORITHM_INVALID: Se requiere clave Ed25519, recibido '${raw.asymmetricKeyType}'`)
+    }
+    return raw
+  }
+  const str = String(raw).trim()
+  if (str.length === 0) {
+    throw new Error(`${name}_MISSING: Se requiere clave pública Ed25519 custodiada fuera del repositorio`)
+  }
   for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
-    if (trimmed === compromised || trimmed.toLowerCase() === compromised.toLowerCase()) {
-      throw new Error('UNTRUSTED_ATTESTATION_AUTHORITY: P0_ATTESTATION_KEY_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa')
+    if (str === compromised || str.toLowerCase() === compromised.toLowerCase()) {
+      throw new Error(`${name}_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa`)
     }
   }
-  if (trimmed.length < 32) {
-    throw new Error('ATTESTATION_CONFIGURATION_INVALID: P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY: La clave de atestación oficial debe tener al menos 32 caracteres de alta entropía')
+  if (str.startsWith('-----BEGIN')) {
+    try {
+      const k = crypto.createPublicKey(str)
+      if (k.asymmetricKeyType !== 'ed25519') {
+        throw new Error(`${name}_ALGORITHM_INVALID: Se requiere clave Ed25519, recibido '${k.asymmetricKeyType}'`)
+      }
+      return k
+    } catch (err) {
+      if (err.message.includes('ALGORITHM_INVALID')) throw err
+      throw new Error(`${name}_INVALID_FORMAT: Falló parsing de clave pública PEM: ${err.message}`)
+    }
   }
-  if (isTestAuthorityKey(trimmed)) {
-    throw new Error('UNTRUSTED_ATTESTATION_AUTHORITY: P0_ATTESTATION_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba o simulación para atestación oficial')
+  if (/^[0-9a-fA-F]{64}$/.test(str)) {
+    try {
+      const der = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(str, 'hex')])
+      const k = crypto.createPublicKey({ key: der, format: 'der', type: 'spki' })
+      if (k.asymmetricKeyType !== 'ed25519') {
+        throw new Error(`${name}_ALGORITHM_INVALID: Se requiere clave Ed25519, recibido '${k.asymmetricKeyType}'`)
+      }
+      return k
+    } catch (err) {
+      if (err.message.includes('ALGORITHM_INVALID')) throw err
+      throw new Error(`${name}_INVALID_FORMAT: Falló parsing de clave pública hex raw: ${err.message}`)
+    }
   }
-  return trimmed
+  if (fs.existsSync(str)) {
+    try {
+      const content = fs.readFileSync(str, 'utf8')
+      return parseEd25519PublicKey(content, name)
+    } catch (err) {
+      throw new Error(`${name}_FILE_READ_FAILED: No se pudo leer clave desde '${str}': ${err.message}`)
+    }
+  }
+  throw new Error(`${name}_INVALID_FORMAT: Formato de clave pública no reconocido (se espera PEM SPKI o hex 64)`)
 }
 
-export const PR02_P0_GO_AUTHORITY_ENV = 'PR02_P0_GO_AUTHORITY_SECRET'
-
 /**
- * Validador estricto de la clave de autoridad de aprobación GO (separada de la clave de atestación del colector).
+ * Validador estricto de la clave pública de autoridad de aprobación GO (separada de atestación).
  */
-export function validateP0GoAuthoritySecret(secret, allowTestKeys = false) {
-  if (!secret || typeof secret !== 'string' || secret.trim().length === 0) {
+export function validateP0GoPublicKey(keyInput, allowTestKeys = false) {
+  if (!keyInput || (typeof keyInput === 'string' && keyInput.trim().length === 0)) {
     throw new Error('P0_GO_AUTHORITY_KEY_MISSING: Se requiere una clave de autoridad de aprobación GO custodiada fuera del repositorio')
   }
-  const trimmed = secret.trim()
+  if (typeof keyInput === 'string' && keyInput.trim().length < 32 && !fs.existsSync(keyInput.trim())) {
+    throw new Error('P0_GO_AUTHORITY_KEY_INSUFFICIENT_ENTROPY: Clave de autoridad GO con baja entropía o longitud insuficiente')
+  }
   for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
-    if (trimmed === compromised || trimmed.toLowerCase() === compromised.toLowerCase()) {
+    if (typeof keyInput === 'string' && (keyInput === compromised || keyInput.toLowerCase() === compromised.toLowerCase())) {
       throw new Error('P0_GO_AUTHORITY_KEY_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa')
     }
   }
-  if (trimmed.length < 32) {
-    throw new Error('P0_GO_AUTHORITY_KEY_INSUFFICIENT_ENTROPY: La clave de autoridad de aprobación GO debe tener al menos 32 caracteres de alta entropía')
-  }
-  if (!allowTestKeys && isTestAuthorityKey(trimmed)) {
+  if (!allowTestKeys && typeof keyInput === 'string' && isTestAuthorityKey(keyInput)) {
     throw new Error('P0_GO_AUTHORITY_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba para la aprobación oficial de GO')
   }
-  return trimmed
-}
-
-// Registro en memoria de autorizaciones GO consumidas (Protección contra reutilización / Single-use)
-const consumedGoAuthorizations = new Set()
-
-export function markGoAuthorizationConsumed(authId) {
-  if (!authId || typeof authId !== 'string') return
-  consumedGoAuthorizations.add(authId.trim())
-}
-
-export function isGoAuthorizationConsumed(authId) {
-  if (!authId || typeof authId !== 'string') return false
-  return consumedGoAuthorizations.has(authId.trim())
-}
-
-export function resetConsumedGoAuthorizationsForTesting() {
-  consumedGoAuthorizations.clear()
+  return parseEd25519PublicKey(keyInput, 'P0_GO_AUTHORITY_KEY')
 }
 
 /**
- * Genera y firma un documento de autorización externa GO para PR02-P0.
+ * Validador estricto de la clave pública de autoridad de atestación oficial P0.
  */
-export function createSignedPr02P0GoAuthorization(doc = {}, secret) {
-  const validSecret = validateP0GoAuthoritySecret(secret, true)
-  const canonical = {
-    version: doc.version || '1.0',
-    identificador: doc.identificador || `GO-P0-${randomUUID()}`,
-    aprobador_identidad: doc.aprobador_identidad || 'OWNER_OFFICIAL_APPROVER_2026',
-    scope: doc.scope || PR02_P0_SCOPE,
-    project_ref: doc.project_ref || PR02_PARAMETERS_TARGET_PROJECT_REF,
-    entorno: doc.entorno || 'HOMOLOGACION',
-    commit_sha: doc.commit_sha ? String(doc.commit_sha).toLowerCase() : '0'.repeat(40),
-    operaciones_permitidas: doc.operaciones_permitidas || Object.freeze(['LoginCms', 'FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
-    limites: doc.limites || {
-      loginCmsMax: 1,
-      tiposIvaMax: 1,
-      condicionIvaReceptorMax: 1,
-      totalMax: 3,
-    },
-    emitido_en: doc.emitido_en || new Date().toISOString(),
-    vence_en: doc.vence_en || new Date(Date.now() + 3600000).toISOString(),
-    single_use_nonce: doc.single_use_nonce || createHash('sha256').update(randomUUID()).digest('hex').slice(0, 32),
+export function validateP0AttestationPublicKey(keyInput, allowTestKeys = false) {
+  if (!keyInput || (typeof keyInput === 'string' && keyInput.trim().length === 0)) {
+    throw new Error('ATTESTATION_AUTHORITY_NOT_AVAILABLE: P0_ATTESTATION_KEY_MISSING: Se requiere una clave de atestación oficial custodiada fuera del repositorio')
+  }
+  if (typeof keyInput === 'string' && keyInput.trim().length < 32 && !fs.existsSync(keyInput.trim())) {
+    throw new Error('ATTESTATION_CONFIGURATION_INVALID: P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY: Clave de atestación con baja entropía o longitud insuficiente')
+  }
+  for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
+    if (typeof keyInput === 'string' && (keyInput === compromised || keyInput.toLowerCase() === compromised.toLowerCase())) {
+      throw new Error('UNTRUSTED_ATTESTATION_AUTHORITY: P0_ATTESTATION_KEY_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa')
+    }
+  }
+  if (!allowTestKeys && typeof keyInput === 'string' && isTestAuthorityKey(keyInput)) {
+    throw new Error('UNTRUSTED_ATTESTATION_AUTHORITY: P0_ATTESTATION_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba o simulación para atestación oficial')
+  }
+  return parseEd25519PublicKey(keyInput, 'P0_ATTESTATION_KEY')
+}
+
+// Aliases para compatibilidad con firmas previas
+export function validateP0AuthoritySecret(secret, allowTestKeys = false) {
+  return validateP0AttestationPublicKey(secret, allowTestKeys)
+}
+export function validateP0GoAuthoritySecret(secret, allowTestKeys = false) {
+  return validateP0GoPublicKey(secret, allowTestKeys)
+}
+
+/**
+ * Resuelve la ruta canónica y segura del registro durable de consumo de autorizaciones.
+ */
+export function getConsumedAuthorizationFilePath(authId, options = {}) {
+  if (!authId || typeof authId !== 'string' || authId.trim().length === 0) {
+    throw new Error('GO_AUTHORIZATION_ID_REQUIRED: Se requiere un identificador de autorización válido')
+  }
+  const cleanId = authId.trim()
+  const baseDir = options.consumedAuthorizationsDir
+    ? path.resolve(options.consumedAuthorizationsDir)
+    : path.resolve(process.cwd(), '.fiscal-evidence-pr02', '.consumed-authorizations')
+
+  if (!fs.existsSync(baseDir)) {
+    fs.mkdirSync(baseDir, { recursive: true, mode: 0o700 })
   }
 
-  const canonicalJson = JSON.stringify(canonical)
-  const signature = createHmac('sha256', validSecret).update(canonicalJson).digest('hex')
+  const realBase = fs.realpathSync(baseDir)
+  const idDigest = createHash('sha256').update(cleanId).digest('hex')
+  const fileName = `consumed-${idDigest}.json`
+  const targetPath = path.resolve(realBase, fileName)
 
-  return Object.freeze({
-    authorization: canonical,
-    signature,
-  })
+  const rel = path.relative(realBase, targetPath)
+  if (rel.startsWith('..') || path.isAbsolute(rel) || rel !== fileName) {
+    throw new Error('PATH_TRAVERSAL_DETECTED: Ruta de registro durable fuera del directorio autorizado')
+  }
+
+  return { targetPath, realBase, cleanId, idDigest }
+}
+
+/**
+ * Consulta si una autorización GO ya fue registrada duraderamente como consumida.
+ */
+export function isGoAuthorizationConsumedDurable(authId, options = {}) {
+  try {
+    const { targetPath } = getConsumedAuthorizationFilePath(authId, options)
+    if (fs.existsSync(targetPath)) {
+      const lstat = fs.lstatSync(targetPath)
+      if (lstat.isSymbolicLink()) {
+        throw new Error('SYMLINK_NOT_ALLOWED: Se detectó enlace simbólico en registro de autorizaciones consumidas')
+      }
+      return true
+    }
+    return false
+  } catch (err) {
+    if (err.message.includes('SYMLINK_NOT_ALLOWED') || err.message.includes('PATH_TRAVERSAL_DETECTED')) {
+      throw err
+    }
+    return false
+  }
+}
+
+/**
+ * Registra de forma durable y atómica (flag 'wx', O_CREAT | O_EXCL) el consumo de una autorización GO.
+ */
+export function consumeGoAuthorizationDurable(authId, options = {}) {
+  const { targetPath, cleanId, idDigest } = getConsumedAuthorizationFilePath(authId, options)
+  const record = {
+    authorizationId: cleanId,
+    idDigest,
+    consumedAt: new Date(options.now ? (typeof options.now === 'string' || typeof options.now === 'number' ? new Date(options.now).getTime() : options.now.getTime()) : Date.now()).toISOString(),
+    hostPid: process.pid,
+    antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
+  }
+
+  try {
+    fs.writeFileSync(targetPath, JSON.stringify(record, null, 2), { flag: 'wx', mode: 0o600 })
+  } catch (err) {
+    if (err.code === 'EEXIST') {
+      throw new Error(`GO_AUTHORIZATION_ALREADY_CONSUMED: La autorización GO '${cleanId}' ya fue consumida previamente (single-use violado en registro durable)`)
+    }
+    throw new Error(`GO_AUTHORIZATION_REGISTRATION_FAILED: Fallo al registrar consumo durable: ${err.message}`)
+  }
+}
+
+export function isGoAuthorizationConsumed(authId, options = {}) {
+  return isGoAuthorizationConsumedDurable(authId, options)
+}
+
+export function markGoAuthorizationConsumed(authId, options = {}) {
+  return consumeGoAuthorizationDurable(authId, options)
 }
 
 /**
  * Validador exhaustivo de autorización externa GO para PR02-P0.
  * Verifica identidad del aprobador, scope, project-ref, entorno, commit SHA exacto,
  * operaciones permitidas exactas, límites inmutables, vigencia (vence_en),
- * protección contra reutilización (single-use) y firma HMAC de la autoridad externa.
+ * protección contra reutilización (single-use durable) y firma asimétrica Ed25519 de la autoridad externa.
  */
 export function validatePr02P0GoAuthorization(signedGoDoc, options = {}) {
   if (!signedGoDoc) {
@@ -160,8 +270,8 @@ export function validatePr02P0GoAuthorization(signedGoDoc, options = {}) {
   const payload = raw.authorization || raw
   const signature = raw.signature || payload.signature
 
-  if (!payload || typeof payload !== 'object' || !signature || typeof signature !== 'string' || !/^[0-9a-fA-F]{64}$/.test(signature)) {
-    throw new Error('GO_AUTHORIZATION_INVALID_FORMAT: El documento de autorización GO carece de payload o firma criptográfica válida de 64 hex')
+  if (!payload || typeof payload !== 'object' || !signature || typeof signature !== 'string' || !/^[0-9a-fA-F]{128}$/.test(signature)) {
+    throw new Error('GO_AUTHORIZATION_INVALID_FORMAT: El documento de autorización GO carece de payload o firma criptográfica Ed25519 válida de 128 hex')
   }
 
   const id = payload.identificador || payload.authorizationId
@@ -237,14 +347,14 @@ export function validatePr02P0GoAuthorization(signedGoDoc, options = {}) {
     throw new Error('GO_AUTHORIZATION_NONCE_INVALID: Se requiere nonce de protección contra reutilización de al menos 16 caracteres')
   }
 
-  // Verificación de reutilización (Single-use guard)
-  if (isGoAuthorizationConsumed(cleanId)) {
-    throw new Error(`GO_AUTHORIZATION_ALREADY_CONSUMED: La autorización GO '${cleanId}' ya fue consumida previamente (single-use violado)`)
+  // Verificación durable de reutilización (Single-use guard)
+  if (isGoAuthorizationConsumedDurable(cleanId, options)) {
+    throw new Error(`GO_AUTHORIZATION_ALREADY_CONSUMED: La autorización GO '${cleanId}' ya fue consumida previamente (single-use violado en registro durable)`)
   }
 
-  // Verificación de firma criptográfica contra la autoridad externa
-  const rawSecret = options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV]
-  const validSecret = validateP0GoAuthoritySecret(rawSecret, Boolean(options.allowTestKeys))
+  // Verificación de firma criptográfica asimétrica Ed25519
+  const rawKey = options.trustedGoPublicKey || options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_PUBLIC_KEY_ENV] || process.env[PR02_P0_GO_AUTHORITY_ENV]
+  const pubKey = validateP0GoPublicKey(rawKey, Boolean(options.allowTestKeys))
 
   const canonicalPayload = {
     version: payload.version || '1.0',
@@ -267,13 +377,10 @@ export function validatePr02P0GoAuthorization(signedGoDoc, options = {}) {
   }
 
   const canonicalJson = JSON.stringify(canonicalPayload)
-  const expectedSig = createHmac('sha256', validSecret).update(canonicalJson).digest('hex')
+  const isSigValid = crypto.verify(null, Buffer.from(canonicalJson, 'utf8'), pubKey, Buffer.from(signature, 'hex'))
 
-  const sigBuf = Buffer.from(signature.toLowerCase(), 'hex')
-  const expBuf = Buffer.from(expectedSig.toLowerCase(), 'hex')
-
-  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
-    throw new Error('GO_AUTHORIZATION_SIGNATURE_INVALID: La firma criptográfica de la autorización GO es inválida o fue manipulada')
+  if (!isSigValid) {
+    throw new Error('GO_AUTHORIZATION_SIGNATURE_INVALID: La firma criptográfica Ed25519 de la autorización GO es inválida o fue manipulada')
   }
 
   return Object.freeze({
@@ -293,14 +400,15 @@ export function validatePr02P0GoAuthorization(signedGoDoc, options = {}) {
 
 /**
  * Entidad de Autoridad de Aprobación GO (frontera de control externo).
+ * Exclusivamente funciones de verificación y registro durable (sin capacidad de firma en runtime).
  */
 export const GoAuthority = Object.freeze({
   validateAuthorization: validatePr02P0GoAuthorization,
-  createAuthorization: createSignedPr02P0GoAuthorization,
-  validateSecret: validateP0GoAuthoritySecret,
-  markConsumed: markGoAuthorizationConsumed,
-  isConsumed: isGoAuthorizationConsumed,
-  resetConsumedForTesting: resetConsumedGoAuthorizationsForTesting,
+  validatePublicKey: validateP0GoPublicKey,
+  validateSecret: validateP0GoPublicKey,
+  consumeAuthorizationDurable: consumeGoAuthorizationDurable,
+  isConsumed: isGoAuthorizationConsumedDurable,
+  markConsumed: consumeGoAuthorizationDurable,
   ANTI_REPLAY_GUARANTEE_LEVEL,
 })
 
@@ -764,102 +872,41 @@ export function createP0Attestation(params = {}) {
     }
   }
 
-  // Si el transporte es simulado o mock, no se emite atestación oficial acreditada
-  if (!isOfficialTransport) {
-    return Object.freeze({
-      version: '1.0',
-      processId: manifest.identificador_proceso || 'SIMULATED',
-      executionId: manifest.ejecucion_autorizada_id || 'SIMULATED',
-      executionScope: manifest.ejecucion_autorizada_scope || PR02_P0_SCOPE,
-      commitSha: commitSha ? String(commitSha).toLowerCase() : '0'.repeat(40),
-      consultadoEn: manifest.consultado_en || issuedAt,
-      entorno: manifest.entorno || 'HOMOLOGACION',
-      transportType: 'SIMULATED',
-      executorIdentity: executorIdentity || manifest.colector_identidad || PR02_P0_COLECTOR_IDENTIDAD,
-      operacionesWsfe: operacionesWsfe || Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
-      ivaRawSha: manifest.iva_respuesta_original_sha256 || '0'.repeat(64),
-      ivaNormSha: manifest.iva_archivo_normalizado_sha256 || '0'.repeat(64),
-      condRawSha: manifest.condition_respuesta_original_sha256 || '0'.repeat(64),
-      condNormSha: manifest.condition_archivo_normalizado_sha256 || '0'.repeat(64),
-      goAuthorizationId: authId || null,
-      goAuthorizationSha256: authSha || null,
-      issuedAt,
-      signature: null,
-      accredited: false,
-      provenance: 'UNVERIFIED',
-      EVIDENCE_INTEGRITY: 'PASS',
-      EVIDENCE_CUSTODY_ATTESTED: false,
-      TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
-      ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
-      trustModel: 'SIMULATED',
-      antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
-    })
-  }
-
-  // En transporte oficial se valida obligatoriamente commitSha
-  if (!commitSha || !/^[0-9a-fA-F]{40}$/.test(commitSha)) {
-    throw new Error('P0_ATTESTATION_COMMIT_SHA_REQUIRED: Se requiere commitSha hexadecimal de 40 caracteres para atestación oficial')
-  }
-
-  // Validación de GO externo autorizado (se almacena únicamente id no secreto y digest)
-  if (!authId || typeof authId !== 'string' || authId.length === 0) {
-    throw new Error('P0_ATTESTATION_GO_ID_REQUIRED: Se requiere identificador no secreto de autorización GO externa')
-  }
-  if (!authSha || !/^[0-9a-f]{64}$/.test(authSha)) {
-    throw new Error('P0_ATTESTATION_GO_SHA_REQUIRED: Se requiere digest SHA-256 de 64 caracteres de autorización GO externa')
-  }
-
-  // Validación de identidad del ejecutor confiable
-  const execId = executorIdentity || manifest.colector_identidad
-  if (execId !== PR02_P0_COLECTOR_IDENTIDAD) {
-    throw new Error(`P0_ATTESTATION_EXECUTOR_MISMATCH: Identidad de ejecutor '${execId}' no coincide con el colector confiable '${PR02_P0_COLECTOR_IDENTIDAD}'`)
-  }
-
-  // Validación estricta de clave de autoridad custodiada (sin fallbacks hardcodeados)
-  const rawSecret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
-  const validSecret = validateP0AuthoritySecret(rawSecret)
-
-  const payload = {
-    version: '1.0',
-    processId: manifest.identificador_proceso,
-    executionId: manifest.ejecucion_autorizada_id,
-    executionScope: manifest.ejecucion_autorizada_scope,
-    commitSha: String(commitSha).toLowerCase(),
-    consultadoEn: manifest.consultado_en,
-    entorno: manifest.entorno || 'HOMOLOGACION',
-    transportType: 'OFFICIAL',
-    executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
-    operacionesWsfe: operacionesWsfe || Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
-    ivaRawSha: manifest.iva_respuesta_original_sha256,
-    ivaNormSha: manifest.iva_archivo_normalizado_sha256,
-    condRawSha: manifest.condition_respuesta_original_sha256,
-    condNormSha: manifest.condition_archivo_normalizado_sha256,
-    goAuthorizationId: authId,
-    goAuthorizationSha256: authSha,
-    issuedAt,
-    EVIDENCE_INTEGRITY: 'PASS',
-    EVIDENCE_CUSTODY_ATTESTED: true,
-    TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
-    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
-    trustModel: 'SELF_ATTESTED',
-    antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
-  }
-
-  const canonicalPayload = JSON.stringify(payload)
-  const signature = createHmac('sha256', validSecret).update(canonicalPayload).digest('hex')
-
+  // Toda atestación generada por el colector local es SELF_ATTESTED y no acreditada
   return Object.freeze({
-    ...payload,
-    signature,
-    accredited: true,
-    provenance: 'VERIFIED',
+    version: '1.0',
+    processId: manifest.identificador_proceso || 'SIMULATED',
+    executionId: manifest.ejecucion_autorizada_id || 'SIMULATED',
+    executionScope: manifest.ejecucion_autorizada_scope || PR02_P0_SCOPE,
+    commitSha: commitSha ? String(commitSha).toLowerCase() : '0'.repeat(40),
+    consultadoEn: manifest.consultado_en || issuedAt,
+    entorno: manifest.entorno || 'HOMOLOGACION',
+    transportType: isOfficialTransport ? 'OFFICIAL' : 'SIMULATED',
+    executorIdentity: executorIdentity || manifest.colector_identidad || PR02_P0_COLECTOR_IDENTIDAD,
+    operacionesWsfe: operacionesWsfe || Object.freeze(['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor']),
+    ivaRawSha: manifest.iva_respuesta_original_sha256 || '0'.repeat(64),
+    ivaNormSha: manifest.iva_archivo_normalizado_sha256 || '0'.repeat(64),
+    condRawSha: manifest.condition_respuesta_original_sha256 || '0'.repeat(64),
+    condNormSha: manifest.condition_archivo_normalizado_sha256 || '0'.repeat(64),
+    goAuthorizationId: authId || null,
+    goAuthorizationSha256: authSha || null,
+    issuedAt,
+    signature: null,
+    accredited: false,
+    provenance: 'UNVERIFIED',
+    EVIDENCE_INTEGRITY: 'PASS',
+    EVIDENCE_CUSTODY_ATTESTED: false,
+    TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
+    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    trustModel: isOfficialTransport ? 'SELF_ATTESTED' : 'SIMULATED',
+    antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
   })
 }
 
 /**
  * Validador estricto de la atestación de adquisición oficial P0.
- * Comprueba que el transporte haya sido oficial, la firma HMAC coincida con la autoridad custodiada,
- * y los hashes y metadatos se correspondan unívocamente con el manifiesto y el commit.
+ * Exige atestación independiente acreditada (trustModel === 'INDEPENDENT_ATTESTED') emitida por Attestation Authority.
+ * Rechaza de plano atestaciones generadas por el colector local (trustModel === 'SELF_ATTESTED').
  */
 export function verifyP0Attestation(attestation, options = {}) {
   if (!attestation || typeof attestation !== 'object') {
@@ -868,13 +915,30 @@ export function verifyP0Attestation(attestation, options = {}) {
   if (attestation.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true) {
     return Object.freeze({ valid: false, reason: 'FRAUDULENT_ARCA_CRYPTOGRAPHIC_VERIFICATION_CLAIM' })
   }
+  if (attestation.trustModel === 'SELF_ATTESTED') {
+    return Object.freeze({
+      valid: false,
+      reason: 'ATTESTATION_SELF_ATTESTED_REJECTED',
+      errorCategory: 'UNTRUSTED_SELF_ATTESTATION',
+    })
+  }
+  if (attestation.trustModel !== 'INDEPENDENT_ATTESTED') {
+    return Object.freeze({
+      valid: false,
+      reason: 'ATTESTATION_UNTRUSTED_MODEL',
+      errorCategory: 'UNTRUSTED_ATTESTATION',
+    })
+  }
   if (attestation.accredited !== true) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_NOT_ACCREDITED' })
+  }
+  if (attestation.TRUSTED_EXECUTION_BOUNDARY !== 'VERIFIED') {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_BOUNDARY_UNVERIFIED' })
   }
   if (attestation.transportType !== 'OFFICIAL') {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_SIMULATED_TRANSPORT' })
   }
-  if (!attestation.signature || typeof attestation.signature !== 'string' || !/^[0-9a-f]{64}$/.test(attestation.signature)) {
+  if (!attestation.signature || typeof attestation.signature !== 'string' || !/^[0-9a-fA-F]{128}$/.test(attestation.signature)) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_SIGNATURE_INVALID' })
   }
   if (attestation.executorIdentity !== PR02_P0_COLECTOR_IDENTIDAD) {
@@ -887,7 +951,7 @@ export function verifyP0Attestation(attestation, options = {}) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_GO_SHA_INVALID' })
   }
 
-  const { manifest, commitSha, authoritySecret } = options
+  const { manifest, commitSha, trustedAttestationPublicKey, authoritySecret } = options
 
   if (manifest) {
     if (
@@ -913,24 +977,21 @@ export function verifyP0Attestation(attestation, options = {}) {
     }
   }
 
-  const rawSecret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
-  if (!rawSecret) {
+  const rawKey = trustedAttestationPublicKey || authoritySecret || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
+  if (!rawKey) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING', errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE' })
   }
-  let validSecret
+  let pubKeyObj
   try {
-    validSecret = validateP0AuthoritySecret(rawSecret)
+    pubKeyObj = validateP0AttestationPublicKey(rawKey, Boolean(options.allowTestKeys))
   } catch (err) {
     if (err.message.includes('P0_ATTESTATION_KEY_MISSING') || err.message.includes('ATTESTATION_AUTHORITY_NOT_AVAILABLE')) {
       return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING', errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE' })
     }
-    if (err.message.includes('P0_ATTESTATION_KEY_COMPROMISED')) {
+    if (err.message.includes('COMPROMISED')) {
       return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_COMPROMISED', errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY' })
     }
-    if (err.message.includes('P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INSUFFICIENT_ENTROPY', errorCategory: 'ATTESTATION_CONFIGURATION_INVALID' })
-    }
-    if (err.message.includes('P0_ATTESTATION_TEST_KEY_PROHIBITED')) {
+    if (err.message.includes('TEST_KEY_PROHIBITED')) {
       return Object.freeze({ valid: false, reason: 'ATTESTATION_TEST_KEY_PROHIBITED', errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY' })
     }
     return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INVALID' })
@@ -938,30 +999,35 @@ export function verifyP0Attestation(attestation, options = {}) {
 
   const { signature, accredited, provenance, ...payload } = attestation
   const canonicalPayload = JSON.stringify(payload)
-  const expectedSig = createHmac('sha256', validSecret).update(canonicalPayload).digest('hex')
+  const isSigValid = crypto.verify(null, Buffer.from(canonicalPayload, 'utf8'), pubKeyObj, Buffer.from(signature, 'hex'))
 
-  const sigBuf = Buffer.from(signature, 'hex')
-  const expBuf = Buffer.from(expectedSig, 'hex')
-
-  if (sigBuf.length !== expBuf.length || !timingSafeEqual(sigBuf, expBuf)) {
+  if (!isSigValid) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_SIGNATURE_VERIFICATION_FAILED' })
   }
 
-  return Object.freeze({ valid: true, reason: 'VERIFIED' })
+  return Object.freeze({ valid: true, reason: 'VERIFIED', trustModel: 'INDEPENDENT_ATTESTED' })
 }
 
 /**
  * Entidad de Autoridad de Custodia y Atestación de Evidencia P0.
  */
 export const AttestationAuthority = Object.freeze({
-  validateSecret: validateP0AuthoritySecret,
+  validatePublicKey: validateP0AttestationPublicKey,
+  validateSecret: validateP0AttestationPublicKey,
   createAttestation: createP0Attestation,
   verifyAttestation: verifyP0Attestation,
-  isAuthorityAvailable: () => {
-    const s = process.env[PR02_P0_AUTHORITY_ENV]
-    return Boolean(s && s.trim().length >= 32 && !isTestAuthorityKey(s) && !PR02_P0_COMPROMISED_SECRETS.includes(s.trim()))
+  isAuthorityAvailable: (options = {}) => {
+    const raw = options.trustedAttestationPublicKey || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
+    if (!raw) return false
+    try {
+      validateP0AttestationPublicKey(raw, Boolean(options.allowTestKeys))
+      return true
+    } catch {
+      return false
+    }
   },
-  AUTHORITY_ENV: PR02_P0_AUTHORITY_ENV,
+  PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  AUTHORITY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
 })
 
 /**
@@ -1031,8 +1097,12 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
   }
 
   // Comprobar estrictamente que no existen secretos en el manifiesto
-  const str = JSON.stringify(params).toLowerCase()
-  for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', '-----begin', 'password']) {
+  const checkParams = { ...params }
+  delete checkParams.trustedAttestationPublicKey
+  delete checkParams.trustedGoPublicKey
+  delete checkParams.authoritySecret
+  const str = JSON.stringify(checkParams).toLowerCase()
+  for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', 'begin private key', 'password']) {
     if (str.includes(forbidden)) {
       throw new Error(`P0_MANIFEST_SECRETS_PROHIBITED: Manifiesto contiene referencias a credenciales o tokens ('${forbidden}')`)
     }
@@ -1095,14 +1165,16 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
         go_authorization_sha256: goAuthSha,
       },
       authoritySecret: params.authoritySecret,
+      trustedAttestationPublicKey: params.trustedAttestationPublicKey,
+      allowTestKeys: Boolean(params.allowTestKeys),
       commitSha: params.commit_sha,
     })
     isAccredited = verified.valid === true
   }
 
-  // No permitir que el caller declare accredited: true para evidencia simulada o no acreditada
-  if ((isSimulated || !isAccredited) && params.accredited === true) {
-    throw new Error('P0_SIMULATED_EVIDENCE_CANNOT_BE_ACCREDITED: No se puede declarar acreditada una evidencia simulada o no oficial')
+  // No permitir que el caller declare accredited: true para evidencia simulada o no acreditada / autoatestada
+  if (params.accredited === true && (!isAccredited || isSimulated || (attestation && attestation.trustModel === 'SELF_ATTESTED'))) {
+    throw new Error('P0_SELF_ATTESTED_EVIDENCE_CANNOT_BE_ACCREDITED: No se puede declarar acreditada una evidencia con atestación local del colector (trustModel=SELF_ATTESTED)')
   }
 
   const manifestBody = {
@@ -1255,6 +1327,12 @@ export function validatePr02P0Manifest(manifest) {
 
 /**
  * Validador de importación P1 con evidencia oficial verificada de P0.
+ * Exige:
+ * 1. Documento de autorización GO firmado y verificado cruzado con el manifiesto.
+ * 2. Commit SHA esperado exacto (expectedHead).
+ * 3. Respuestas SOAP originales en crudo con hashes coincidentes.
+ * 4. Parseo independiente y reconstrucción exacta de parámetros a partir de los XMLs en crudo.
+ * 5. Atestación independiente acreditada emitida por Attestation Authority (rechazo de SELF_ATTESTED).
  */
 export function validatePr02P1ImportEvidence(options = {}) {
   if (!options || typeof options !== 'object') {
@@ -1278,6 +1356,25 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_FORBIDDEN: El manifiesto no puede proveer su propia clave de autoridad')
   }
 
+  // 1. Exigencia obligatoria de documento de autorización GO firmado
+  if (!options.goAuthorizationDoc) {
+    throw new Error('P1_IMPORT_FORBIDDEN: GO_AUTHORIZATION_REQUIRED: Se requiere el documento de autorización GO firmado para validar importación P1')
+  }
+
+  // 2. Exigencia obligatoria de commit SHA esperado
+  const expectedHead = options.expectedHead || options.head
+  if (!expectedHead || !/^[0-9a-fA-F]{40}$/.test(expectedHead)) {
+    throw new Error('P1_IMPORT_FORBIDDEN: EXPECTED_HEAD_REQUIRED: Se requiere commit SHA esperado de 40 caracteres hexadecimales para validar importación P1')
+  }
+
+  // 3. Exigencia obligatoria de respuestas SOAP originales en crudo
+  if (!rawIvaSoapText || typeof rawIvaSoapText !== 'string' || rawIvaSoapText.trim().length === 0) {
+    throw new Error('P1_IMPORT_FORBIDDEN: RAW_SOAP_RESPONSES_REQUIRED: Se requiere la respuesta SOAP original en crudo de FEParamGetTiposIva')
+  }
+  if (!rawConditionSoapText || typeof rawConditionSoapText !== 'string' || rawConditionSoapText.trim().length === 0) {
+    throw new Error('P1_IMPORT_FORBIDDEN: RAW_SOAP_RESPONSES_REQUIRED: Se requiere la respuesta SOAP original en crudo de FEParamGetCondicionIvaReceptor')
+  }
+
   if (typeof ivaText !== 'string' || typeof conditionText !== 'string') {
     throw new Error('P1_IMPORT_EVIDENCE_TEXTS_REQUIRED')
   }
@@ -1292,17 +1389,43 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_CONDITION_HASH_MISMATCH: Archivo normalizado no coincide con manifiesto P0')
   }
 
-  if (rawIvaSoapText) {
-    const rawIvaSha = sha256(rawIvaSoapText)
-    if (rawIvaSha !== manifest.iva_respuesta_original_sha256) {
-      throw new Error('P1_IMPORT_RAW_IVA_SOAP_HASH_MISMATCH: Respuesta SOAP de tipos de IVA no coincide con el manifiesto P0')
-    }
+  const rawIvaSha = sha256(rawIvaSoapText)
+  if (rawIvaSha !== manifest.iva_respuesta_original_sha256) {
+    throw new Error('P1_IMPORT_RAW_IVA_SOAP_HASH_MISMATCH: Respuesta SOAP de tipos de IVA no coincide con el manifiesto P0')
   }
-  if (rawConditionSoapText) {
-    const rawCondSha = sha256(rawConditionSoapText)
-    if (rawCondSha !== manifest.condition_respuesta_original_sha256) {
-      throw new Error('P1_IMPORT_RAW_CONDITION_SOAP_HASH_MISMATCH: Respuesta SOAP de condición IVA no coincide con el manifiesto P0')
-    }
+  const rawCondSha = sha256(rawConditionSoapText)
+  if (rawCondSha !== manifest.condition_respuesta_original_sha256) {
+    throw new Error('P1_IMPORT_RAW_CONDITION_SOAP_HASH_MISMATCH: Respuesta SOAP de condición IVA no coincide con el manifiesto P0')
+  }
+
+  // 4. Parseo independiente de XMLs SOAP en crudo y reconstrucción estricta de parámetros
+  const reconstructedIva = parseWsfeTiposIvaResponse(rawIvaSoapText, manifest.consultado_en)
+  const reconstructedCond = parseWsfeCondicionIvaReceptorResponse(rawConditionSoapText, manifest.consultado_en)
+
+  let parsedProvidedIva
+  let parsedReconstructedIva
+  try {
+    parsedProvidedIva = JSON.parse(ivaText)
+    parsedReconstructedIva = JSON.parse(reconstructedIva.ivaText)
+  } catch {
+    throw new Error('P1_IMPORT_FORBIDDEN: IVA_NORMALIZED_JSON_INVALID: Fallo de estructura JSON en archivos normalizados de IVA')
+  }
+
+  if (JSON.stringify(parsedProvidedIva.parametros) !== JSON.stringify(parsedReconstructedIva.parametros)) {
+    throw new Error('P1_IMPORT_FORBIDDEN: IVA_NORMALIZED_DATA_DISCREPANCY: Los parámetros del archivo normalizado de IVA difieren de la reconstrucción independiente del XML SOAP original')
+  }
+
+  let parsedProvidedCond
+  let parsedReconstructedCond
+  try {
+    parsedProvidedCond = JSON.parse(conditionText)
+    parsedReconstructedCond = JSON.parse(reconstructedCond.conditionText)
+  } catch {
+    throw new Error('P1_IMPORT_FORBIDDEN: CONDITION_NORMALIZED_DATA_DISCREPANCY: Fallo de estructura JSON en archivos normalizados de condición IVA')
+  }
+
+  if (JSON.stringify(parsedProvidedCond.parametros) !== JSON.stringify(parsedReconstructedCond.parametros)) {
+    throw new Error('P1_IMPORT_FORBIDDEN: CONDITION_NORMALIZED_DATA_DISCREPANCY: Los parámetros del archivo normalizado de condición IVA difieren de la reconstrucción independiente del XML SOAP original')
   }
 
   if (expectedHashes) {
@@ -1314,36 +1437,49 @@ export function validatePr02P1ImportEvidence(options = {}) {
     }
   }
 
-  if (manifest.accredited !== true || manifest.transport_type === 'SIMULATED' || !manifest.attestation) {
-    throw new Error('P1_IMPORT_FORBIDDEN: P0_MANIFEST_NOT_ACCREDITED')
-  }
-
-  // Validación cruzada opcional con documento de autorización GO provisto
-  if (options.goAuthorizationDoc) {
-    const goCheck = validatePr02P0GoAuthorization(options.goAuthorizationDoc, {
-      expectedHead: options.expectedHead || options.head,
-      trustedGoAuthoritySecret: options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV],
-      allowTestKeys: Boolean(options.allowTestKeys),
-      now,
-    })
-    if (manifest.go_authorization_id !== goCheck.authorizationId) {
-      throw new Error(`P1_IMPORT_FORBIDDEN: GO_ID_MISMATCH: Identificador del GO provisto ('${goCheck.authorizationId}') no coincide con el manifiesto ('${manifest.go_authorization_id}')`)
-    }
-    if (manifest.go_authorization_sha256 !== goCheck.documentSha256) {
-      throw new Error(`P1_IMPORT_FORBIDDEN: GO_SHA_MISMATCH: Digest del GO provisto ('${goCheck.documentSha256}') no coincide con el manifiesto ('${manifest.go_authorization_sha256}')`)
-    }
-  }
-
-  // Verificación estricta de la atestación de procedencia oficial contra autoridad externa confiable
-  const trustedAuthoritySecret = options.trustedAuthoritySecret || options.authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
-  if (!trustedAuthoritySecret) {
-    throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_AUTHORITY_NOT_AVAILABLE: Se requiere clave de autoridad custodiada para verificar procedencia')
-  }
-  const attestationCheck = verifyP0Attestation(manifest.attestation, {
-    manifest,
-    commitSha: options.expectedHead || options.head,
-    authoritySecret: trustedAuthoritySecret,
+  // 5. Validación obligatoria del documento de autorización GO provisto
+  const goCheck = validatePr02P0GoAuthorization(options.goAuthorizationDoc, {
+    expectedHead,
+    trustedGoPublicKey: options.trustedGoPublicKey || options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_PUBLIC_KEY_ENV] || process.env[PR02_P0_GO_AUTHORITY_ENV],
+    allowTestKeys: Boolean(options.allowTestKeys),
+    consumedAuthorizationsDir: options.consumedAuthorizationsDir,
+    now,
   })
+  if (manifest.go_authorization_id !== goCheck.authorizationId) {
+    throw new Error(`P1_IMPORT_FORBIDDEN: GO_ID_MISMATCH: Identificador del GO provisto ('${goCheck.authorizationId}') no coincide con el manifiesto ('${manifest.go_authorization_id}')`)
+  }
+  if (manifest.go_authorization_sha256 !== goCheck.documentSha256) {
+    throw new Error(`P1_IMPORT_FORBIDDEN: GO_SHA_MISMATCH: Digest del GO provisto ('${goCheck.documentSha256}') no coincide con el manifiesto ('${manifest.go_authorization_sha256}')`)
+  }
+
+  // 6. Exigencia obligatoria de atestación independiente acreditada (rechazo taxativo de SELF_ATTESTED)
+  const targetAttestation = options.independentAttestation || manifest.attestation
+  if (!targetAttestation || targetAttestation.trustModel === 'SELF_ATTESTED') {
+    throw new Error('P1_IMPORT_FORBIDDEN: INDEPENDENT_ATTESTATION_REQUIRED: Evidencia no cuenta con atestación independiente acreditada (atestación local SELF_ATTESTED rechazada para importación oficial)')
+  }
+
+  if (targetAttestation.trustModel !== 'INDEPENDENT_ATTESTED' || targetAttestation.accredited !== true) {
+    throw new Error('P1_IMPORT_FORBIDDEN: INDEPENDENT_ATTESTATION_REQUIRED: Evidencia requiere atestación independiente acreditada emitida por Attestation Authority')
+  }
+
+  const trustedAttestationPublicKey =
+    options.trustedAttestationPublicKey ||
+    options.trustedAuthoritySecret ||
+    options.authoritySecret ||
+    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+    process.env[PR02_P0_AUTHORITY_ENV]
+
+  if (!trustedAttestationPublicKey) {
+    throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_AUTHORITY_NOT_AVAILABLE: Se requiere clave pública de autoridad de atestación custodiada para verificar procedencia')
+  }
+
+  const attestationCheck = verifyP0Attestation(targetAttestation, {
+    manifest,
+    commitSha: expectedHead,
+    trustedAttestationPublicKey,
+    allowTestKeys: Boolean(options.allowTestKeys),
+  })
+
   if (!attestationCheck.valid) {
     const detail = attestationCheck.errorCategory ? `${attestationCheck.errorCategory}: ${attestationCheck.reason}` : attestationCheck.reason
     throw new Error(`P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada (${detail}). Importación denegada.`)

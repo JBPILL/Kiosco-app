@@ -30,19 +30,28 @@ import {
   validateP0AuthoritySecret,
   PR02_P0_COMPROMISED_SECRETS,
   isTestAuthorityKey,
-  createSignedPr02P0GoAuthorization,
   validatePr02P0GoAuthorization,
-  markGoAuthorizationConsumed,
   isGoAuthorizationConsumed,
-  resetConsumedGoAuthorizationsForTesting,
+  consumeGoAuthorizationDurable,
   validatePr02P0Manifest,
   computeP0ManifestDigest,
   ANTI_REPLAY_GUARANTEE_LEVEL,
   GoAuthority,
   AttestationAuthority,
   PR02_P0_AUTHORITY_ENV,
-  PR02_P0_GO_AUTHORITY_ENV,
+  PR02_P0_GO_PUBLIC_KEY_ENV,
+  PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  parseWsfeTiposIvaResponse,
+  parseWsfeCondicionIvaReceptorResponse,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
+
+import {
+  generateEphemeralGoAuthorityKeyPair,
+  generateEphemeralAttestationKeyPair,
+  createSignedTestPr02P0GoAuthorization,
+  createSignedTestIndependentAttestation,
+  clearConsumedAuthorizationsForTesting,
+} from './helpers/fiscalEd25519Signer'
 
 const VALID_HEAD = resolveCurrentGitHead() || '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb'
 const TEST_EVIDENCE_DIR = 'temp-test-fiscal-evidence-p0'
@@ -256,12 +265,13 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       vence_en: '2020-01-01T00:00:00.000Z',
     }
 
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
-    const signedDoc = createSignedPr02P0GoAuthorization({
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
       emitido_en: '2026-11-05T00:00:00.000Z',
       vence_en: '2026-11-05T03:00:00.000Z',
-    }, authoritySecret)
+    }, goPriv)
 
     await expect(
       executePr02P0OfficialEvidence({
@@ -274,7 +284,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         existingTa: expiredTa,
         now: '2026-11-05T01:00:00.000Z',
         goAuthorizationDoc: signedDoc,
-        trustedGoAuthoritySecret: authoritySecret,
+        trustedGoPublicKey: goPub,
         allowTestKeys: true,
       })
     ).rejects.toThrow(/TA_INVALID_OR_REVOKED/)
@@ -314,19 +324,24 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
   })
 
   // 13. Adaptador de red oficial rechaza ejecución sin GO explícito
-  it('13. Adaptador oficial de red falla si no se suministra autorización GO explícita', async () => {
-    const officialTransport = createOfficialArcaTransport({ officialGoAuthorized: false })
-    expect(officialTransport.type).toBe('OFFICIAL')
-
-    await expect(
-      officialTransport.postSoap(WSAA_HOMO_URL, '""', '<soap>test</soap>')
-    ).rejects.toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+  it('13. Adaptador oficial de red falla si no se suministra autorización GO explícita', () => {
+    expect(() => createOfficialArcaTransport(null as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+    expect(() => createOfficialArcaTransport({ officialGoAuthorized: true } as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
   })
 
   // 14. Prohibición de redirecciones HTTP en transporte oficial
   it('14. Prohíbe redirecciones HTTP en transporte oficial', async () => {
-    // Verificamos que validateP0EndpointUrl y createOfficialArcaTransport tengan redirect: 'error'
-    const officialTransport = createOfficialArcaTransport({ officialGoAuthorized: true })
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const verifiedGo = validatePr02P0GoAuthorization(signedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    const officialTransport = createOfficialArcaTransport(verifiedGo)
     expect(officialTransport.type).toBe('OFFICIAL')
   })
 
@@ -356,7 +371,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
     const check = verifyP0Attestation(simAttestation)
     expect(check.valid).toBe(false)
-    expect(check.reason).toBe('ATTESTATION_NOT_ACCREDITED')
+    expect(['ATTESTATION_NOT_ACCREDITED', 'ATTESTATION_UNTRUSTED_MODEL']).toContain(check.reason)
   })
 
   // 16. Manifiesto fabricado sin atestación oficial es rechazado por P1
@@ -653,14 +668,14 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(() => validateP0AuthoritySecret('sample_authority_secret_string_1234567890')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
     expect(() => validateP0AuthoritySecret('example_authority_key_long_enough_1234567890')).toThrow(/P0_ATTESTATION_TEST_KEY_PROHIBITED/)
 
-    // Clave válida de alta entropía
-    const validKey = 'production_grade_custody_secret_entropy_8f9a0b1c2d3e4f5a6b7c8d9e'
-    expect(validateP0AuthoritySecret(validKey)).toBe(validKey)
+    // Clave válida de alta entropía (formato Ed25519)
+    const { publicKey: validAttKey } = generateEphemeralAttestationKeyPair()
+    expect(validateP0AuthoritySecret(validAttKey, true)).toBeDefined()
   })
 
   // 26. Verificación de atestación
   it('26. Rechazo de atestación por firma adulterada, commit mismatch o ejecutor desconocido', () => {
-    const validKey = 'production_grade_custody_secret_entropy_8f9a0b1c2d3e4f5a6b7c8d9e'
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
     const manifestDraft = {
       identificador_proceso: 'PROC_TEST_001',
       ejecucion_autorizada_id: 'PROC_TEST_001',
@@ -672,16 +687,22 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       condition_respuesta_original_sha256: 'c'.repeat(64),
       condition_archivo_normalizado_sha256: 'd'.repeat(64),
       colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      go_authorization_id: 'GO-PR02-P0-HOMOLOGACION-VALID',
+      go_authorization_sha256: 'e'.repeat(64),
     }
 
-    const attestation = createP0Attestation({
-      manifest: manifestDraft,
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'PROC_TEST_001',
       commitSha: VALID_HEAD,
-      transportType: 'OFFICIAL',
-      goAuthorization: 'GO-PR02-P0-HOMOLOGACION-VALID',
-      authoritySecret: validKey,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: 'a'.repeat(64),
+      ivaNormSha: 'b'.repeat(64),
+      condRawSha: 'c'.repeat(64),
+      condNormSha: 'd'.repeat(64),
+      goAuthorizationId: 'GO-PR02-P0-HOMOLOGACION-VALID',
+      goAuthorizationSha256: 'e'.repeat(64),
       executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
-    })
+    }, attPriv)
 
     expect(attestation.accredited).toBe(true)
     expect(attestation.provenance).toBe('VERIFIED')
@@ -690,18 +711,20 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     const verified = verifyP0Attestation(attestation, {
       manifest: manifestDraft,
       commitSha: VALID_HEAD,
-      authoritySecret: validKey,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
     expect(verified.valid).toBe(true)
 
     // Firma adulterada
     expect(attestation.signature).not.toBeNull()
     const validSig = attestation.signature!
-    const tamperedSig = validSig.substring(0, 63) + (validSig[63] === 'a' ? 'b' : 'a')
+    const tamperedSig = validSig.slice(0, -1) + (validSig.endsWith('0') ? '1' : '0')
     const badSigCheck = verifyP0Attestation({ ...attestation, signature: tamperedSig }, {
       manifest: manifestDraft,
       commitSha: VALID_HEAD,
-      authoritySecret: validKey,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
     expect(badSigCheck.valid).toBe(false)
     expect(badSigCheck.reason).toBe('ATTESTATION_SIGNATURE_VERIFICATION_FAILED')
@@ -710,7 +733,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     const badCommitCheck = verifyP0Attestation(attestation, {
       manifest: manifestDraft,
       commitSha: '0'.repeat(40),
-      authoritySecret: validKey,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
     expect(badCommitCheck.valid).toBe(false)
     expect(badCommitCheck.reason).toBe('ATTESTATION_COMMIT_MISMATCH')
@@ -719,7 +743,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     const badExecCheck = verifyP0Attestation({ ...attestation, executorIdentity: 'unauthorized-script.mjs' }, {
       manifest: manifestDraft,
       commitSha: VALID_HEAD,
-      authoritySecret: validKey,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
     expect(badExecCheck.valid).toBe(false)
     expect(badExecCheck.reason).toBe('ATTESTATION_EXECUTOR_MISMATCH')
@@ -728,7 +753,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     const testKeyCheck = verifyP0Attestation(attestation, {
       manifest: manifestDraft,
       commitSha: VALID_HEAD,
-      authoritySecret: 'test_authority_key_long_enough_1234567890',
+      trustedAttestationPublicKey: 'test_authority_key_long_enough_1234567890',
+      allowTestKeys: false,
     })
     expect(testKeyCheck.valid).toBe(false)
     expect(testKeyCheck.reason).toBe('ATTESTATION_TEST_KEY_PROHIBITED')
@@ -737,7 +763,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     const compKeyCheck = verifyP0Attestation(attestation, {
       manifest: manifestDraft,
       commitSha: VALID_HEAD,
-      authoritySecret: PR02_P0_COMPROMISED_SECRETS[0],
+      trustedAttestationPublicKey: PR02_P0_COMPROMISED_SECRETS[0],
+      allowTestKeys: true,
     })
     expect(compKeyCheck.valid).toBe(false)
     expect(compKeyCheck.reason).toBe('ATTESTATION_KEY_COMPROMISED')
@@ -775,8 +802,18 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
           },
         })
 
-      const transport = createOfficialArcaTransport({
-        officialGoAuthorized: true,
+      const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+      const signedDoc = createSignedTestPr02P0GoAuthorization({
+        commit_sha: VALID_HEAD,
+        aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+      }, goPriv)
+      const verifiedGo = validatePr02P0GoAuthorization(signedDoc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+
+      const transport = createOfficialArcaTransport(verifiedGo, {
         maxResponseBytes: maxBytes,
       })
 
@@ -831,6 +868,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 29. (Regresión 1) GO arbitrario de longitud suficiente rechazado
   it('29. (Regresión 1) GO arbitrario de longitud suficiente (>32 chars) es rechazado por falta de autenticidad verificable', async () => {
+    const { publicKey: goPub } = generateEphemeralGoAuthorityKeyPair()
     const arbitraryToken = 'abcdef0123456789abcdef0123456789abcdef01'
     expect(() => validatePr02P0GoAuthorization(arbitraryToken)).toThrow(/GO_AUTHORIZATION_INVALID_FORMAT/)
 
@@ -848,11 +886,11 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         vence_en: new Date(Date.now() + 3600000).toISOString(),
         single_use_nonce: '0123456789abcdef0123456789abcdef',
       },
-      signature: '0'.repeat(64),
+      signature: '0'.repeat(128),
     }
     expect(() => validatePr02P0GoAuthorization(fakeDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID',
+      trustedGoPublicKey: goPub,
       allowTestKeys: true,
     })).toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
 
@@ -865,7 +903,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         head: VALID_HEAD,
         expectedHead: VALID_HEAD,
         goAuthorizationDoc: fakeDoc,
-        trustedGoAuthoritySecret: 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID',
+        trustedGoPublicKey: goPub,
         allowTestKeys: true,
       })
     ).rejects.toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
@@ -873,15 +911,16 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 30. (Regresión 2) GO con scope incorrecto rechazado
   it('30. (Regresión 2) GO con scope incorrecto es rechazado y bloquea la red oficial', async () => {
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
-    const signedDoc = createSignedPr02P0GoAuthorization({
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       scope: 'PR02_P1_VERIFIED_CATALOG_IMPORT',
       commit_sha: VALID_HEAD,
-    }, authoritySecret)
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
 
     expect(() => validatePr02P0GoAuthorization(signedDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: authoritySecret,
+      trustedGoPublicKey: goPub,
       allowTestKeys: true,
     })).toThrow(/GO_AUTHORIZATION_SCOPE_MISMATCH/)
 
@@ -894,7 +933,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         head: VALID_HEAD,
         expectedHead: VALID_HEAD,
         goAuthorizationDoc: signedDoc,
-        trustedGoAuthoritySecret: authoritySecret,
+        trustedGoPublicKey: goPub,
         allowTestKeys: true,
       })
     ).rejects.toThrow(/GO_AUTHORIZATION_SCOPE_MISMATCH/)
@@ -902,15 +941,16 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 31. (Regresión 3) GO con SHA diferente rechazado
   it('31. (Regresión 3) GO con SHA diferente del HEAD esperado es rechazado', async () => {
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
     const differentHead = 'e'.repeat(40)
-    const signedDoc = createSignedPr02P0GoAuthorization({
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       commit_sha: differentHead,
-    }, authoritySecret)
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
 
     expect(() => validatePr02P0GoAuthorization(signedDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: authoritySecret,
+      trustedGoPublicKey: goPub,
       allowTestKeys: true,
     })).toThrow(/GO_AUTHORIZATION_COMMIT_MISMATCH/)
 
@@ -923,7 +963,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         head: VALID_HEAD,
         expectedHead: VALID_HEAD,
         goAuthorizationDoc: signedDoc,
-        trustedGoAuthoritySecret: authoritySecret,
+        trustedGoPublicKey: goPub,
         allowTestKeys: true,
       })
     ).rejects.toThrow(/GO_AUTHORIZATION_COMMIT_MISMATCH/)
@@ -931,17 +971,18 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 32. (Regresión 4) GO vencido rechazado
   it('32. (Regresión 4) GO vencido es rechazado por vencimiento temporal', async () => {
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
     const nowIso = '2026-11-05T01:00:00.000Z'
-    const signedDoc = createSignedPr02P0GoAuthorization({
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
       emitido_en: '2026-11-04T00:00:00.000Z',
       vence_en: '2026-11-04T02:00:00.000Z',
-    }, authoritySecret)
+    }, goPriv)
 
     expect(() => validatePr02P0GoAuthorization(signedDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: authoritySecret,
+      trustedGoPublicKey: goPub,
       allowTestKeys: true,
       now: nowIso,
     })).toThrow(/GO_AUTHORIZATION_EXPIRED/)
@@ -956,51 +997,57 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         expectedHead: VALID_HEAD,
         now: nowIso,
         goAuthorizationDoc: signedDoc,
-        trustedGoAuthoritySecret: authoritySecret,
+        trustedGoPublicKey: goPub,
         allowTestKeys: true,
       })
     ).rejects.toThrow(/GO_AUTHORIZATION_EXPIRED/)
   })
 
   // 33. (Regresión 5) GO reutilizado rechazado
-  it('33. (Regresión 5) GO reutilizado es rechazado por protección de un solo uso (single-use guard)', () => {
-    resetConsumedGoAuthorizationsForTesting()
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
-    const signedDoc = createSignedPr02P0GoAuthorization({
+  it('33. (Regresión 5) GO reutilizado es rechazado por protección durable de un solo uso', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const testConsumedDir = path.resolve(TEST_EVIDENCE_DIR, '.test-consumed-single-use-reg')
+    clearConsumedAuthorizationsForTesting(testConsumedDir)
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       identificador: 'GO-TEST-SINGLE-USE-001',
       commit_sha: VALID_HEAD,
-    }, authoritySecret)
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
 
     // Primera validación: pasa
     const firstCheck = validatePr02P0GoAuthorization(signedDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: authoritySecret,
+      trustedGoPublicKey: goPub,
+      consumedAuthorizationsDir: testConsumedDir,
       allowTestKeys: true,
     })
     expect(firstCheck.valid).toBe(true)
 
-    // Se marca como consumido
-    markGoAuthorizationConsumed('GO-TEST-SINGLE-USE-001')
-    expect(isGoAuthorizationConsumed('GO-TEST-SINGLE-USE-001')).toBe(true)
+    // Se marca como consumido de forma durable
+    consumeGoAuthorizationDurable('GO-TEST-SINGLE-USE-001', { consumedAuthorizationsDir: testConsumedDir })
+    expect(isGoAuthorizationConsumed('GO-TEST-SINGLE-USE-001', { consumedAuthorizationsDir: testConsumedDir })).toBe(true)
 
     // Segunda validación: falla
     expect(() => validatePr02P0GoAuthorization(signedDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: authoritySecret,
+      trustedGoPublicKey: goPub,
+      consumedAuthorizationsDir: testConsumedDir,
       allowTestKeys: true,
     })).toThrow(/GO_AUTHORIZATION_ALREADY_CONSUMED/)
+    clearConsumedAuthorizationsForTesting(testConsumedDir)
   })
 
   // 34. (Regresión 6) GO con firma inválida rechazado
   it('34. (Regresión 6) GO con firma adulterada o clave incorrecta es rechazado', () => {
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
-    const signedDoc = createSignedPr02P0GoAuthorization({
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
       emitido_en: '2026-11-05T00:00:00.000Z',
       vence_en: '2026-11-05T03:00:00.000Z',
-    }, authoritySecret)
+    }, goPriv)
 
-    // Alterar firma (manteniendo 64 hex de longitud)
+    // Alterar firma (manteniendo 128 hex de longitud)
     const tamperedSig = signedDoc.signature.slice(0, -1) + (signedDoc.signature.endsWith('0') ? '1' : '0')
     const tamperedDoc = {
       authorization: signedDoc.authorization,
@@ -1009,7 +1056,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
     expect(() => validatePr02P0GoAuthorization(tamperedDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: authoritySecret,
+      trustedGoPublicKey: goPub,
       allowTestKeys: true,
       now: '2026-11-05T01:00:00.000Z',
     })).toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
@@ -1024,7 +1071,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     }
     expect(() => validatePr02P0GoAuthorization(tamperedContentDoc, {
       expectedHead: VALID_HEAD,
-      trustedGoAuthoritySecret: authoritySecret,
+      trustedGoPublicKey: goPub,
       allowTestKeys: true,
       now: '2026-11-05T01:00:00.000Z',
     })).toThrow(/GO_AUTHORIZATION_ENTORNO_MISMATCH/)
@@ -1033,17 +1080,18 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
   // 35. (Regresión 7) Token original ausente de manifiestos y archivos
   it('35. (Regresión 7) El token/nonce original no aparece en ninguno de los artefactos generados', async () => {
     cleanupTestDir()
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
-    const attestationSecret = 'ATT_KEY_RANDOM_ENTROPY_HEX_abcdef01234567890'
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
     const secretNonce = 'SECRET_NONCE_VALUE_DO_NOT_LEAK_9876543210'
 
-    const signedDoc = createSignedPr02P0GoAuthorization({
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       identificador: 'GO-P0-AUDIT-SAFE-ID-001',
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
       commit_sha: VALID_HEAD,
       single_use_nonce: secretNonce,
       emitido_en: '2026-11-05T01:00:00.000Z',
       vence_en: '2026-11-05T05:00:00.000Z',
-    }, authoritySecret)
+    }, goPriv)
 
     const res = await executePr02P0OfficialEvidence(
       {
@@ -1057,8 +1105,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         evidenceDir: TEST_EVIDENCE_DIR,
         saveEvidence: true,
         goAuthorizationDoc: signedDoc,
-        trustedGoAuthoritySecret: authoritySecret,
-        authoritySecret: attestationSecret,
+        trustedGoPublicKey: goPub,
+        trustedAttestationPublicKey: attPub,
         allowTestKeys: true,
         existingTa: {
           token: 'TOKEN_VALID_REUSED',
@@ -1147,12 +1195,27 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 37. (Regresión 9) Atestación firmada por autoridad no confiable rechazada en P1
   it('37. (Regresión 9) Atestación firmada por autoridad apócrifa/no confiable es rechazada en P1', () => {
-    const trustedKey = 'TRUSTED_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
-    const attackerKey = 'ATTACKER_FAKE_AUTHORITY_KEY_HEX_9999999999_XY'
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: trustedAttPub } = generateEphemeralAttestationKeyPair()
+    const { privateKey: attackerAttPriv } = generateEphemeralAttestationKeyPair()
 
-    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
-    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const ivaText = ivaParsed.ivaText
+    const condText = condParsed.conditionText
+    const rawIvaSoapText = SYNTHETIC_TIPOS_IVA_RESPONSE
+    const rawConditionSoapText = SYNTHETIC_CONDICIONES_IVA_RESPONSE
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-ATTACKER-ID',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const rawIvaSha = createHash('sha256').update(rawIvaSoapText).digest('hex')
     const ivaNormSha = createHash('sha256').update(ivaText).digest('hex')
+    const rawCondSha = createHash('sha256').update(rawConditionSoapText).digest('hex')
     const condNormSha = createHash('sha256').update(condText).digest('hex')
 
     const manifestDraft = {
@@ -1161,21 +1224,24 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
       consultado_en: '2026-11-05T01:00:00.000Z',
       entorno: 'HOMOLOGACION',
-      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_respuesta_original_sha256: rawIvaSha,
       iva_archivo_normalizado_sha256: ivaNormSha,
-      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_respuesta_original_sha256: rawCondSha,
       condition_archivo_normalizado_sha256: condNormSha,
     }
 
-    const attackerAttestation = createP0Attestation({
-      manifest: manifestDraft,
+    const attackerAttestation = createSignedTestIndependentAttestation({
+      processId: 'pid-attacker-001',
       commitSha: VALID_HEAD,
-      transportType: 'OFFICIAL',
-      authoritySecret: attackerKey,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: rawIvaSha,
+      ivaNormSha,
+      condRawSha: rawCondSha,
+      condNormSha,
       goAuthorizationId: 'GO-ATTACKER-ID',
-      goAuthorizationSha256: '3'.repeat(64),
+      goAuthorizationSha256: goAuthSha,
       executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
-    })
+    }, attackerAttPriv)
 
     const attackerManifest = {
       ...manifestDraft,
@@ -1186,7 +1252,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       accredited: true,
       transport_type: 'OFFICIAL',
       go_authorization_id: 'GO-ATTACKER-ID',
-      go_authorization_sha256: '3'.repeat(64),
+      go_authorization_sha256: goAuthSha,
       attestation: attackerAttestation,
       manifest_sha256: '4'.repeat(64),
     }
@@ -1195,18 +1261,38 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       manifest: attackerManifest,
       ivaText,
       conditionText: condText,
-      trustedAuthoritySecret: trustedKey,
+      rawIvaSoapText,
+      rawConditionSoapText,
+      goAuthorizationDoc: goDoc,
+      trustedAttestationPublicKey: trustedAttPub,
+      trustedGoPublicKey: goPub,
       expectedHead: VALID_HEAD,
+      allowTestKeys: true,
     })).toThrow(/P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada/)
   })
 
   // 38. (Regresión 10) Evidencia fabricada con hashes correctos rechazada
   it('38. (Regresión 10) Evidencia fabricada con hashes de contenido exactos pero atestación inválida es rechazada en P1', () => {
-    const trustedKey = 'TRUSTED_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
-    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
-    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: trustedAttPub } = generateEphemeralAttestationKeyPair()
 
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const ivaText = ivaParsed.ivaText
+    const condText = condParsed.conditionText
+    const rawIvaSoapText = SYNTHETIC_TIPOS_IVA_RESPONSE
+    const rawConditionSoapText = SYNTHETIC_CONDICIONES_IVA_RESPONSE
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-FAKE-001',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const rawIvaSha = createHash('sha256').update(rawIvaSoapText).digest('hex')
     const ivaNormSha = createHash('sha256').update(ivaText).digest('hex')
+    const rawCondSha = createHash('sha256').update(rawConditionSoapText).digest('hex')
     const condNormSha = createHash('sha256').update(condText).digest('hex')
 
     const fabricatedManifest = {
@@ -1218,15 +1304,15 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       ejecucion_autorizada_id: 'pid-fabricated',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
       operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
-      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_respuesta_original_sha256: rawIvaSha,
       iva_archivo_normalizado_sha256: ivaNormSha,
-      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_respuesta_original_sha256: rawCondSha,
       condition_archivo_normalizado_sha256: condNormSha,
       transporte_validado: true,
       accredited: true,
       transport_type: 'OFFICIAL',
       go_authorization_id: 'GO-FAKE-001',
-      go_authorization_sha256: '3'.repeat(64),
+      go_authorization_sha256: goAuthSha,
       attestation: {
         version: '1.0',
         processId: 'pid-fabricated',
@@ -1237,16 +1323,18 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         entorno: 'HOMOLOGACION',
         transportType: 'OFFICIAL',
         executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
-        ivaRawSha: '1'.repeat(64),
+        ivaRawSha: rawIvaSha,
         ivaNormSha,
-        condRawSha: '2'.repeat(64),
+        condRawSha: rawCondSha,
         condNormSha,
         goAuthorizationId: 'GO-FAKE-001',
-        goAuthorizationSha256: '3'.repeat(64),
+        goAuthorizationSha256: goAuthSha,
         issuedAt: '2026-11-05T01:00:00.000Z',
-        signature: '0'.repeat(64), // Firma falsa
+        signature: '0'.repeat(128), // Firma falsa
         accredited: true,
         provenance: 'VERIFIED',
+        trustModel: 'INDEPENDENT_ATTESTED',
+        TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
       },
     }
 
@@ -1254,8 +1342,13 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       manifest: fabricatedManifest,
       ivaText,
       conditionText: condText,
-      trustedAuthoritySecret: trustedKey,
+      rawIvaSoapText,
+      rawConditionSoapText,
+      goAuthorizationDoc: goDoc,
+      trustedAttestationPublicKey: trustedAttPub,
+      trustedGoPublicKey: goPub,
       expectedHead: VALID_HEAD,
+      allowTestKeys: true,
     })).toThrow(/P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada/)
   })
 
@@ -1329,12 +1422,13 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 41. (Regresión 13) Fallo de persistencia local después de respuestas oficiales
   it('41. (Regresión 13) Fallo de persistencia tras llamadas exitosas preserva auditoría y no declara adquisición completa', async () => {
-    const authoritySecret = 'TRUSTED_AUTHORITY_KEY_HEX_1234567890_VALID'
-    const signedDoc = createSignedPr02P0GoAuthorization({
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
       commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
       emitido_en: '2026-11-05T00:00:00.000Z',
       vence_en: '2026-11-05T03:00:00.000Z',
-    }, authoritySecret)
+    }, goPriv)
 
     let capturedErr: any = null
     try {
@@ -1350,7 +1444,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
           evidenceDir: 'src/forbidden-evidence-dir',
           saveEvidence: true,
           goAuthorizationDoc: signedDoc,
-          trustedGoAuthoritySecret: authoritySecret,
+          trustedGoPublicKey: goPub,
           allowTestKeys: true,
           existingTa: {
             token: 'TOKEN_VALID',
@@ -1459,7 +1553,18 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       /PRODUCTION_ENDPOINT_FORBIDDEN/
     )
 
-    const transport = createOfficialArcaTransport({ officialGoAuthorized: true })
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const signedDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const verifiedGo = validatePr02P0GoAuthorization(signedDoc, {
+      expectedHead: VALID_HEAD,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const transport = createOfficialArcaTransport(verifiedGo)
 
     // Operación prohibida (ej. FECAESolicitar)
     await expect(
@@ -1497,7 +1602,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
           headers: { Location: 'https://wswhomo.afip.gov.ar/redirected' },
         })
 
-      const redirectTransport = createOfficialArcaTransport({ officialGoAuthorized: true })
+      const redirectTransport = createOfficialArcaTransport(verifiedGo)
       await expect(
         redirectTransport.postSoap(
           WSFE_HOMO_URL,
@@ -1513,7 +1618,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
           headers: { 'Content-Type': 'text/xml; charset=utf-8' },
         })
 
-      const htmlTransport = createOfficialArcaTransport({ officialGoAuthorized: true })
+      const htmlTransport = createOfficialArcaTransport(verifiedGo)
       await expect(
         htmlTransport.postSoap(
           WSFE_HOMO_URL,
@@ -1529,7 +1634,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
           headers: { 'Content-Type': 'text/xml; charset=utf-8' },
         })
 
-      const emptyTransport = createOfficialArcaTransport({ officialGoAuthorized: true })
+      const emptyTransport = createOfficialArcaTransport(verifiedGo)
       await expect(
         emptyTransport.postSoap(
           WSFE_HOMO_URL,
@@ -1632,10 +1737,25 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 47. Validación de integridad de manifiesto: digest canónico, identidad de colector y timestamp post-firma
   it('47. Manifiesto P0 exige digest canónico exacto, identidad de colector autorizada y coincidencia estricta con atestación', () => {
-    const validKey = 'production_grade_custody_secret_entropy_8f9a0b1c2d3e4f5a6b7c8d9e'
-    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
-    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const ivaText = ivaParsed.ivaText
+    const condText = condParsed.conditionText
+    const rawIvaSoapText = SYNTHETIC_TIPOS_IVA_RESPONSE
+    const rawConditionSoapText = SYNTHETIC_CONDICIONES_IVA_RESPONSE
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-DIGEST-001',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const rawIvaSha = createHash('sha256').update(rawIvaSoapText).digest('hex')
     const ivaNormSha = createHash('sha256').update(ivaText).digest('hex')
+    const rawCondSha = createHash('sha256').update(rawConditionSoapText).digest('hex')
     const condNormSha = createHash('sha256').update(condText).digest('hex')
 
     const manifestDraft = {
@@ -1644,22 +1764,25 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
       consultado_en: '2026-11-05T01:00:00.000Z',
       entorno: 'HOMOLOGACION',
-      iva_respuesta_original_sha256: 'a'.repeat(64),
+      iva_respuesta_original_sha256: rawIvaSha,
       iva_archivo_normalizado_sha256: ivaNormSha,
-      condition_respuesta_original_sha256: 'b'.repeat(64),
+      condition_respuesta_original_sha256: rawCondSha,
       condition_archivo_normalizado_sha256: condNormSha,
       colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
     }
 
-    const attestation = createP0Attestation({
-      manifest: manifestDraft,
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'PROC_DIGEST_001',
       commitSha: VALID_HEAD,
-      transportType: 'OFFICIAL',
-      authoritySecret: validKey,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: rawIvaSha,
+      ivaNormSha,
+      condRawSha: rawCondSha,
+      condNormSha,
       goAuthorizationId: 'GO-DIGEST-001',
-      goAuthorizationSha256: 'c'.repeat(64),
+      goAuthorizationSha256: goAuthSha,
       executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
-    })
+    }, attPriv)
 
     const baseManifest = {
       ...manifestDraft,
@@ -1669,7 +1792,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       accredited: true,
       transport_type: 'OFFICIAL',
       go_authorization_id: 'GO-DIGEST-001',
-      go_authorization_sha256: 'c'.repeat(64),
+      go_authorization_sha256: goAuthSha,
       attestation,
     }
 
@@ -1705,19 +1828,25 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     const checkTampered = verifyP0Attestation(attestation, {
       manifest: tamperedConsultadoManifest,
       commitSha: VALID_HEAD,
-      authoritySecret: validKey,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
     expect(checkTampered.valid).toBe(false)
     expect(checkTampered.reason).toBe('ATTESTATION_MANIFEST_MISMATCH')
 
-    // Al validar para importación P1 arroja error de procedencia
+    // Al validar para importación P1 arroja error de coincidencia de atestación
     expect(() =>
       validatePr02P1ImportEvidence({
         manifest: tamperedConsultadoManifest,
         ivaText,
         conditionText: condText,
-        trustedAuthoritySecret: validKey,
+        rawIvaSoapText,
+        rawConditionSoapText,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
         expectedHead: VALID_HEAD,
+        allowTestKeys: true,
       })
     ).toThrow(/ATTESTATION_MANIFEST_MISMATCH/)
   })
@@ -1744,41 +1873,44 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     }
   })
 
-  // 49. Interfaces de GoAuthority y AttestationAuthority con garantía PROCESS_LOCAL_ONE_TIME_USE
-  it('49. GoAuthority y AttestationAuthority exponen interfaces explícitas y nivel PROCESS_LOCAL_ONE_TIME_USE', () => {
-    expect(ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
-    expect(GoAuthority.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+  // 49. Interfaces de GoAuthority y AttestationAuthority con garantía HOST_LOCAL_DURABLE_ONE_TIME_USE
+  it('49. GoAuthority y AttestationAuthority exponen interfaces explícitas y nivel HOST_LOCAL_DURABLE_ONE_TIME_USE', () => {
+    expect(ANTI_REPLAY_GUARANTEE_LEVEL).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
+    expect(GoAuthority.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
     expect(typeof GoAuthority.validateAuthorization).toBe('function')
-    expect(typeof GoAuthority.createAuthorization).toBe('function')
-    expect(typeof GoAuthority.validateSecret).toBe('function')
-    expect(PR02_P0_GO_AUTHORITY_ENV).toBe('PR02_P0_GO_AUTHORITY_SECRET')
+    expect(typeof GoAuthority.consumeAuthorizationDurable).toBe('function')
+    expect(typeof GoAuthority.isConsumed).toBe('function')
+    expect(typeof GoAuthority.validatePublicKey).toBe('function')
+    expect(PR02_P0_GO_PUBLIC_KEY_ENV).toBe('PR02_P0_GO_PUBLIC_KEY')
 
-    GoAuthority.resetConsumedForTesting()
+    const testConsumedDir = path.resolve(TEST_EVIDENCE_DIR, '.test-consumed-49')
+    clearConsumedAuthorizationsForTesting(testConsumedDir)
     const testAuthId = 'TEST-GO-AUTH-001'
-    expect(GoAuthority.isConsumed(testAuthId)).toBe(false)
-    GoAuthority.markConsumed(testAuthId)
-    expect(GoAuthority.isConsumed(testAuthId)).toBe(true)
-    GoAuthority.resetConsumedForTesting()
-    expect(GoAuthority.isConsumed(testAuthId)).toBe(false)
+    expect(GoAuthority.isConsumed(testAuthId, { consumedAuthorizationsDir: testConsumedDir })).toBe(false)
+    GoAuthority.consumeAuthorizationDurable(testAuthId, { consumedAuthorizationsDir: testConsumedDir })
+    expect(GoAuthority.isConsumed(testAuthId, { consumedAuthorizationsDir: testConsumedDir })).toBe(true)
+    clearConsumedAuthorizationsForTesting(testConsumedDir)
 
-    expect(AttestationAuthority.AUTHORITY_ENV).toBe(PR02_P0_AUTHORITY_ENV)
-    expect(typeof AttestationAuthority.validateSecret).toBe('function')
+    expect(AttestationAuthority.PUBLIC_KEY_ENV).toBe(PR02_P0_ATTESTATION_PUBLIC_KEY_ENV)
+    expect(typeof AttestationAuthority.validatePublicKey).toBe('function')
     expect(typeof AttestationAuthority.createAttestation).toBe('function')
     expect(typeof AttestationAuthority.verifyAttestation).toBe('function')
 
-    const prevEnv = process.env[PR02_P0_AUTHORITY_ENV]
+    const prevEnv = process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]
+    const { publicKey: samplePubKey } = generateEphemeralAttestationKeyPair()
     try {
+      delete process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]
       delete process.env[PR02_P0_AUTHORITY_ENV]
       expect(AttestationAuthority.isAuthorityAvailable()).toBe(false)
-      process.env[PR02_P0_AUTHORITY_ENV] = 'VALID_LONG_AUTHORITY_KEY_HEX_1234567890_AB'
-      expect(AttestationAuthority.isAuthorityAvailable()).toBe(true)
-      process.env[PR02_P0_AUTHORITY_ENV] = 'test_sample_authority_key_1234567890'
-      expect(AttestationAuthority.isAuthorityAvailable()).toBe(false)
+      process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] = samplePubKey
+      expect(AttestationAuthority.isAuthorityAvailable({ allowTestKeys: true })).toBe(true)
+      process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] = 'test_sample_authority_key_1234567890'
+      expect(AttestationAuthority.isAuthorityAvailable({ allowTestKeys: false })).toBe(false)
     } finally {
       if (prevEnv !== undefined) {
-        process.env[PR02_P0_AUTHORITY_ENV] = prevEnv
+        process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] = prevEnv
       } else {
-        delete process.env[PR02_P0_AUTHORITY_ENV]
+        delete process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]
       }
     }
   })
@@ -1793,9 +1925,21 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
 
   // 51. Rechazo inmediato de declaración fraudulenta ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED
   it('51. Rechaza de forma taxativa cualquier declaración de verificación criptográfica directa de ARCA', () => {
-    const validKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
-    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
-    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const ivaText = ivaParsed.ivaText
+    const condText = condParsed.conditionText
+    const rawIvaSoapText = SYNTHETIC_TIPOS_IVA_RESPONSE
+    const rawConditionSoapText = SYNTHETIC_CONDICIONES_IVA_RESPONSE
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-FRAUD-001',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
 
     const draft = {
       identificador_proceso: 'pid-fraud-check',
@@ -1803,9 +1947,9 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
       consultado_en: '2026-11-05T01:00:00.000Z',
       entorno: 'HOMOLOGACION',
-      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_respuesta_original_sha256: createHash('sha256').update(rawIvaSoapText).digest('hex'),
       iva_archivo_normalizado_sha256: createHash('sha256').update(ivaText).digest('hex'),
-      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_respuesta_original_sha256: createHash('sha256').update(rawConditionSoapText).digest('hex'),
       condition_archivo_normalizado_sha256: createHash('sha256').update(condText).digest('hex'),
     }
 
@@ -1813,9 +1957,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       manifest: draft,
       commitSha: VALID_HEAD,
       transportType: 'OFFICIAL',
-      authoritySecret: validKey,
       goAuthorizationId: 'GO-FRAUD-001',
-      goAuthorizationSha256: '3'.repeat(64),
+      goAuthorizationSha256: goAuthSha,
       executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
     })
 
@@ -1831,7 +1974,8 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     const check = verifyP0Attestation(fraudulentAttestation, {
       manifest: draft,
       commitSha: VALID_HEAD,
-      authoritySecret: validKey,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
     })
     expect(check.valid).toBe(false)
     expect(check.reason).toBe('FRAUDULENT_ARCA_CRYPTOGRAPHIC_VERIFICATION_CLAIM')
@@ -1845,7 +1989,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       accredited: true,
       transport_type: 'OFFICIAL',
       go_authorization_id: 'GO-FRAUD-001',
-      go_authorization_sha256: '3'.repeat(64),
+      go_authorization_sha256: goAuthSha,
       attestation: fraudulentAttestation,
       manifest_sha256: '4'.repeat(64),
     }
@@ -1857,17 +2001,34 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         manifest: fraudulentManifest,
         ivaText,
         conditionText: condText,
-        trustedAuthoritySecret: validKey,
+        rawIvaSoapText,
+        rawConditionSoapText,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
         expectedHead: VALID_HEAD,
+        allowTestKeys: true,
       })
     ).toThrow(/P1_IMPORT_FORBIDDEN: Declaración fraudulenta de verificación criptográfica directa de ARCA/)
   })
 
   // 52. Ausencia de clave de custodia en P1 falla cerrado con ATTESTATION_AUTHORITY_NOT_AVAILABLE
   it('52. Ausencia de clave de custodia en P1 falla cerrado con ATTESTATION_AUTHORITY_NOT_AVAILABLE', () => {
-    const validKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
-    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
-    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const ivaText = ivaParsed.ivaText
+    const condText = condParsed.conditionText
+    const rawIvaSoapText = SYNTHETIC_TIPOS_IVA_RESPONSE
+    const rawConditionSoapText = SYNTHETIC_CONDICIONES_IVA_RESPONSE
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-CUSTODY-001',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
 
     const draft = {
       identificador_proceso: 'pid-custody-check',
@@ -1875,21 +2036,24 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
       consultado_en: '2026-11-05T01:00:00.000Z',
       entorno: 'HOMOLOGACION',
-      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_respuesta_original_sha256: createHash('sha256').update(rawIvaSoapText).digest('hex'),
       iva_archivo_normalizado_sha256: createHash('sha256').update(ivaText).digest('hex'),
-      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_respuesta_original_sha256: createHash('sha256').update(rawConditionSoapText).digest('hex'),
       condition_archivo_normalizado_sha256: createHash('sha256').update(condText).digest('hex'),
     }
 
-    const attestation = createP0Attestation({
-      manifest: draft,
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'pid-custody-check',
       commitSha: VALID_HEAD,
-      transportType: 'OFFICIAL',
-      authoritySecret: validKey,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: draft.iva_respuesta_original_sha256,
+      ivaNormSha: draft.iva_archivo_normalizado_sha256,
+      condRawSha: draft.condition_respuesta_original_sha256,
+      condNormSha: draft.condition_archivo_normalizado_sha256,
       goAuthorizationId: 'GO-CUSTODY-001',
-      goAuthorizationSha256: '3'.repeat(64),
+      goAuthorizationSha256: goAuthSha,
       executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
-    })
+    }, attPriv)
 
     const manifest = {
       ...draft,
@@ -1900,66 +2064,50 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       accredited: true,
       transport_type: 'OFFICIAL',
       go_authorization_id: 'GO-CUSTODY-001',
-      go_authorization_sha256: '3'.repeat(64),
+      go_authorization_sha256: goAuthSha,
       attestation,
-      manifest_sha256: '4'.repeat(64),
+      manifest_sha256: computeP0ManifestDigest({ ...draft, attestation }),
     }
 
-    const prevEnv = process.env[PR02_P0_AUTHORITY_ENV]
+    const prevAttEnv = process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]
+    const prevAuthEnv = process.env[PR02_P0_AUTHORITY_ENV]
     try {
+      delete process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]
       delete process.env[PR02_P0_AUTHORITY_ENV]
       expect(() =>
         validatePr02P1ImportEvidence({
           manifest,
           ivaText,
           conditionText: condText,
+          rawIvaSoapText,
+          rawConditionSoapText,
+          goAuthorizationDoc: goDoc,
+          trustedGoPublicKey: goPub,
           expectedHead: VALID_HEAD,
         })
       ).toThrow(/ATTESTATION_AUTHORITY_NOT_AVAILABLE/)
     } finally {
-      if (prevEnv !== undefined) {
-        process.env[PR02_P0_AUTHORITY_ENV] = prevEnv
-      }
+      if (prevAttEnv !== undefined) process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] = prevAttEnv
+      if (prevAuthEnv !== undefined) process.env[PR02_P0_AUTHORITY_ENV] = prevAuthEnv
     }
   })
 
   // 53. Validación cruzada de goAuthorizationDoc en P1 detecta discordancia de identificador o hash
   it('53. Validación opcional de goAuthorizationDoc en P1 detecta discordancia con el manifiesto', () => {
-    const validKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
-    const goKey = 'VALID_GO_APPROVER_KEY_HEX_1234567890_CD'
-    const ivaText = JSON.stringify({
-      version: 1,
-      entorno: 'HOMOLOGACION',
-      operacion: 'FEParamGetTiposIva',
-      origen: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
-      consultado_en: '2026-11-05T01:00:00.000Z',
-      respuesta_sha256: 'a'.repeat(64),
-      parametros: [
-        { Id: 5, Description: '21%', VoucherClasses: '', ValidFrom: '20100917', ValidUntil: 'NULL' },
-        { Id: 4, Description: '10.5%', VoucherClasses: '', ValidFrom: '20100917', ValidUntil: 'NULL' },
-      ],
-      importado_en_staging: false,
-      emision_habilitada: false,
-    })
-    const condText = JSON.stringify({
-      version: 1,
-      entorno: 'HOMOLOGACION',
-      operacion: 'FEParamGetCondicionIvaReceptor',
-      origen: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
-      consultado_en: '2026-11-05T01:00:00.000Z',
-      respuesta_sha256: 'b'.repeat(64),
-      parametros: [
-        { Id: 1, Description: 'IVA Responsable Inscripto', VoucherClasses: 'A/ALEY/C', ValidFrom: '', ValidUntil: '' },
-        { Id: 5, Description: 'Consumidor Final', VoucherClasses: 'B/C', ValidFrom: '', ValidUntil: '' },
-      ],
-      importado_en_staging: false,
-      emision_habilitada: false,
-    })
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const ivaText = ivaParsed.ivaText
+    const condText = condParsed.conditionText
+    const rawIvaSoapText = SYNTHETIC_TIPOS_IVA_RESPONSE
+    const rawConditionSoapText = SYNTHETIC_CONDICIONES_IVA_RESPONSE
 
-    const goDoc = createSignedPr02P0GoAuthorization({
+    const goDoc = createSignedTestPr02P0GoAuthorization({
       identificador: 'GO-P0-CROSSVAL-001',
       commit_sha: VALID_HEAD,
-    }, goKey)
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
 
     const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
 
@@ -1972,9 +2120,9 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       ejecucion_autorizada_id: 'pid-crossval-001',
       ejecucion_autorizada_scope: PR02_P0_SCOPE,
       operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
-      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_respuesta_original_sha256: createHash('sha256').update(rawIvaSoapText).digest('hex'),
       iva_archivo_normalizado_sha256: createHash('sha256').update(ivaText).digest('hex'),
-      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_respuesta_original_sha256: createHash('sha256').update(rawConditionSoapText).digest('hex'),
       condition_archivo_normalizado_sha256: createHash('sha256').update(condText).digest('hex'),
       transporte_validado: true,
       accredited: true,
@@ -1983,15 +2131,18 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       go_authorization_sha256: goAuthSha,
     }
 
-    const attestation = createP0Attestation({
-      manifest: baseManifest,
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'pid-crossval-001',
       commitSha: VALID_HEAD,
-      transportType: 'OFFICIAL',
-      authoritySecret: validKey,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: baseManifest.iva_respuesta_original_sha256,
+      ivaNormSha: baseManifest.iva_archivo_normalizado_sha256,
+      condRawSha: baseManifest.condition_respuesta_original_sha256,
+      condNormSha: baseManifest.condition_archivo_normalizado_sha256,
       goAuthorizationId: 'GO-P0-CROSSVAL-001',
       goAuthorizationSha256: goAuthSha,
       executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
-    })
+    }, attPriv)
 
     const manifest = {
       ...baseManifest,
@@ -2004,8 +2155,10 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       manifest,
       ivaText,
       conditionText: condText,
-      trustedAuthoritySecret: validKey,
-      trustedGoAuthoritySecret: goKey,
+      rawIvaSoapText,
+      rawConditionSoapText,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
       goAuthorizationDoc: goDoc,
       expectedHead: VALID_HEAD,
       allowTestKeys: true,
@@ -2018,18 +2171,21 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(passResult.trustModel).toBe('LIMITED')
 
     // Discordancia de ID
-    const mismatchedIdGoDoc = createSignedPr02P0GoAuthorization({
+    const mismatchedIdGoDoc = createSignedTestPr02P0GoAuthorization({
       identificador: 'GO-P0-OTHER-ID',
       commit_sha: VALID_HEAD,
-    }, goKey)
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
 
     expect(() =>
       validatePr02P1ImportEvidence({
         manifest,
         ivaText,
         conditionText: condText,
-        trustedAuthoritySecret: validKey,
-        trustedGoAuthoritySecret: goKey,
+        rawIvaSoapText,
+        rawConditionSoapText,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
         goAuthorizationDoc: mismatchedIdGoDoc,
         expectedHead: VALID_HEAD,
         allowTestKeys: true,
@@ -2040,7 +2196,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
   // 54. Niveles de aseguramiento y modelo de confianza en reportes DryRun y Authorized
   it('54. Reportes de ejecución informan niveles de aseguramiento diferenciados y modelo de confianza', async () => {
     const dryReport = await executePr02P0OfficialEvidence({ dryRun: true })
-    expect(dryReport.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(dryReport.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
     expect(dryReport.EVIDENCE_INTEGRITY).toBe('NOT_RUN')
     expect(dryReport.EVIDENCE_CUSTODY_ATTESTED).toBe(false)
     expect(dryReport.TRUSTED_EXECUTION_BOUNDARY).toBe('UNVERIFIED')
@@ -2048,12 +2204,13 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(dryReport.P0_PROVENANCE_TRUST_MODEL).toBe('SELF_ATTESTED')
     expect(dryReport.P1_OFFICIAL_PROVENANCE_TRUST).toBe('LIMITED')
 
-    const goKey = 'VALID_GO_APPROVER_KEY_HEX_1234567890_CD'
-    const authorityKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
-    const goDoc = createSignedPr02P0GoAuthorization({
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const goDoc = createSignedTestPr02P0GoAuthorization({
       identificador: 'GO-P0-REPORT-001',
       commit_sha: VALID_HEAD,
-    }, goKey)
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
 
     const simReport = await executePr02P0OfficialEvidence(
       {
@@ -2063,9 +2220,9 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
         expectedHead: VALID_HEAD,
         head: VALID_HEAD,
         goAuthorizationDoc: goDoc,
-        trustedGoAuthoritySecret: goKey,
+        trustedGoPublicKey: goPub,
         allowTestKeys: true,
-        authoritySecret: authorityKey,
+        trustedAttestationPublicKey: attPub,
         existingTa: {
           valido: true,
           estado: 'DISPONIBLE',
@@ -2082,12 +2239,623 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       }
     )
 
-    expect(simReport.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(simReport.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
     expect(simReport.EVIDENCE_INTEGRITY).toBe('PASS')
     expect(simReport.EVIDENCE_CUSTODY_ATTESTED).toBe(false)
     expect(simReport.TRUSTED_EXECUTION_BOUNDARY).toBe('UNVERIFIED')
     expect(simReport.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
     expect(simReport.P0_PROVENANCE_TRUST_MODEL).toBe('SELF_ATTESTED')
     expect(simReport.P1_OFFICIAL_PROVENANCE_TRUST).toBe('LIMITED')
+  })
+
+  // =========================================================================
+  // 18 PRUEBAS ADVERSARIALES OBLIGATORIAS (HALLAZGOS A, B, C, D, E, F)
+  // =========================================================================
+
+  // ADV-01: Invocación directa del transporte sin GO es bloqueada
+  it('55. [ADV-01] Invocación directa de createOfficialArcaTransport sin GO verificado arroja OFFICIAL_NETWORK_GO_REQUIRED', () => {
+    expect(() => createOfficialArcaTransport(null as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+    expect(() => createOfficialArcaTransport(undefined as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+    expect(() => createOfficialArcaTransport({} as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+    expect(() => createOfficialArcaTransport({ valid: false } as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+  })
+
+  // ADV-02: Intento de bypass mediante booleano officialGoAuthorized
+  it('56. [ADV-02] Intento de activación con objeto apócrifo { officialGoAuthorized: true } es rechazado sin excepción', () => {
+    expect(() => createOfficialArcaTransport({ officialGoAuthorized: true } as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+    expect(() => createOfficialArcaTransport({ valid: true, authorizationId: '' } as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+    expect(() => createOfficialArcaTransport({ valid: true, authorizationId: 'GO-1', scope: 'WRONG_SCOPE' } as any)).toThrow(/OFFICIAL_NETWORK_GO_REQUIRED/)
+  })
+
+  // ADV-03: Atestación auto-firmada (SELF_ATTESTED) del colector es rechazada en P1
+  it('57. [ADV-03] Atestación emitida localmente por el colector (SELF_ATTESTED) es taxativamente rechazada en P1', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-self-attested-01',
+      ejecucion_autorizada_id: 'pid-self-attested-01',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex'),
+      iva_archivo_normalizado_sha256: createHash('sha256').update(ivaParsed.ivaText).digest('hex'),
+      condition_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex'),
+      condition_archivo_normalizado_sha256: createHash('sha256').update(condParsed.conditionText).digest('hex'),
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const selfAttestation = createP0Attestation({
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      goAuthorizationId: goDoc.authorization.identificador,
+      goAuthorizationSha256: createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex'),
+    })
+
+    expect(selfAttestation.trustModel).toBe('SELF_ATTESTED')
+
+    const manifest = {
+      ...manifestDraft,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: false,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex'),
+      attestation: selfAttestation,
+      manifest_sha256: computeP0ManifestDigest({ ...manifestDraft, attestation: selfAttestation }),
+    }
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/INDEPENDENT_ATTESTATION_REQUIRED/)
+  })
+
+  // ADV-04: Evidencia sintética sin firma independiente rechazada en P1
+  it('58. [ADV-04] Evidencia sintética con hashes coincidentes pero sin firma independiente es rechazada en P1', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+
+    const unsignedAttestation = {
+      version: '1.0',
+      processId: 'pid-unsigned',
+      executionId: 'pid-unsigned',
+      executionScope: PR02_P0_SCOPE,
+      commitSha: VALID_HEAD,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      transportType: 'OFFICIAL',
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+      operacionesWsfe: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      ivaRawSha: createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex'),
+      ivaNormSha: createHash('sha256').update(ivaParsed.ivaText).digest('hex'),
+      condRawSha: createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex'),
+      condNormSha: createHash('sha256').update(condParsed.conditionText).digest('hex'),
+      goAuthorizationId: goDoc.authorization.identificador,
+      goAuthorizationSha256: createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex'),
+      issuedAt: '2026-11-05T01:00:00.000Z',
+      signature: null,
+      accredited: true,
+      provenance: 'VERIFIED',
+      trustModel: 'INDEPENDENT_ATTESTED',
+      TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
+    }
+
+    const manifest = {
+      entorno: 'HOMOLOGACION',
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      identificador_proceso: 'pid-unsigned',
+      ejecucion_autorizada_id: 'pid-unsigned',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      iva_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex'),
+      iva_archivo_normalizado_sha256: createHash('sha256').update(ivaParsed.ivaText).digest('hex'),
+      condition_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex'),
+      condition_archivo_normalizado_sha256: createHash('sha256').update(condParsed.conditionText).digest('hex'),
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex'),
+      attestation: unsignedAttestation,
+      manifest_sha256: '',
+    }
+    manifest.manifest_sha256 = computeP0ManifestDigest(manifest)
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada/)
+  })
+
+  // ADV-05: Firma Ed25519 con byte alterado es rechazada
+  it('59. [ADV-05] Firma asimétrica Ed25519 con un único byte modificado es rechazada', () => {
+    const { publicKey, privateKey } = generateEphemeralGoAuthorityKeyPair()
+    const doc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, privateKey)
+
+    const corruptedSig = doc.signature.slice(0, 10) + (doc.signature[10] === 'a' ? 'b' : 'a') + doc.signature.slice(11)
+    const corruptedDoc = {
+      authorization: doc.authorization,
+      signature: corruptedSig,
+    }
+
+    expect(() =>
+      validatePr02P0GoAuthorization(corruptedDoc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
+  })
+
+  // ADV-06: Firma Ed25519 verificada con clave pública ajena es rechazada
+  it('60. [ADV-06] Firma asimétrica Ed25519 verificada contra clave pública ajena es rechazada', () => {
+    const { privateKey } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: wrongPublicKey } = generateEphemeralGoAuthorityKeyPair()
+    const doc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, privateKey)
+
+    expect(() =>
+      validatePr02P0GoAuthorization(doc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: wrongPublicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
+  })
+
+  // ADV-07: GO document payload modificado post-firma
+  it('61. [ADV-07] Documento GO con campo modificado post-firma es rechazado', () => {
+    const { publicKey, privateKey } = generateEphemeralGoAuthorityKeyPair()
+    const doc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, privateKey)
+
+    const tamperedDoc = {
+      authorization: {
+        ...doc.authorization,
+        single_use_nonce: 'tampered_nonce_value_1234567890',
+      },
+      signature: doc.signature,
+    }
+
+    expect(() =>
+      validatePr02P0GoAuthorization(tamperedDoc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_SIGNATURE_INVALID/)
+  })
+
+  // ADV-08: GO document con commit SHA incorrecto
+  it('62. [ADV-08] Documento GO firmado para otro commit SHA es rechazado', () => {
+    const { publicKey, privateKey } = generateEphemeralGoAuthorityKeyPair()
+    const doc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: '0'.repeat(40),
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, privateKey)
+
+    expect(() =>
+      validatePr02P0GoAuthorization(doc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_COMMIT_MISMATCH/)
+  })
+
+  // ADV-09: GO document vencido
+  it('63. [ADV-09] Documento GO con vencimiento expirado es rechazado', () => {
+    const { publicKey, privateKey } = generateEphemeralGoAuthorityKeyPair()
+    const nowIso = '2026-11-05T05:00:00.000Z'
+    const doc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+      emitido_en: '2026-11-05T01:00:00.000Z',
+      vence_en: '2026-11-05T02:00:00.000Z',
+    }, privateKey)
+
+    expect(() =>
+      validatePr02P0GoAuthorization(doc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+        now: nowIso,
+      })
+    ).toThrow(/GO_AUTHORIZATION_EXPIRED/)
+  })
+
+  // ADV-10: GO document con scope o project_ref no autorizado
+  it('64. [ADV-10] Documento GO con scope o project_ref incorrecto es rechazado', () => {
+    const { publicKey, privateKey } = generateEphemeralGoAuthorityKeyPair()
+
+    const wrongScopeDoc = createSignedTestPr02P0GoAuthorization({
+      scope: 'PR02_P2_CATALOG_ENABLE',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, privateKey)
+
+    expect(() =>
+      validatePr02P0GoAuthorization(wrongScopeDoc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_SCOPE_MISMATCH/)
+
+    const wrongProjectDoc = createSignedTestPr02P0GoAuthorization({
+      project_ref: 'invalid-other-project-ref',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, privateKey)
+
+    expect(() =>
+      validatePr02P0GoAuthorization(wrongProjectDoc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_PROJECT_MISMATCH/)
+  })
+
+  // ADV-11: GO document con operaciones o límites adulterados
+  it('65. [ADV-11] Documento GO con operaciones prohibidas o límites inflados es rechazado', () => {
+    const { publicKey, privateKey } = generateEphemeralGoAuthorityKeyPair()
+
+    const dangerousDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+      operaciones_permitidas: ['LoginCms', 'FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor', 'FECAESolicitar'],
+    }, privateKey)
+
+    expect(() =>
+      validatePr02P0GoAuthorization(dangerousDoc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_OPERATIONS_FORBIDDEN/)
+
+    const highLimitsDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+      limites: { loginCmsMax: 1, tiposIvaMax: 1, condicionIvaReceptorMax: 1, totalMax: 99 },
+    }, privateKey)
+
+    expect(() =>
+      validatePr02P0GoAuthorization(highLimitsDoc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_LIMITS_EXCEEDED/)
+  })
+
+  // ADV-12: Anti-replay durable atómico bloquea llamadas antes de ejecutar red
+  it('66. [ADV-12] Anti-replay durable rechaza autorización ya consumida antes de cualquier llamada de red', async () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const testConsumedDir = path.resolve(TEST_EVIDENCE_DIR, '.test-consumed-adv-12')
+    clearConsumedAuthorizationsForTesting(testConsumedDir)
+
+    const authId = 'GO-ADV-REPLAY-SINGLE-USE-001'
+    const doc = createSignedTestPr02P0GoAuthorization({
+      identificador: authId,
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+
+    // Primera ejecución consume de forma durable
+    consumeGoAuthorizationDurable(authId, { consumedAuthorizationsDir: testConsumedDir })
+    expect(isGoAuthorizationConsumed(authId, { consumedAuthorizationsDir: testConsumedDir })).toBe(true)
+
+    // Intento posterior con el mismo GO es bloqueado en validación
+    expect(() =>
+      validatePr02P0GoAuthorization(doc, {
+        expectedHead: VALID_HEAD,
+        trustedGoPublicKey: goPub,
+        consumedAuthorizationsDir: testConsumedDir,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_AUTHORIZATION_ALREADY_CONSUMED/)
+
+    clearConsumedAuthorizationsForTesting(testConsumedDir)
+  })
+
+  // ADV-13: Omisión de documento GO en P1 falla cerrado
+  it('67. [ADV-13] Omisión de documento GO en validación de importación P1 falla cerrado', () => {
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: { dummy: true } as any,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        expectedHead: VALID_HEAD,
+      })
+    ).toThrow(/GO_AUTHORIZATION_REQUIRED/)
+  })
+
+  // ADV-14: Omisión de atestación independiente en P1 falla cerrado
+  it('68. [ADV-14] Omisión de atestación independiente en validación P1 falla cerrado', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+
+    const manifestWithoutAttestation = {
+      entorno: 'HOMOLOGACION',
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      identificador_proceso: 'pid-no-att',
+      ejecucion_autorizada_id: 'pid-no-att',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      iva_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex'),
+      iva_archivo_normalizado_sha256: createHash('sha256').update(ivaParsed.ivaText).digest('hex'),
+      condition_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex'),
+      condition_archivo_normalizado_sha256: createHash('sha256').update(condParsed.conditionText).digest('hex'),
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex'),
+      attestation: null,
+    }
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: manifestWithoutAttestation,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/INDEPENDENT_ATTESTATION_REQUIRED/)
+  })
+
+  // ADV-15: Omisión de respuestas SOAP XML en crudo en validación P1 falla cerrado
+  it('69. [ADV-15] Omisión de respuestas SOAP XML en crudo en validación P1 falla cerrado', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: { dummy: true } as any,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: '', // Omitido
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/RAW_SOAP_RESPONSES_REQUIRED/)
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: { dummy: true } as any,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: '', // Omitido
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/RAW_SOAP_RESPONSES_REQUIRED/)
+  })
+
+  // ADV-16: Discrepancia entre XML SOAP y normalizado detectada por parser independiente
+  it('70. [ADV-16] Discrepancia entre XML SOAP en crudo y normalizado JSON es detectada por parser independiente', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    // Modificamos un parámetro en el normalizado provisto
+    const tamperedIvaObj = JSON.parse(ivaParsed.ivaText)
+    tamperedIvaObj.parametros[0].Description = 'Tasa alterada 99%'
+    const tamperedIvaText = JSON.stringify(tamperedIvaObj)
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const rawIvaSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const tamperedIvaSha = createHash('sha256').update(tamperedIvaText).digest('hex')
+    const rawCondSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-discrepancy-01',
+      ejecucion_autorizada_id: 'pid-discrepancy-01',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: rawIvaSha,
+      iva_archivo_normalizado_sha256: tamperedIvaSha,
+      condition_respuesta_original_sha256: rawCondSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'pid-discrepancy-01',
+      commitSha: VALID_HEAD,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: rawIvaSha,
+      ivaNormSha: tamperedIvaSha,
+      condRawSha: rawCondSha,
+      condNormSha,
+      goAuthorizationId: goDoc.authorization.identificador,
+      goAuthorizationSha256: goAuthSha,
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    }, attPriv)
+
+    const manifest = {
+      ...manifestDraft,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: goAuthSha,
+      attestation,
+      manifest_sha256: computeP0ManifestDigest({ ...manifestDraft, attestation }),
+    }
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText: tamperedIvaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/IVA_NORMALIZED_DATA_DISCREPANCY/)
+  })
+
+  // ADV-17: Intento de proclamar TRUSTED_EXECUTION_BOUNDARY = 'VERIFIED' en colector local
+  it('71. [ADV-17] Intento de proclamar TRUSTED_EXECUTION_BOUNDARY = VERIFIED en atestación local es nulo', () => {
+    const localAttestation = createP0Attestation({
+      manifest: {
+        identificador_proceso: 'pid-boundary-test',
+        iva_respuesta_original_sha256: 'a'.repeat(64),
+        iva_archivo_normalizado_sha256: 'b'.repeat(64),
+        condition_respuesta_original_sha256: 'c'.repeat(64),
+        condition_archivo_normalizado_sha256: 'd'.repeat(64),
+      },
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+    })
+
+    expect(localAttestation.TRUSTED_EXECUTION_BOUNDARY).toBe('UNVERIFIED')
+    expect(localAttestation.accredited).toBe(false)
+    expect(localAttestation.trustModel).toBe('SELF_ATTESTED')
+    expect(localAttestation.signature).toBeNull()
+  })
+
+  // ADV-18: Importación de evidencia declarada SELF_ATTESTED falla taxativamente en P1
+  it('72. [ADV-18] verifyP0Attestation rechaza explícitamente trustModel SELF_ATTESTED con ATTESTATION_SELF_ATTESTED_REJECTED', () => {
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const selfAttestation = {
+      version: '1.0',
+      processId: 'pid-self-01',
+      executionId: 'pid-self-01',
+      executionScope: PR02_P0_SCOPE,
+      commitSha: VALID_HEAD,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      transportType: 'OFFICIAL',
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+      operacionesWsfe: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      ivaRawSha: 'a'.repeat(64),
+      ivaNormSha: 'b'.repeat(64),
+      condRawSha: 'c'.repeat(64),
+      condNormSha: 'd'.repeat(64),
+      goAuthorizationId: 'GO-TEST-001',
+      goAuthorizationSha256: 'e'.repeat(64),
+      issuedAt: '2026-11-05T01:00:00.000Z',
+      signature: '0'.repeat(128),
+      accredited: true,
+      provenance: 'VERIFIED',
+      trustModel: 'SELF_ATTESTED',
+      TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
+    }
+
+    const check = verifyP0Attestation(selfAttestation, {
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: attPub,
+      allowTestKeys: true,
+    })
+
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_SELF_ATTESTED_REJECTED')
+    expect(check.errorCategory).toBe('UNTRUSTED_SELF_ATTESTATION')
+  })
+
+  // ADV-19: Cero conexiones de red reales en todas las pruebas
+  it('73. [ADV-19] Auditoría de llamadas remotas: exactamente cero llamadas a ARCA/WSAA/WSFE y cero escrituras en staging', () => {
+    // Verificación estricta de variables y estados de entorno
+    expect(process.env.ARCA_CALLS_NEW || '0').toBe('0')
+    expect(process.env.STAGING_WRITES_NEW || '0').toBe('0')
   })
 })

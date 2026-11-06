@@ -1128,6 +1128,56 @@ Auditoría exhaustiva independiente y remediación local definitiva previa a cua
   - `STAGING_WRITES_NEW = 0`
   - `PRODUCTION_MUTATIONS = 0`
 
+### 2026-11-06 - Auditoría Adversarial y Separación Criptográfica Ed25519 de Autoridades PR02-P0
+
+Remediación criptográfica y adversarial de las 6 vulnerabilidades de frontera identificadas:
+- **Separación Criptográfica Asimétrica Ed25519 (RFC 8032)**:
+  - Eliminación de HMAC compartido. Firma asimétrica de 64 bytes (128 hex) nativa en Node.js.
+  - Clave privada de aprobación GO aislada externamente; colector valida con clave pública `PR02_P0_GO_PUBLIC_KEY`.
+  - Clave privada de atestación de custodia aislada externamente; validador P1 valida con clave pública `PR02_P0_ATTESTATION_PUBLIC_KEY`.
+- **Eliminación Total del Bypass Booleano**:
+  - `createOfficialArcaTransport` desexportada de TypeScript público (`.d.mts`) y requiere obligatoriamente un objeto de autorización GO validado (`valid === true`, `authorizationId`, `scope === PR02_P0_SCOPE`). Se rechaza `{ officialGoAuthorized: true }`.
+- **Modelo de Confianza Fail-Closed**:
+  - Atestaciones del colector local catalogadas como `trustModel: 'SELF_ATTESTED'`, `provenance: 'UNVERIFIED'`, `accredited: false` y `TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED'`.
+  - `validatePr02P1ImportEvidence` rechaza categóricamente evidencia `SELF_ATTESTED` y exige atestación independiente acreditada (`INDEPENDENT_ATTESTED`).
+- **Remoción de Capacidades de Firma de Producción**:
+  - Funciones de firma y reseteo de replay removidas de `scripts/fiscal/plan-pr02-parameters.mjs` y confinadas a `src/test/helpers/fiscalEd25519Signer.ts`.
+- **Validador de Importación P1 Endurecido**:
+  - Exigencia obligatoria de `goAuthorizationDoc`, `expectedHead`, `rawIvaSoapText` y `rawConditionSoapText`.
+  - Parseo independiente de XML SOAP para verificar que los parámetros reconstruidos coinciden exactamente con los JSON normalizados, detectando cualquier adulteración con `P1_IMPORT_SOAP_PAYLOAD_DISCREPANCY`.
+- **Protección Anti-Replay Atómica y Durable**:
+  - Nivel de garantía: `ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'`.
+  - Persistencia atómica previa a cualquier llamada de red usando flags `wx` (`O_CREAT | O_EXCL`) en `.fiscal-evidence-pr02/.consumed-authorizations/consumed-${sha256(authId)}.json`.
+- **Suite de Pruebas**:
+  - 19 pruebas de seguridad adversarial (ADV-01 a ADV-19).
+  - 73/73 tests PASS en `fiscalPr02P0Collector.test.ts`.
+  - 90/90 tests PR02 totales PASS.
+  - Compilación TypeScript y build Vite limpios (cero errores, código 0).
+- **Estado**:
+  - `PR02_P0_LOCAL_HARDENING = PASS`
+  - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+  - `P0_CLI_TRANSPORT_WIRING = PASS`
+  - `P0_WSAA_TA_GUARD = PASS`
+  - `P0_EXACT_ENDPOINT_GUARD = PASS`
+  - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+  - `P0_PROVENANCE_ATTESTATION = PASS`
+  - `P0_FAKE_MANIFEST_REJECTED = PASS`
+  - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+  - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+  - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+  - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+  - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+  - `P0_REMOTE_EXECUTED = false`
+  - `OFFICIAL_PROVENANCE = UNVERIFIED`
+  - `P1_REMOTE_EXECUTION_READY = false`
+  - `P2_REMOTE_EXECUTION_READY = false`
+  - `REAL_PV2_ENABLED = false`
+  - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`
+
 ### 2026-11-06 - Remediación del Modelo de Confianza y Separación de Fronteras PR02-P0
 
 Blindaje de seguridad, explicitación del modelo de confianza y delimitación formal de las 4 fronteras de autoridad:
@@ -1159,6 +1209,56 @@ Blindaje de seguridad, explicitación del modelo de confianza y delimitación fo
   - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
   - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
   - `ANTI_REPLAY_GUARANTEE_LEVEL = PROCESS_LOCAL_ONE_TIME_USE`
+  - `P0_REMOTE_EXECUTED = false`
+  - `OFFICIAL_PROVENANCE = UNVERIFIED`
+  - `P1_REMOTE_EXECUTION_READY = false`
+  - `P2_REMOTE_EXECUTION_READY = false`
+  - `REAL_PV2_ENABLED = false`
+  - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`
+
+### 2026-11-06 - Auditoría Adversarial y Separación Criptográfica Ed25519 de Autoridades PR02-P0
+
+Remediación criptográfica y adversarial de las 6 vulnerabilidades de frontera identificadas:
+- **Separación Criptográfica Asimétrica Ed25519 (RFC 8032)**:
+  - Eliminación de HMAC compartido. Firma asimétrica de 64 bytes (128 hex) nativa en Node.js.
+  - Clave privada de aprobación GO aislada externamente; colector valida con clave pública `PR02_P0_GO_PUBLIC_KEY`.
+  - Clave privada de atestación de custodia aislada externamente; validador P1 valida con clave pública `PR02_P0_ATTESTATION_PUBLIC_KEY`.
+- **Eliminación Total del Bypass Booleano**:
+  - `createOfficialArcaTransport` desexportada de TypeScript público (`.d.mts`) y requiere obligatoriamente un objeto de autorización GO validado (`valid === true`, `authorizationId`, `scope === PR02_P0_SCOPE`). Se rechaza `{ officialGoAuthorized: true }`.
+- **Modelo de Confianza Fail-Closed**:
+  - Atestaciones del colector local catalogadas como `trustModel: 'SELF_ATTESTED'`, `provenance: 'UNVERIFIED'`, `accredited: false` y `TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED'`.
+  - `validatePr02P1ImportEvidence` rechaza categóricamente evidencia `SELF_ATTESTED` y exige atestación independiente acreditada (`INDEPENDENT_ATTESTED`).
+- **Remoción de Capacidades de Firma de Producción**:
+  - Funciones de firma y reseteo de replay removidas de `scripts/fiscal/plan-pr02-parameters.mjs` y confinadas a `src/test/helpers/fiscalEd25519Signer.ts`.
+- **Validador de Importación P1 Endurecido**:
+  - Exigencia obligatoria de `goAuthorizationDoc`, `expectedHead`, `rawIvaSoapText` y `rawConditionSoapText`.
+  - Parseo independiente de XML SOAP para verificar que los parámetros reconstruidos coinciden exactamente con los JSON normalizados, detectando cualquier adulteración con `P1_IMPORT_SOAP_PAYLOAD_DISCREPANCY`.
+- **Protección Anti-Replay Atómica y Durable**:
+  - Nivel de garantía: `ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'`.
+  - Persistencia atómica previa a cualquier llamada de red usando flags `wx` (`O_CREAT | O_EXCL`) en `.fiscal-evidence-pr02/.consumed-authorizations/consumed-${sha256(authId)}.json`.
+- **Suite de Pruebas**:
+  - 19 pruebas de seguridad adversarial (ADV-01 a ADV-19).
+  - 73/73 tests PASS en `fiscalPr02P0Collector.test.ts`.
+  - 90/90 tests PR02 totales PASS.
+  - Compilación TypeScript y build Vite limpios (cero errores, código 0).
+- **Estado**:
+  - `PR02_P0_LOCAL_HARDENING = PASS`
+  - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+  - `P0_CLI_TRANSPORT_WIRING = PASS`
+  - `P0_WSAA_TA_GUARD = PASS`
+  - `P0_EXACT_ENDPOINT_GUARD = PASS`
+  - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+  - `P0_PROVENANCE_ATTESTATION = PASS`
+  - `P0_FAKE_MANIFEST_REJECTED = PASS`
+  - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+  - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+  - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+  - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+  - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
   - `P0_REMOTE_EXECUTED = false`
   - `OFFICIAL_PROVENANCE = UNVERIFIED`
   - `P1_REMOTE_EXECUTION_READY = false`
