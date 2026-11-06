@@ -37,6 +37,11 @@ import {
   resetConsumedGoAuthorizationsForTesting,
   validatePr02P0Manifest,
   computeP0ManifestDigest,
+  ANTI_REPLAY_GUARANTEE_LEVEL,
+  GoAuthority,
+  AttestationAuthority,
+  PR02_P0_AUTHORITY_ENV,
+  PR02_P0_GO_AUTHORITY_ENV,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
 
 const VALID_HEAD = resolveCurrentGitHead() || '1d62a9d8a838e7ccb19100a49cbcd67cffc662bb'
@@ -1737,5 +1742,352 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       expect(tmpDirs.length).toBe(0)
       cleanupTestDir()
     }
+  })
+
+  // 49. Interfaces de GoAuthority y AttestationAuthority con garantía PROCESS_LOCAL_ONE_TIME_USE
+  it('49. GoAuthority y AttestationAuthority exponen interfaces explícitas y nivel PROCESS_LOCAL_ONE_TIME_USE', () => {
+    expect(ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(GoAuthority.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(typeof GoAuthority.validateAuthorization).toBe('function')
+    expect(typeof GoAuthority.createAuthorization).toBe('function')
+    expect(typeof GoAuthority.validateSecret).toBe('function')
+    expect(PR02_P0_GO_AUTHORITY_ENV).toBe('PR02_P0_GO_AUTHORITY_SECRET')
+
+    GoAuthority.resetConsumedForTesting()
+    const testAuthId = 'TEST-GO-AUTH-001'
+    expect(GoAuthority.isConsumed(testAuthId)).toBe(false)
+    GoAuthority.markConsumed(testAuthId)
+    expect(GoAuthority.isConsumed(testAuthId)).toBe(true)
+    GoAuthority.resetConsumedForTesting()
+    expect(GoAuthority.isConsumed(testAuthId)).toBe(false)
+
+    expect(AttestationAuthority.AUTHORITY_ENV).toBe(PR02_P0_AUTHORITY_ENV)
+    expect(typeof AttestationAuthority.validateSecret).toBe('function')
+    expect(typeof AttestationAuthority.createAttestation).toBe('function')
+    expect(typeof AttestationAuthority.verifyAttestation).toBe('function')
+
+    const prevEnv = process.env[PR02_P0_AUTHORITY_ENV]
+    try {
+      delete process.env[PR02_P0_AUTHORITY_ENV]
+      expect(AttestationAuthority.isAuthorityAvailable()).toBe(false)
+      process.env[PR02_P0_AUTHORITY_ENV] = 'VALID_LONG_AUTHORITY_KEY_HEX_1234567890_AB'
+      expect(AttestationAuthority.isAuthorityAvailable()).toBe(true)
+      process.env[PR02_P0_AUTHORITY_ENV] = 'test_sample_authority_key_1234567890'
+      expect(AttestationAuthority.isAuthorityAvailable()).toBe(false)
+    } finally {
+      if (prevEnv !== undefined) {
+        process.env[PR02_P0_AUTHORITY_ENV] = prevEnv
+      } else {
+        delete process.env[PR02_P0_AUTHORITY_ENV]
+      }
+    }
+  })
+
+  // 50. validateP0AuthoritySecret clasifica errores por categorías estándar
+  it('50. validateP0AuthoritySecret clasifica errores por categorías estándar de seguridad', () => {
+    expect(() => validateP0AuthoritySecret('')).toThrow(/ATTESTATION_AUTHORITY_NOT_AVAILABLE/)
+    expect(() => validateP0AuthoritySecret(PR02_P0_COMPROMISED_SECRETS[0])).toThrow(/UNTRUSTED_ATTESTATION_AUTHORITY/)
+    expect(() => validateP0AuthoritySecret('short_secret')).toThrow(/ATTESTATION_CONFIGURATION_INVALID/)
+    expect(() => validateP0AuthoritySecret('test_authority_key_long_enough_1234567890')).toThrow(/UNTRUSTED_ATTESTATION_AUTHORITY/)
+  })
+
+  // 51. Rechazo inmediato de declaración fraudulenta ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED
+  it('51. Rechaza de forma taxativa cualquier declaración de verificación criptográfica directa de ARCA', () => {
+    const validKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
+    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
+    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+
+    const draft = {
+      identificador_proceso: 'pid-fraud-check',
+      ejecucion_autorizada_id: 'pid-fraud-check',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_archivo_normalizado_sha256: createHash('sha256').update(ivaText).digest('hex'),
+      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_archivo_normalizado_sha256: createHash('sha256').update(condText).digest('hex'),
+    }
+
+    const attestation = createP0Attestation({
+      manifest: draft,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      authoritySecret: validKey,
+      goAuthorizationId: 'GO-FRAUD-001',
+      goAuthorizationSha256: '3'.repeat(64),
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    })
+
+    // La atestación legítima declara ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false
+    expect(attestation.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+
+    // Si un atacante altera la atestación para proclamar verificación criptográfica directa de ARCA
+    const fraudulentAttestation = {
+      ...attestation,
+      ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: true,
+    }
+
+    const check = verifyP0Attestation(fraudulentAttestation, {
+      manifest: draft,
+      commitSha: VALID_HEAD,
+      authoritySecret: validKey,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('FRAUDULENT_ARCA_CRYPTOGRAPHIC_VERIFICATION_CLAIM')
+
+    const fraudulentManifest = {
+      ...draft,
+      origen_verificado: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: 'GO-FRAUD-001',
+      go_authorization_sha256: '3'.repeat(64),
+      attestation: fraudulentAttestation,
+      manifest_sha256: '4'.repeat(64),
+    }
+
+    expect(() => validatePr02P0Manifest(fraudulentManifest)).toThrow(/P0_MANIFEST_FRAUDULENT_ARCA_VERIFICATION/)
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: fraudulentManifest,
+        ivaText,
+        conditionText: condText,
+        trustedAuthoritySecret: validKey,
+        expectedHead: VALID_HEAD,
+      })
+    ).toThrow(/P1_IMPORT_FORBIDDEN: Declaración fraudulenta de verificación criptográfica directa de ARCA/)
+  })
+
+  // 52. Ausencia de clave de custodia en P1 falla cerrado con ATTESTATION_AUTHORITY_NOT_AVAILABLE
+  it('52. Ausencia de clave de custodia en P1 falla cerrado con ATTESTATION_AUTHORITY_NOT_AVAILABLE', () => {
+    const validKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
+    const ivaText = JSON.stringify([{ Id: 5, Desc: '21%' }])
+    const condText = JSON.stringify([{ Id: 1, Desc: 'Inscripto' }])
+
+    const draft = {
+      identificador_proceso: 'pid-custody-check',
+      ejecucion_autorizada_id: 'pid-custody-check',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_archivo_normalizado_sha256: createHash('sha256').update(ivaText).digest('hex'),
+      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_archivo_normalizado_sha256: createHash('sha256').update(condText).digest('hex'),
+    }
+
+    const attestation = createP0Attestation({
+      manifest: draft,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      authoritySecret: validKey,
+      goAuthorizationId: 'GO-CUSTODY-001',
+      goAuthorizationSha256: '3'.repeat(64),
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    })
+
+    const manifest = {
+      ...draft,
+      origen_verificado: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: 'GO-CUSTODY-001',
+      go_authorization_sha256: '3'.repeat(64),
+      attestation,
+      manifest_sha256: '4'.repeat(64),
+    }
+
+    const prevEnv = process.env[PR02_P0_AUTHORITY_ENV]
+    try {
+      delete process.env[PR02_P0_AUTHORITY_ENV]
+      expect(() =>
+        validatePr02P1ImportEvidence({
+          manifest,
+          ivaText,
+          conditionText: condText,
+          expectedHead: VALID_HEAD,
+        })
+      ).toThrow(/ATTESTATION_AUTHORITY_NOT_AVAILABLE/)
+    } finally {
+      if (prevEnv !== undefined) {
+        process.env[PR02_P0_AUTHORITY_ENV] = prevEnv
+      }
+    }
+  })
+
+  // 53. Validación cruzada de goAuthorizationDoc en P1 detecta discordancia de identificador o hash
+  it('53. Validación opcional de goAuthorizationDoc en P1 detecta discordancia con el manifiesto', () => {
+    const validKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
+    const goKey = 'VALID_GO_APPROVER_KEY_HEX_1234567890_CD'
+    const ivaText = JSON.stringify({
+      version: 1,
+      entorno: 'HOMOLOGACION',
+      operacion: 'FEParamGetTiposIva',
+      origen: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      respuesta_sha256: 'a'.repeat(64),
+      parametros: [
+        { Id: 5, Description: '21%', VoucherClasses: '', ValidFrom: '20100917', ValidUntil: 'NULL' },
+        { Id: 4, Description: '10.5%', VoucherClasses: '', ValidFrom: '20100917', ValidUntil: 'NULL' },
+      ],
+      importado_en_staging: false,
+      emision_habilitada: false,
+    })
+    const condText = JSON.stringify({
+      version: 1,
+      entorno: 'HOMOLOGACION',
+      operacion: 'FEParamGetCondicionIvaReceptor',
+      origen: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      respuesta_sha256: 'b'.repeat(64),
+      parametros: [
+        { Id: 1, Description: 'IVA Responsable Inscripto', VoucherClasses: 'A/ALEY/C', ValidFrom: '', ValidUntil: '' },
+        { Id: 5, Description: 'Consumidor Final', VoucherClasses: 'B/C', ValidFrom: '', ValidUntil: '' },
+      ],
+      importado_en_staging: false,
+      emision_habilitada: false,
+    })
+
+    const goDoc = createSignedPr02P0GoAuthorization({
+      identificador: 'GO-P0-CROSSVAL-001',
+      commit_sha: VALID_HEAD,
+    }, goKey)
+
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const baseManifest = {
+      entorno: 'HOMOLOGACION',
+      origen_verificado: 'https://wswhomo.afip.gov.ar/wsfev1/service.asmx',
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      identificador_proceso: 'pid-crossval-001',
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      ejecucion_autorizada_id: 'pid-crossval-001',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      iva_respuesta_original_sha256: '1'.repeat(64),
+      iva_archivo_normalizado_sha256: createHash('sha256').update(ivaText).digest('hex'),
+      condition_respuesta_original_sha256: '2'.repeat(64),
+      condition_archivo_normalizado_sha256: createHash('sha256').update(condText).digest('hex'),
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: 'GO-P0-CROSSVAL-001',
+      go_authorization_sha256: goAuthSha,
+    }
+
+    const attestation = createP0Attestation({
+      manifest: baseManifest,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      authoritySecret: validKey,
+      goAuthorizationId: 'GO-P0-CROSSVAL-001',
+      goAuthorizationSha256: goAuthSha,
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    })
+
+    const manifest = {
+      ...baseManifest,
+      attestation,
+      manifest_sha256: computeP0ManifestDigest({ ...baseManifest, attestation }),
+    }
+
+    // Coincidencia exitosa
+    const passResult = validatePr02P1ImportEvidence({
+      manifest,
+      ivaText,
+      conditionText: condText,
+      trustedAuthoritySecret: validKey,
+      trustedGoAuthoritySecret: goKey,
+      goAuthorizationDoc: goDoc,
+      expectedHead: VALID_HEAD,
+      allowTestKeys: true,
+    })
+    expect(passResult.status).toBe('PASS')
+    expect(passResult.EVIDENCE_INTEGRITY).toBe('PASS')
+    expect(passResult.EVIDENCE_CUSTODY_ATTESTED).toBe(true)
+    expect(passResult.TRUSTED_EXECUTION_BOUNDARY).toBe('VERIFIED')
+    expect(passResult.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+    expect(passResult.trustModel).toBe('LIMITED')
+
+    // Discordancia de ID
+    const mismatchedIdGoDoc = createSignedPr02P0GoAuthorization({
+      identificador: 'GO-P0-OTHER-ID',
+      commit_sha: VALID_HEAD,
+    }, goKey)
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText,
+        conditionText: condText,
+        trustedAuthoritySecret: validKey,
+        trustedGoAuthoritySecret: goKey,
+        goAuthorizationDoc: mismatchedIdGoDoc,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/GO_ID_MISMATCH/)
+  })
+
+  // 54. Niveles de aseguramiento y modelo de confianza en reportes DryRun y Authorized
+  it('54. Reportes de ejecución informan niveles de aseguramiento diferenciados y modelo de confianza', async () => {
+    const dryReport = await executePr02P0OfficialEvidence({ dryRun: true })
+    expect(dryReport.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(dryReport.EVIDENCE_INTEGRITY).toBe('NOT_RUN')
+    expect(dryReport.EVIDENCE_CUSTODY_ATTESTED).toBe(false)
+    expect(dryReport.TRUSTED_EXECUTION_BOUNDARY).toBe('UNVERIFIED')
+    expect(dryReport.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+    expect(dryReport.P0_PROVENANCE_TRUST_MODEL).toBe('SELF_ATTESTED')
+    expect(dryReport.P1_OFFICIAL_PROVENANCE_TRUST).toBe('LIMITED')
+
+    const goKey = 'VALID_GO_APPROVER_KEY_HEX_1234567890_CD'
+    const authorityKey = 'VALID_GOV_AUTHORITY_KEY_HEX_1234567890_AB'
+    const goDoc = createSignedPr02P0GoAuthorization({
+      identificador: 'GO-P0-REPORT-001',
+      commit_sha: VALID_HEAD,
+    }, goKey)
+
+    const simReport = await executePr02P0OfficialEvidence(
+      {
+        authorized: true,
+        scope: PR02_P0_SCOPE,
+        projectRef: PR02_PARAMETERS_TARGET_PROJECT_REF,
+        expectedHead: VALID_HEAD,
+        head: VALID_HEAD,
+        goAuthorizationDoc: goDoc,
+        trustedGoAuthoritySecret: goKey,
+        allowTestKeys: true,
+        authoritySecret: authorityKey,
+        existingTa: {
+          valido: true,
+          estado: 'DISPONIBLE',
+          token: 'TOKEN_SIM_1234567890',
+          sign: 'SIGN_SIM_1234567890',
+          vence_en: '2026-11-05T12:00:00.000Z',
+        },
+        saveEvidence: false,
+        now: '2026-11-05T02:00:00.000Z',
+      },
+      {
+        wsfeTiposIva: async () => SYNTHETIC_TIPOS_IVA_RESPONSE,
+        wsfeCondicionIva: async () => SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+      }
+    )
+
+    expect(simReport.ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(simReport.EVIDENCE_INTEGRITY).toBe('PASS')
+    expect(simReport.EVIDENCE_CUSTODY_ATTESTED).toBe(false)
+    expect(simReport.TRUSTED_EXECUTION_BOUNDARY).toBe('UNVERIFIED')
+    expect(simReport.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+    expect(simReport.P0_PROVENANCE_TRUST_MODEL).toBe('SELF_ATTESTED')
+    expect(simReport.P1_OFFICIAL_PROVENANCE_TRUST).toBe('LIMITED')
   })
 })

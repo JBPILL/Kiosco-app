@@ -1127,3 +1127,45 @@ Auditoría exhaustiva independiente y remediación local definitiva previa a cua
   - `ARCA_CALLS_NEW = 0`
   - `STAGING_WRITES_NEW = 0`
   - `PRODUCTION_MUTATIONS = 0`
+
+### 2026-11-06 - Remediación del Modelo de Confianza y Separación de Fronteras PR02-P0
+
+Blindaje de seguridad, explicitación del modelo de confianza y delimitación formal de las 4 fronteras de autoridad:
+- **Separación Canónica de Fronteras**:
+  - `GO AUTHORITY`: exportado mediante el objeto inmutable `GoAuthority` (`validateAuthorization`, `createAuthorization`, `validateSecret`, `markConsumed`, `isConsumed`, `resetConsumedForTesting`). Clasificación explícita de nivel anti-replay: `ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'`.
+  - `AUTHORIZED COLLECTOR`: colector confiable `scripts/fiscal/execute-pr02-p0-official-evidence.mjs` bajo scope `PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`. Modelo de procedencia: `P0_PROVENANCE_TRUST_MODEL = 'SELF_ATTESTED'`.
+  - `EVIDENCE CUSTODY / ATTESTATION AUTHORITY`: autoridad de custodia `AttestationAuthority`. Falla cerrado ante claves faltantes (`ATTESTATION_AUTHORITY_NOT_AVAILABLE`), claves comprometidas o de prueba (`UNTRUSTED_ATTESTATION_AUTHORITY`), o baja entropía (`ATTESTATION_CONFIGURATION_INVALID`).
+  - `P1 VERIFIER`: verificador de importación `validatePr02P1ImportEvidence` con confianza acotada `P1_OFFICIAL_PROVENANCE_TRUST = 'LIMITED'`.
+- **Cuatro Niveles de Aseguramiento Diferenciados**:
+  - `EVIDENCE_INTEGRITY: 'PASS' | 'FAIL'`
+  - `EVIDENCE_CUSTODY_ATTESTED: boolean`
+  - `TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' | 'UNVERIFIED'`
+  - `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false` (declaraciones fraudulentas de verificación directa de ARCA son rechazadas con `P1_IMPORT_FORBIDDEN`).
+- **Validación Cruzada Opcional de GO en P1**:
+  - `validatePr02P1ImportEvidence` admite `options.goAuthorizationDoc` y exige concordancia de ID y SHA con el manifiesto.
+- **Suite de Pruebas**:
+  - Casos 49 a 54 en `fiscalPr02P0Collector.test.ts`. 54/54 tests PASS. 71/71 tests PR02 PASS. Build Vite exitoso (exit code 0).
+- **Estado**:
+  - `PR02_P0_LOCAL_HARDENING = PASS`
+  - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+  - `P0_CLI_TRANSPORT_WIRING = PASS`
+  - `P0_WSAA_TA_GUARD = PASS`
+  - `P0_EXACT_ENDPOINT_GUARD = PASS`
+  - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+  - `P0_PROVENANCE_ATTESTATION = PASS`
+  - `P0_FAKE_MANIFEST_REJECTED = PASS`
+  - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+  - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+  - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+  - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+  - `ANTI_REPLAY_GUARANTEE_LEVEL = PROCESS_LOCAL_ONE_TIME_USE`
+  - `P0_REMOTE_EXECUTED = false`
+  - `OFFICIAL_PROVENANCE = UNVERIFIED`
+  - `P1_REMOTE_EXECUTION_READY = false`
+  - `P2_REMOTE_EXECUTION_READY = false`
+  - `REAL_PV2_ENABLED = false`
+  - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`

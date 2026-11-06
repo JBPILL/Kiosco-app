@@ -33,25 +33,27 @@ export function isTestAuthorityKey(secret) {
   )
 }
 
+export const ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'
+
 /**
  * Validador estricto de la clave de autoridad de atestación oficial P0.
  * Exige alta entropía (>= 32 caracteres), custodia externa, y rechaza claves comprometidas o de prueba.
  */
 export function validateP0AuthoritySecret(secret) {
   if (!secret || typeof secret !== 'string' || secret.trim().length === 0) {
-    throw new Error('P0_ATTESTATION_KEY_MISSING: Se requiere una clave de atestación oficial custodiada fuera del repositorio')
+    throw new Error('ATTESTATION_AUTHORITY_NOT_AVAILABLE: P0_ATTESTATION_KEY_MISSING: Se requiere una clave de atestación oficial custodiada fuera del repositorio')
   }
   const trimmed = secret.trim()
   for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
     if (trimmed === compromised || trimmed.toLowerCase() === compromised.toLowerCase()) {
-      throw new Error('P0_ATTESTATION_KEY_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa')
+      throw new Error('UNTRUSTED_ATTESTATION_AUTHORITY: P0_ATTESTATION_KEY_COMPROMISED: La clave provista fue declarada permanentemente no confiable por exposición previa')
     }
   }
   if (trimmed.length < 32) {
-    throw new Error('P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY: La clave de atestación oficial debe tener al menos 32 caracteres de alta entropía')
+    throw new Error('ATTESTATION_CONFIGURATION_INVALID: P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY: La clave de atestación oficial debe tener al menos 32 caracteres de alta entropía')
   }
   if (isTestAuthorityKey(trimmed)) {
-    throw new Error('P0_ATTESTATION_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba o simulación para atestación oficial')
+    throw new Error('UNTRUSTED_ATTESTATION_AUTHORITY: P0_ATTESTATION_TEST_KEY_PROHIBITED: No se permite utilizar una clave de prueba o simulación para atestación oficial')
   }
   return trimmed
 }
@@ -288,6 +290,19 @@ export function validatePr02P0GoAuthorization(signedGoDoc, options = {}) {
     singleUseNonce: nonce.trim(),
   })
 }
+
+/**
+ * Entidad de Autoridad de Aprobación GO (frontera de control externo).
+ */
+export const GoAuthority = Object.freeze({
+  validateAuthorization: validatePr02P0GoAuthorization,
+  createAuthorization: createSignedPr02P0GoAuthorization,
+  validateSecret: validateP0GoAuthoritySecret,
+  markConsumed: markGoAuthorizationConsumed,
+  isConsumed: isGoAuthorizationConsumed,
+  resetConsumedForTesting: resetConsumedGoAuthorizationsForTesting,
+  ANTI_REPLAY_GUARANTEE_LEVEL,
+})
 
 export const PR02_P0_SCOPE = 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
 export const PR02_P1_SCOPE = 'PR02_P1_VERIFIED_CATALOG_IMPORT'
@@ -772,6 +787,12 @@ export function createP0Attestation(params = {}) {
       signature: null,
       accredited: false,
       provenance: 'UNVERIFIED',
+      EVIDENCE_INTEGRITY: 'PASS',
+      EVIDENCE_CUSTODY_ATTESTED: false,
+      TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
+      ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+      trustModel: 'SIMULATED',
+      antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
     })
   }
 
@@ -816,6 +837,12 @@ export function createP0Attestation(params = {}) {
     goAuthorizationId: authId,
     goAuthorizationSha256: authSha,
     issuedAt,
+    EVIDENCE_INTEGRITY: 'PASS',
+    EVIDENCE_CUSTODY_ATTESTED: true,
+    TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
+    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    trustModel: 'SELF_ATTESTED',
+    antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
   }
 
   const canonicalPayload = JSON.stringify(payload)
@@ -837,6 +864,9 @@ export function createP0Attestation(params = {}) {
 export function verifyP0Attestation(attestation, options = {}) {
   if (!attestation || typeof attestation !== 'object') {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_MISSING' })
+  }
+  if (attestation.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true) {
+    return Object.freeze({ valid: false, reason: 'FRAUDULENT_ARCA_CRYPTOGRAPHIC_VERIFICATION_CLAIM' })
   }
   if (attestation.accredited !== true) {
     return Object.freeze({ valid: false, reason: 'ATTESTATION_NOT_ACCREDITED' })
@@ -884,21 +914,24 @@ export function verifyP0Attestation(attestation, options = {}) {
   }
 
   const rawSecret = authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
+  if (!rawSecret) {
+    return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING', errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE' })
+  }
   let validSecret
   try {
     validSecret = validateP0AuthoritySecret(rawSecret)
   } catch (err) {
-    if (err.message.includes('P0_ATTESTATION_KEY_MISSING')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING' })
+    if (err.message.includes('P0_ATTESTATION_KEY_MISSING') || err.message.includes('ATTESTATION_AUTHORITY_NOT_AVAILABLE')) {
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING', errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE' })
     }
     if (err.message.includes('P0_ATTESTATION_KEY_COMPROMISED')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_COMPROMISED' })
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_COMPROMISED', errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY' })
     }
     if (err.message.includes('P0_ATTESTATION_KEY_INSUFFICIENT_ENTROPY')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INSUFFICIENT_ENTROPY' })
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INSUFFICIENT_ENTROPY', errorCategory: 'ATTESTATION_CONFIGURATION_INVALID' })
     }
     if (err.message.includes('P0_ATTESTATION_TEST_KEY_PROHIBITED')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_TEST_KEY_PROHIBITED' })
+      return Object.freeze({ valid: false, reason: 'ATTESTATION_TEST_KEY_PROHIBITED', errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY' })
     }
     return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INVALID' })
   }
@@ -916,6 +949,20 @@ export function verifyP0Attestation(attestation, options = {}) {
 
   return Object.freeze({ valid: true, reason: 'VERIFIED' })
 }
+
+/**
+ * Entidad de Autoridad de Custodia y Atestación de Evidencia P0.
+ */
+export const AttestationAuthority = Object.freeze({
+  validateSecret: validateP0AuthoritySecret,
+  createAttestation: createP0Attestation,
+  verifyAttestation: verifyP0Attestation,
+  isAuthorityAvailable: () => {
+    const s = process.env[PR02_P0_AUTHORITY_ENV]
+    return Boolean(s && s.trim().length >= 32 && !isTestAuthorityKey(s) && !PR02_P0_COMPROMISED_SECRETS.includes(s.trim()))
+  },
+  AUTHORITY_ENV: PR02_P0_AUTHORITY_ENV,
+})
 
 /**
  * Constructor del manifiesto oficial de evidencia P0 (sin secretos ni claves privadas).
@@ -1126,6 +1173,12 @@ export function validatePr02P0Manifest(manifest) {
   if (!manifest || typeof manifest !== 'object') {
     throw new Error('P0_MANIFEST_INVALID: Se requiere objeto de manifiesto P0')
   }
+  if (
+    manifest.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true ||
+    (manifest.attestation && manifest.attestation.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true)
+  ) {
+    throw new Error('P0_MANIFEST_FRAUDULENT_ARCA_VERIFICATION: Declaración fraudulenta de verificación criptográfica directa de ARCA. ARCA WSFE no emite firmas digitales en respuestas SOAP.')
+  }
   if (manifest.entorno !== 'HOMOLOGACION') {
     throw new Error('P0_MANIFEST_ENTORNO_MISMATCH: Se requiere entorno HOMOLOGACION')
   }
@@ -1214,6 +1267,13 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_MANIFEST_REQUIRED: Se requiere manifiesto oficial P0 para importar evidencia en P1')
   }
 
+  if (
+    manifest.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true ||
+    (manifest.attestation && manifest.attestation.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true)
+  ) {
+    throw new Error('P1_IMPORT_FORBIDDEN: Declaración fraudulenta de verificación criptográfica directa de ARCA. ARCA WSFE no emite firmas digitales en respuestas SOAP.')
+  }
+
   if (manifest.authoritySecret || (manifest.attestation && manifest.attestation.authoritySecret)) {
     throw new Error('P1_IMPORT_FORBIDDEN: El manifiesto no puede proveer su propia clave de autoridad')
   }
@@ -1258,15 +1318,35 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_FORBIDDEN: P0_MANIFEST_NOT_ACCREDITED')
   }
 
+  // Validación cruzada opcional con documento de autorización GO provisto
+  if (options.goAuthorizationDoc) {
+    const goCheck = validatePr02P0GoAuthorization(options.goAuthorizationDoc, {
+      expectedHead: options.expectedHead || options.head,
+      trustedGoAuthoritySecret: options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_AUTHORITY_ENV],
+      allowTestKeys: Boolean(options.allowTestKeys),
+      now,
+    })
+    if (manifest.go_authorization_id !== goCheck.authorizationId) {
+      throw new Error(`P1_IMPORT_FORBIDDEN: GO_ID_MISMATCH: Identificador del GO provisto ('${goCheck.authorizationId}') no coincide con el manifiesto ('${manifest.go_authorization_id}')`)
+    }
+    if (manifest.go_authorization_sha256 !== goCheck.documentSha256) {
+      throw new Error(`P1_IMPORT_FORBIDDEN: GO_SHA_MISMATCH: Digest del GO provisto ('${goCheck.documentSha256}') no coincide con el manifiesto ('${manifest.go_authorization_sha256}')`)
+    }
+  }
+
   // Verificación estricta de la atestación de procedencia oficial contra autoridad externa confiable
   const trustedAuthoritySecret = options.trustedAuthoritySecret || options.authoritySecret || process.env[PR02_P0_AUTHORITY_ENV]
+  if (!trustedAuthoritySecret) {
+    throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_AUTHORITY_NOT_AVAILABLE: Se requiere clave de autoridad custodiada para verificar procedencia')
+  }
   const attestationCheck = verifyP0Attestation(manifest.attestation, {
     manifest,
     commitSha: options.expectedHead || options.head,
     authoritySecret: trustedAuthoritySecret,
   })
   if (!attestationCheck.valid) {
-    throw new Error(`P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada (${attestationCheck.reason}). Importación denegada.`)
+    const detail = attestationCheck.errorCategory ? `${attestationCheck.errorCategory}: ${attestationCheck.reason}` : attestationCheck.reason
+    throw new Error(`P1_IMPORT_FORBIDDEN: Procedencia oficial no verificada (${detail}). Importación denegada.`)
   }
 
   try {
@@ -1279,7 +1359,8 @@ export function validatePr02P1ImportEvidence(options = {}) {
       err.message.includes('P0_MANIFEST_GO_ID_REQUIRED') ||
       err.message.includes('P0_MANIFEST_GO_SHA_REQUIRED') ||
       err.message.includes('P0_MANIFEST_DIGEST_MISMATCH') ||
-      err.message.includes('P0_MANIFEST_COLLECTOR_IDENTITY_MISMATCH')
+      err.message.includes('P0_MANIFEST_COLLECTOR_IDENTITY_MISMATCH') ||
+      err.message.includes('P0_MANIFEST_FRAUDULENT_ARCA_VERIFICATION')
     ) {
       throw new Error(`P1_IMPORT_FORBIDDEN: ${err.message}`)
     }
@@ -1301,6 +1382,12 @@ export function validatePr02P1ImportEvidence(options = {}) {
     status: 'PASS',
     officialEvidenceVerified: true,
     P1_IMPORT_ALLOWED: true,
+    EVIDENCE_INTEGRITY: 'PASS',
+    EVIDENCE_CUSTODY_ATTESTED: true,
+    TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
+    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    trustModel: 'LIMITED',
+    ANTI_REPLAY_GUARANTEE_LEVEL,
     consultado_en: manifest.consultado_en,
     ivaSha256: ivaSha,
     conditionSha256: conditionSha,

@@ -100,6 +100,7 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
 export const PR02_P0_AUTHORITY_ENV: string
 export const PR02_P0_GO_AUTHORITY_ENV: string
 export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
+export const ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
 
 export function isTestAuthorityKey(secret: unknown): boolean
 export function validateP0AuthoritySecret(secret: unknown): string
@@ -108,6 +109,17 @@ export function validateP0GoAuthoritySecret(secret: unknown, allowTestKeys?: boo
 export function markGoAuthorizationConsumed(authId: unknown): void
 export function isGoAuthorizationConsumed(authId: unknown): boolean
 export function resetConsumedGoAuthorizationsForTesting(): void
+
+export interface GoAuthorityInterface {
+  readonly validateAuthorization: typeof validatePr02P0GoAuthorization
+  readonly createAuthorization: typeof createSignedPr02P0GoAuthorization
+  readonly validateSecret: typeof validateP0GoAuthoritySecret
+  readonly markConsumed: typeof markGoAuthorizationConsumed
+  readonly isConsumed: typeof isGoAuthorizationConsumed
+  readonly resetConsumedForTesting: typeof resetConsumedGoAuthorizationsForTesting
+  readonly ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
+}
+export const GoAuthority: GoAuthorityInterface
 
 export interface Pr02P0GoAuthorizationDoc {
   readonly version?: string
@@ -183,6 +195,12 @@ export interface Pr02P0Attestation {
   readonly signature: string | null
   readonly accredited: boolean
   readonly provenance: string
+  readonly EVIDENCE_INTEGRITY?: 'PASS' | 'FAIL'
+  readonly EVIDENCE_CUSTODY_ATTESTED?: boolean
+  readonly TRUSTED_EXECUTION_BOUNDARY?: 'VERIFIED' | 'UNVERIFIED'
+  readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED?: boolean
+  readonly trustModel?: string
+  readonly antiReplayGuarantee?: string
 }
 
 export function createP0Attestation(params?: {
@@ -207,7 +225,16 @@ export function verifyP0Attestation(
     goAuthorizationId?: string
     goAuthorizationSha256?: string
   }
-): { readonly valid: boolean; readonly reason?: string }
+): { readonly valid: boolean; readonly reason?: string; readonly errorCategory?: string }
+
+export interface AttestationAuthorityInterface {
+  readonly validateSecret: typeof validateP0AuthoritySecret
+  readonly createAttestation: typeof createP0Attestation
+  readonly verifyAttestation: typeof verifyP0Attestation
+  readonly isAuthorityAvailable: () => boolean
+  readonly AUTHORITY_ENV: string
+}
+export const AttestationAuthority: AttestationAuthorityInterface
 
 export interface Pr02P0OfficialEvidenceManifest {
   readonly entorno: string
@@ -271,11 +298,20 @@ export function validatePr02P1ImportEvidence(options?: {
   head?: string
   authoritySecret?: string
   trustedAuthoritySecret?: string
+  trustedGoAuthoritySecret?: string
+  goAuthorizationDoc?: unknown
+  allowTestKeys?: boolean
   expectedHashes?: { iva?: string; condition?: string }
 }): {
   readonly status: 'PASS'
   readonly officialEvidenceVerified: true
   readonly P1_IMPORT_ALLOWED?: boolean
+  readonly EVIDENCE_INTEGRITY: 'PASS'
+  readonly EVIDENCE_CUSTODY_ATTESTED: true
+  readonly TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED'
+  readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false
+  readonly trustModel: 'LIMITED'
+  readonly ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
   readonly consultado_en: string
   readonly ivaSha256: string
   readonly conditionSha256: string

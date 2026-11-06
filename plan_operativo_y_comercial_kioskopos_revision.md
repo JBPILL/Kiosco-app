@@ -2225,3 +2225,42 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `ARCA_CALLS_NEW = 0`
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
+
+- **Remediación del Modelo de Confianza y Separación de Fronteras PR02-P0 (06/11/2026)**:
+  - Blindaje formal y eliminación de garantías meramente declarativas en el colector oficial de evidencia:
+    - **Fronteras y Autoridades Explícitas**: Definición de `GoAuthority` (`validateAuthorization`, `createAuthorization`, `validateSecret`, `markConsumed`, `isConsumed`, `resetConsumedForTesting`, `ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'`) y `AttestationAuthority` (`validateSecret`, `createAttestation`, `verifyAttestation`, `isAuthorityAvailable`).
+    - **Cuatro Niveles de Aseguramiento Diferenciados**:
+      1. `EVIDENCE_INTEGRITY: 'PASS' | 'FAIL'` (integridad por digest de contenidos contra manifiesto).
+      2. `EVIDENCE_CUSTODY_ATTESTED: boolean` (firma bajo clave externa confiable de custodia).
+      3. `TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' | 'UNVERIFIED'` (frontera oficial de red contra ARCA vs local).
+      4. `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false` (declaración fraudulenta prohibida tajantemente con `P1_IMPORT_FORBIDDEN`, dado que ARCA WSFE emite XML SOAP plano sin firma digital).
+    - **Modelo de Confianza Colector e Importador**:
+      - Colector: `P0_PROVENANCE_TRUST_MODEL = 'SELF_ATTESTED'`.
+      - Importador P1: `P1_OFFICIAL_PROVENANCE_TRUST = 'LIMITED'`.
+    - **Clasificación Estándar de Errores de Clave**: Claves faltantes (`ATTESTATION_AUTHORITY_NOT_AVAILABLE`), claves comprometidas o de prueba (`UNTRUSTED_ATTESTATION_AUTHORITY`), baja entropía (`ATTESTATION_CONFIGURATION_INVALID`).
+    - **Validación Cruzada Opcional de GO en P1**: `validatePr02P1ImportEvidence` verifica concordancia de ID y SHA cuando se suministra `options.goAuthorizationDoc`.
+    - **Pruebas y Build**: 54/54 tests PASS en `fiscalPr02P0Collector.test.ts` (casos 49 a 54 añadidos), 71/71 tests PR02 totales, `npm run build` PASS (tsc -b && vite build con exit code 0).
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`
+    - `P0_CLI_TRANSPORT_WIRING = PASS`
+    - `P0_WSAA_TA_GUARD = PASS`
+    - `P0_EXACT_ENDPOINT_GUARD = PASS`
+    - `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`
+    - `P0_PROVENANCE_ATTESTATION = PASS`
+    - `P0_FAKE_MANIFEST_REJECTED = PASS`
+    - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
+    - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+    - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+    - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+    - `ANTI_REPLAY_GUARANTEE_LEVEL = PROCESS_LOCAL_ONE_TIME_USE`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`

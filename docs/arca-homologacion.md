@@ -2367,6 +2367,29 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
       - 166/166 tests PASS en la totalidad de suites unitarias fiscales (`fiscalPr02ParametersPlan.test.ts`, `fiscalPr02A0Preflight.test.ts`, `fiscalPr02Preparation.test.ts`, `fiscalPr03cPlan.test.ts`, `fiscalPr03cExecute.test.ts`).
       - Invariantes preservados: `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`, `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`.
 
+14. **Explicación Formal del Modelo de Confianza y Separación de Fronteras PR02-P0 (06/11/2026)**:
+    - **Separación Estricta de 4 Fronteras y Entidades de Autoridad**:
+      - `GO AUTHORITY` (`GoAuthority`): Valida y firma la autorización administrativa previa a la ejecución oficial. Implementa protección anti-replay con nivel de garantía explícito `ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'`.
+      - `AUTHORIZED COLLECTOR` (`execute-pr02-p0-official-evidence.mjs`): Colector confiable que ejecuta o simula la interacción fiscal con ARCA. Modelo de procedencia: `P0_PROVENANCE_TRUST_MODEL = 'SELF_ATTESTED'` (atestación de custodia emitida por el propio proceso colector).
+      - `EVIDENCE CUSTODY / ATTESTATION AUTHORITY` (`AttestationAuthority`): Autoridad externa de custodia que valida claves y firma/verifica atestaciones P0. Falla cerrado con categorías explícitas: `ATTESTATION_AUTHORITY_NOT_AVAILABLE`, `UNTRUSTED_ATTESTATION_AUTHORITY`, `ATTESTATION_CONFIGURATION_INVALID`.
+      - `P1 VERIFIER` (`validatePr02P1ImportEvidence`): Importador del catálogo que evalúa la evidencia con nivel de confianza `P1_OFFICIAL_PROVENANCE_TRUST = 'LIMITED'`. Valida que no existan declaraciones fraudulentas de verificación directa de ARCA.
+    - **Cuatro Niveles de Aseguramiento Diferenciados**:
+      - `EVIDENCE_INTEGRITY: 'PASS' | 'FAIL'`: Verificación de hashes SHA-256 de las respuestas SOAP crudas y archivos normalizados contra el manifiesto.
+      - `EVIDENCE_CUSTODY_ATTESTED: boolean`: Indica si el paquete de evidencia fue firmado por la autoridad de atestación bajo clave externa confiable (solo `true` en transporte oficial acreditado, `false` en simulaciones).
+      - `TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' | 'UNVERIFIED'`: Distingue si la ejecución ocurrió en la frontera oficial de red contra ARCA (`VERIFIED`) o en entorno local/simulado (`UNVERIFIED`).
+      - `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false`: Reconocimiento explícito de que ARCA WSFE devuelve XML SOAP plano sin firma digital. Cualquier declaración fraudulenta de verificación criptográfica directa de ARCA es rechazada taxativamente con `P1_IMPORT_FORBIDDEN`.
+    - **Validación Cruzada Opcional de GO en P1**:
+      - `validatePr02P1ImportEvidence` admite `options.goAuthorizationDoc`, verificando que el identificador y digest del GO coincidan unívocamente con `manifest.go_authorization_id` y `manifest.go_authorization_sha256`.
+    - **Suite de Pruebas**:
+      - 6 nuevas pruebas de seguridad (casos 49 al 54) en `fiscalPr02P0Collector.test.ts`, alcanzando 54/54 tests PASS en la suite de P0 y 71/71 tests PR02 totales.
+    - **Invariantes Preservados**:
+      - `ARCA_CALLS_NEW = 0`
+      - `STAGING_WRITES_NEW = 0`
+      - `PRODUCTION_MUTATIONS = 0`
+      - `REAL_PV2_ENABLED = false`
+      - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+      - `PR02_READY_FOR_EMISSION_GO = false`
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

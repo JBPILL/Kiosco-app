@@ -2277,3 +2277,37 @@ Se realizó una auditoría exhaustiva e independiente sobre la implementación d
 **Consecuencias:**
 `PR02_P0_LOCAL_HARDENING = PASS`, `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`, `P0_CLI_TRANSPORT_WIRING = PASS`, `P0_WSAA_TA_GUARD = PASS`, `P0_EXACT_ENDPOINT_GUARD = PASS`, `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`, `P0_PROVENANCE_ATTESTATION = PASS`, `P0_FAKE_MANIFEST_REJECTED = PASS`, `P0_PRIVATE_EVIDENCE_STORAGE = PASS`, `P0_AUDIT_COUNTS_ACCURATE = PASS`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
 48/48 tests PASS en `fiscalPr02P0Collector.test.ts`, 166 tests unitarios fiscales PASS. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+## Separación de Fronteras de Autoridad y Explicación del Modelo de Confianza PR02-P0 (06/11/2026)
+
+**Contexto:**
+El modelo de atestación de PR02-P0 requería eliminar garantías meramente declarativas y explicitar con rigor criptográfico y operativo las fronteras de confianza del colector:
+1. ARCA WSFE devuelve respuestas en XML SOAP plano, sin firma digital; no es factible verificar criptográficamente el origen directo desde ARCA en la respuesta. Cualquier afirmación de verificación criptográfica directa de ARCA es apócrifa.
+2. La atestación HMAC certifica la custodia y los límites del proceso colector (`P0_PROVENANCE_TRUST_MODEL = 'SELF_ATTESTED'`), por lo que el importador P1 debe mantener un modelo de confianza acotado (`P1_OFFICIAL_PROVENANCE_TRUST = 'LIMITED'`).
+3. El registro de anti-reutilización de autorizaciones GO se mantiene en memoria del proceso, por lo que la garantía es estrictamente `ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'` y no debe proclamar persistencia durable.
+4. Es necesario formalizar cuatro interfaces/entidades independientes: `GoAuthority`, `AuthorizedCollector`, `AttestationAuthority` y `P1Verifier`.
+5. La ausencia o invalidez de claves de autoridad debe fallar cerrado con tipos de error normalizados: `ATTESTATION_AUTHORITY_NOT_AVAILABLE`, `UNTRUSTED_ATTESTATION_AUTHORITY`, `ATTESTATION_CONFIGURATION_INVALID`.
+
+**Decisión:**
+1. **Cuatro Niveles de Aseguramiento Diferenciados**:
+   - `EVIDENCE_INTEGRITY: 'PASS' | 'FAIL'`: Verificación de integridad por hashes de contenidos crudos y normalizados contra el manifiesto.
+   - `EVIDENCE_CUSTODY_ATTESTED: boolean`: Firma válida de la autoridad de atestación bajo clave externa confiable.
+   - `TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' | 'UNVERIFIED'`: Frontera de red oficial contra ARCA vs simulación local.
+   - `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false`: Reconocimiento estricto de ausencia de firma digital nativa de ARCA en WSFE. Prohibición tajante de declaraciones fraudulentas con `P1_IMPORT_FORBIDDEN`.
+2. **Entidades de Autoridad Explícitas**:
+   - Se exportan `GoAuthority` y `AttestationAuthority` como interfaces canónicas inmutables.
+   - Se define `ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'`.
+3. **Clasificación Estándar de Errores de Clave**:
+   - Falta de clave: `ATTESTATION_AUTHORITY_NOT_AVAILABLE`.
+   - Clave comprometida o de test: `UNTRUSTED_ATTESTATION_AUTHORITY`.
+   - Entropía insuficiente (< 32 chars): `ATTESTATION_CONFIGURATION_INVALID`.
+4. **Validación Cruzada de GO en P1**:
+   - `validatePr02P1ImportEvidence` valida opcionalmente `options.goAuthorizationDoc`, exigiendo coincidencia estricta de identificador y digest con el manifiesto.
+5. **Reportes Fácticos**:
+   - Los reportes de ejecución (`dry-run` y `authorized`) incorporan los niveles de aseguramiento diferenciados y la caracterización explícita del modelo de confianza.
+6. **Pruebas de Seguridad**:
+   - Se añadieron los casos de prueba 49 al 54 en `fiscalPr02P0Collector.test.ts`.
+
+**Consecuencias:**
+`PR02_P0_LOCAL_HARDENING = PASS`, `P0_REAL_TRANSPORT_IMPLEMENTED = PASS`, `P0_CLI_TRANSPORT_WIRING = PASS`, `P0_WSAA_TA_GUARD = PASS`, `P0_EXACT_ENDPOINT_GUARD = PASS`, `P0_CALL_LIMITS_NON_OVERRIDABLE = PASS`, `P0_PROVENANCE_ATTESTATION = PASS`, `P0_FAKE_MANIFEST_REJECTED = PASS`, `P0_PRIVATE_EVIDENCE_STORAGE = PASS`, `P0_AUDIT_COUNTS_ACCURATE = PASS`, `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`, `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`, `ANTI_REPLAY_GUARANTEE_LEVEL = PROCESS_LOCAL_ONE_TIME_USE`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
+54/54 tests PASS en `fiscalPr02P0Collector.test.ts`, 71/71 tests PR02 PASS. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

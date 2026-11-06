@@ -79,6 +79,7 @@ export function createPr02P0CallTracker(options?: {
 
 export const PR02_P0_AUTHORITY_ENV: string
 export const PR02_P0_GO_AUTHORITY_ENV: string
+export const ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
 export function validatePr02P0GoAuthorization(
   signedGoDoc: unknown,
   options?: {
@@ -232,6 +233,13 @@ export interface Pr02P0ExecutionReport {
   readonly PR02_P0_PROVENANCE_BINDING: string
   readonly CONTENT_INTEGRITY?: string
   readonly OFFICIAL_PROVENANCE: string
+  readonly ANTI_REPLAY_GUARANTEE_LEVEL?: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly EVIDENCE_INTEGRITY?: 'PASS' | 'NOT_RUN' | 'FAIL'
+  readonly EVIDENCE_CUSTODY_ATTESTED?: boolean
+  readonly TRUSTED_EXECUTION_BOUNDARY?: 'VERIFIED' | 'UNVERIFIED'
+  readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED?: boolean
+  readonly P0_PROVENANCE_TRUST_MODEL?: 'SELF_ATTESTED'
+  readonly P1_OFFICIAL_PROVENANCE_TRUST?: 'LIMITED'
   readonly PR02_P0_REMOTE_EXECUTION_READY: boolean
   readonly P0_REMOTE_EXECUTED: boolean
   readonly PR02_P0_REMOTE_EXECUTED: boolean
