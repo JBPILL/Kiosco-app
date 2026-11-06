@@ -1,9 +1,6 @@
-import { camposFiscalesReporteVenta } from '../../lib/salesReportProjection'
 import { RefreshButton } from '../ui/RefreshButton'
-import { useState, useEffect, useMemo, useCallback } from 'react'
-import { supabase } from '../../lib/supabase'
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useAuthStore } from '../../stores/authStore'
-import { useProveedorStore } from '../../stores/proveedorStore'
 import { formatPrecio, formatFecha, labelMedioPago, getLimitesISORango } from '../../lib/utils'
 import {
   exportarLibroContableExcel,
@@ -20,7 +17,8 @@ import { SearchInput } from '../ui/SearchInput'
 import { TicketReceiptModal, type TicketData } from '../pos/TicketReceiptModal'
 import { ventaToTicketData } from '../../lib/ticketUtils'
 import toast from 'react-hot-toast'
-import type { MovimientoCaja } from '../../types/database'
+import { cargarDatosBalance, type DatosBalance, type VentaContable } from '../../lib/balanceReportData'
+const BALANCE_VACIO: DatosBalance = { ventas: [], movimientos: [], devoluciones: [], proveedores: [], compras: [], pagos: [] }
 
 const NOMBRES_MESES = [
   'Enero',
@@ -69,40 +67,10 @@ interface AsientoContable {
   ticketRef?: string | null
 }
 
-interface VentaContable {
-  id: string
-  fecha_hora: string
-  total: number
-  estado: string
-  notas: string | null
-  afip_cae?: string | null
-  afip_vto_cae?: string | null
-  afip_tipo_comprobante?: number | null
-  afip_nro_comprobante?: number | null
-  afip_qr_url?: string | null
-  usuario?: { nombre: string } | null
-  pagos: { medio_pago: string; monto: number }[]
-  detalles: {
-    cantidad: number
-    precio_unitario?: number
-    subtotal: number
-    producto?: { descripcion: string } | null
-  }[]
-}
-
 export function BalanceContableTab() {
   const { usuario, kiosco } = useAuthStore()
   const esDueno = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
   const kid = usuario?.kiosco_id || kiosco?.id
-
-  const {
-    proveedores,
-    compras,
-    pagos,
-    cargarProveedores,
-    cargarCompras,
-    cargarPagos,
-  } = useProveedorStore()
 
   const fechaHoy = new Date()
   const anioActual = fechaHoy.getFullYear()
@@ -122,106 +90,37 @@ export function BalanceContableTab() {
   const [filtroTipo, setFiltroTipo] = useState<FiltroTipoMovimiento>('TODOS')
   const [busqueda, setBusqueda] = useState('')
 
-  // Datos del año cargados en memoria
-  const [ventasAnio, setVentasAnio] = useState<VentaContable[]>([])
-  const [movimientosCajaAnio, setMovimientosCajaAnio] = useState<MovimientoCaja[]>([])
-  const [devolucionesAnio, setDevolucionesAnio] = useState<any[]>([])
-
-  const [cargando, setCargando] = useState(true)
+  const claveCarga = [usuario?.id, kid, anioSeleccionado].join(':')
+  const [fuentes, setFuentes] = useState<{ clave: string; datos: DatosBalance } | null>(null)
+  const [fallo, setFallo] = useState<{ clave: string; mensaje: string } | null>(null)
+  const [cargandoDatos, setCargandoDatos] = useState(true)
+  const cargaActual = useRef(0)
+  const datos = fuentes?.clave === claveCarga ? fuentes.datos : null
+  const errorCarga = fallo?.clave === claveCarga ? fallo.mensaje : null
+  const cargando = cargandoDatos || (!datos && !errorCarga)
+  const listo = Boolean(datos) && !cargando && !errorCarga
+  const { ventas: ventasAnio, movimientos: movimientosCajaAnio, devoluciones: devolucionesAnio, proveedores, compras, pagos } = datos ?? BALANCE_VACIO
   const [exportando, setExportando] = useState(false)
   const [ticketParaVer, setTicketParaVer] = useState<TicketData | null>(null)
 
-  // 1. Cargar datos del año seleccionado
   const cargarDatosAnio = useCallback(async () => {
-    if (!kid) return
-    setCargando(true)
-
-    const { inicioISO, finISO } = getLimitesISORango(
-      `${anioSeleccionado}-01-01`,
-      `${anioSeleccionado}-12-31`
-    )
-
+    const carga = ++cargaActual.current
+    setCargandoDatos(true); setFallo(null); setFuentes(null); setTicketParaVer(null)
     try {
-      // Cargar proveedores, compras y pagos en paralelo
-      try {
-        await Promise.all([cargarProveedores(), cargarCompras(), cargarPagos()])
-      } catch (errProv) {
-        console.warn('Advertencia al cargar proveedores/compras/pagos:', errProv)
-      }
-
-      // Cargar ventas del año con detalles y pagos
-      const { data: vData, error: vErr } = await supabase
-        .from('ventas')
-        .select(`
-          id, fecha_hora, total, estado, notas,
-          ${camposFiscalesReporteVenta()}
-          usuario:usuarios!usuario_id(nombre),
-          pagos:pagos_venta(medio_pago, monto),
-          detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, precio_venta))
-        `)
-        .eq('kiosco_id', kid)
-        .gte('fecha_hora', inicioISO)
-        .lte('fecha_hora', finISO)
-        .order('fecha_hora', { ascending: false })
-        .limit(15000)
-
-      if (vErr) {
-        console.error('Error cargando ventas anuales:', vErr)
-        toast.error('No se pudieron cargar las ventas del período')
-      } else {
-        setVentasAnio((vData || []) as unknown as VentaContable[])
-      }
-
-      // Cargar movimientos de caja del año
-      const { data: mData, error: mErr } = await supabase
-        .from('movimientos_caja')
-        .select('*')
-        .eq('kiosco_id', kid)
-        .gte('fecha_hora', inicioISO)
-        .lte('fecha_hora', finISO)
-        .order('fecha_hora', { ascending: false })
-        .limit(10000)
-
-      if (mErr) {
-        console.warn('Advertencia cargando movimientos de caja:', mErr.message)
-      } else {
-        setMovimientosCajaAnio(mData || [])
-      }
-
-      // Cargar devoluciones del año con comprobante de venta original vinculado
-      const { data: dData, error: dErr } = await supabase
-        .from('devoluciones_venta')
-        .select(`
-          *,
-          venta:ventas(
-            id, fecha_hora, total, estado, notas,
-            ${camposFiscalesReporteVenta()}
-            usuario:usuarios!usuario_id(nombre),
-            pagos:pagos_venta(medio_pago, monto),
-            detalles:detalles_venta(cantidad, precio_unitario, subtotal, producto_id, sin_envase, es_devolucion_envase, producto:productos(id, descripcion, precio_venta))
-          )
-        `)
-        .eq('kiosco_id', kid)
-        .gte('fecha_hora', inicioISO)
-        .lte('fecha_hora', finISO)
-        .order('fecha_hora', { ascending: false })
-        .limit(10000)
-
-      if (dErr) {
-        console.warn('Advertencia cargando devoluciones:', dErr.message)
-      } else {
-        setDevolucionesAnio(dData || [])
-      }
-    } catch (err: any) {
-      console.error('Error general al cargar balance anual:', err)
-      toast.error('Error al sincronizar balance contable')
+      const datos = await cargarDatosBalance(kid || '', anioSeleccionado)
+      if (carga !== cargaActual.current) return
+      setFuentes({ clave: claveCarga, datos })
+    } catch {
+      if (carga !== cargaActual.current) return
+      setFallo({ clave: claveCarga, mensaje: 'No se pudo completar el balance. No se muestran cifras parciales ni se permite exportar. Revisá la conexión y volvé a intentar.' })
     } finally {
-      setCargando(false)
+      if (carga === cargaActual.current) setCargandoDatos(false)
     }
-  }, [kid, anioSeleccionado, cargarProveedores, cargarCompras, cargarPagos])
+  }, [kid, anioSeleccionado, claveCarga])
 
   useEffect(() => {
-    cargarDatosAnio()
+    void cargarDatosAnio()
+    return () => { cargaActual.current++ }
   }, [cargarDatosAnio])
 
   // Años disponibles según el historial de ventas
@@ -719,6 +618,7 @@ export function BalanceContableTab() {
   // EXPORTACIONES A EXCEL (.XLSX)
   // ==========================================
   const handleExportarRendimientos = async () => {
+    if (!listo) return
     setExportando(true)
     try {
       const mesNombre =
@@ -769,6 +669,7 @@ export function BalanceContableTab() {
   }
 
   const handleExportarLibroDiario = async () => {
+    if (!listo) return
     if (libroDiario.length === 0) {
       toast.error('No hay movimientos en este período para exportar')
       return
@@ -814,6 +715,7 @@ export function BalanceContableTab() {
   }
 
   const handleExportarLibroIvaVentas = async () => {
+    if (!listo) return
     if (ventasFiscalesPeriodo.length === 0) {
       toast.error('No hay ventas con factura electrónica ARCA en este período')
       return
@@ -927,7 +829,7 @@ export function BalanceContableTab() {
             >
               <span>Facturas ARCA</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300 font-bold">
-                {ventasFiscalesPeriodo.length}
+                {listo ? ventasFiscalesPeriodo.length : '—'}
               </span>
             </button>
             <button
@@ -941,7 +843,7 @@ export function BalanceContableTab() {
             >
               <span>Tickets Internos (X)</span>
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-gray-200 text-gray-700 dark:bg-gray-600 dark:text-gray-300 font-bold">
-                {ventasInternasPeriodo.length}
+                {listo ? ventasInternasPeriodo.length : '—'}
               </span>
             </button>
           </div>
@@ -954,7 +856,7 @@ export function BalanceContableTab() {
             variant="secondary"
             onClick={handleExportarLibroDiario}
             loading={exportando}
-            disabled={libroDiario.length === 0}
+            disabled={!listo || libroDiario.length === 0}
             className="text-xs font-semibold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
             title="Descargar libro diario contable detallado en Excel (.xlsx)"
           >
@@ -966,6 +868,7 @@ export function BalanceContableTab() {
             size="sm"
             variant="secondary"
             onClick={handleExportarRendimientos}
+            disabled={!listo}
             loading={exportando}
             className="text-xs font-semibold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
             title="Descargar analítica de rendimientos mensuales y desglose de medios de pago en Excel (.xlsx)"
@@ -979,7 +882,7 @@ export function BalanceContableTab() {
             variant="secondary"
             onClick={handleExportarLibroIvaVentas}
             loading={exportando}
-            disabled={ventasFiscalesPeriodo.length === 0}
+            disabled={!listo || ventasFiscalesPeriodo.length === 0}
             className="text-xs font-semibold whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"
             title="Descargar reporte fiscal de ventas ARCA para el contador en Excel (.xlsx)"
           >
@@ -990,7 +893,7 @@ export function BalanceContableTab() {
       </div>
 
       {/* Banner informativo de modo fiscal */}
-      {filtroFiscal === 'SOLO_FISCALES' && (
+      {listo && filtroFiscal === 'SOLO_FISCALES' && (
         <div className="p-3 bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-2">
           <div className="text-blue-900 dark:text-blue-200">
             <span className="font-bold">Vista Fiscal Oficial:</span> Mostrando exclusivamente las {ventasFiscalesPeriodo.length} ventas con CAE emitidas ante ARCA. Total facturado: <strong>{formatPrecio(totalFacturadoAFIP)}</strong>.
@@ -1001,7 +904,7 @@ export function BalanceContableTab() {
         </div>
       )}
 
-      {cargando ? (
+      {errorCarga ? <div role="alert" className="rounded-2xl border border-amber-500 p-6 space-y-3"><p>{errorCarga}</p><Button onClick={() => void cargarDatosAnio()}>Reintentar balance</Button></div> : cargando ? (
         <div className="text-center py-16 bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700">
           <div className="animate-spin h-8 w-8 border-4 border-indigo-600 border-t-transparent rounded-full mx-auto" />
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 font-medium">
@@ -1826,9 +1729,9 @@ export function BalanceContableTab() {
 
       {/* Modal de visualización / reimpresión de comprobante */}
       <TicketReceiptModal
-        isOpen={Boolean(ticketParaVer)}
+        isOpen={listo && Boolean(ticketParaVer)}
         onClose={() => setTicketParaVer(null)}
-        ticket={ticketParaVer}
+        ticket={listo ? ticketParaVer : null}
       />
     </div>
   )

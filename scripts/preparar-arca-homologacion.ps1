@@ -58,7 +58,7 @@ public static class ArcaHomologationLocal {
         try {
             phrase = ReadSecret(pass);
             repeated = ReadSecret(confirmation);
-            if (phrase.Length < 12) throw new ArgumentException("La contraseña debe tener al menos 12 caracteres.");
+            if (phrase.Length < 16) throw new ArgumentException("La contraseña debe tener al menos 16 caracteres para la custodia privada.");
             if (!CryptographicOperations.FixedTimeEquals(MemoryMarshal.AsBytes(phrase.AsSpan()),
                                                          MemoryMarshal.AsBytes(repeated.AsSpan())))
                 throw new ArgumentException("Las contraseñas no coinciden.");
@@ -115,7 +115,7 @@ if ($MyInvocation.InvocationName -ne '.') {
         $titular = (Read-Host 'CUIT del titular que ingresará a WSASS (11 dígitos)').Trim()
         $organizacion = Read-Host 'Nombre de la empresa u organización'
         $aliasSistema = Read-Host 'Alias del sistema, sólo letras y números (por ejemplo KioskoPOSHomologacion)'
-        $frase = Read-Host 'Contraseña para cifrar la clave (mínimo 12 caracteres)' -AsSecureString
+        $frase = Read-Host 'Contraseña para cifrar la clave (mínimo 16 caracteres)' -AsSecureString
         $repetida = Read-Host 'Repetir contraseña' -AsSecureString
         try {
             $resultado = New-ArcaHomologationRequest -Cuit $titular -Organizacion $organizacion -Alias $aliasSistema `

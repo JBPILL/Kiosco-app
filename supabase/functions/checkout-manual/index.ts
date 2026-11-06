@@ -9,8 +9,9 @@ serve(async (request: Request) => {
   const key = readSupabaseSecretKey()
   if (!url || !key) return new Response('Servicio no configurado', { status: 503 })
   const admin = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } })
+  const envasesCompartidos = Deno.env.get('KIOSKO_ENVASES_TRANSACCIONAL') === 'true'
   return recibirCheckoutManual(request, {
-    ...crearBackendCheckoutManual(admin),
+    ...crearBackendCheckoutManual(admin, { envasesCompartidos }),
     origins: (Deno.env.get('CHECKOUT_ALLOWED_ORIGINS') || '').split(',').map(s => s.trim()).filter(Boolean),
     pilotStrictScope: Deno.env.get('KIOSKO_PILOT_STRICT_SCOPE') === 'true',
   })

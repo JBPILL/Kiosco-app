@@ -175,6 +175,24 @@ describe('afipStore.guardarConfiguracion', () => {
   })
 })
 
+describe('afipStore fecha de inicio', () => {
+  it('rechaza un calendario inválido antes de persistir local o remoto', async () => {
+    useAFIPStore.setState({ config: config() })
+    expect(await useAFIPStore.getState().guardarConfiguracion({ inicio_actividades: '31/02/2026' })).toBe(false)
+    expect(localStorage.getItem(claveLocal)).toBeNull()
+    expect(llamadasA('kioscos', 'update')).toHaveLength(0)
+    expect(useAFIPStore.getState().config?.inicio_actividades).toBe('')
+  })
+  it('normaliza ISO heredado a día/mes/año sin mutar la configuración previa', async () => {
+    const original = config({ inicio_actividades: '2026-10-20' })
+    useAFIPStore.setState({ config: original })
+    expect(await useAFIPStore.getState().guardarConfiguracion({ iibb: 'Exento' })).toBe(true)
+    expect(original.inicio_actividades).toBe('2026-10-20')
+    expect(configLocal()?.inicio_actividades).toBe('20/10/2026')
+    expect(llamadasA('kioscos', 'update')[0].payload).toMatchObject({ inicio_actividades: '20/10/2026' })
+  })
+})
+
 describe('afipStore.emitirFacturaVenta', () => {
   it('el piloto estricto bloquea la emisión desde cualquier caller', async () => {
     vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
@@ -464,4 +482,14 @@ describe('afipStore.emitirFacturaVenta - Edge Function y contingencia', () => {
       afip_estado: 'SIMULADO',
     })
   })
+})
+
+it('piloto estricto bloquea comprobante de demostración antes de cargar configuración o fabricar CAE',async()=>{
+ vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE','true')
+ useAFIPStore.setState({config:null})
+ expect(await useAFIPStore.getState().emitirComprobantePrueba()).toBeNull()
+ expect(invocacionesA('afip-wsfe')).toHaveLength(0)
+ expect(llamadasA('comprobantes_afip','insert')).toHaveLength(0)
+ expect(llamadasA('kioscos','select')).toHaveLength(0)
+ expect(localStorage.getItem(claveLocal)).toBeNull()
 })

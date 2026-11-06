@@ -86,3 +86,35 @@ it('stock cero queda listo para reemplazar al enfocar sin guardar ni alterar otr
   expect(screen.getByDisplayValue('5')).toBeTruthy()
   expect(guardar).not.toHaveBeenCalled()
 })
+
+it('conserva exactamente stock fraccionado anterior de un unitario al editar otros datos', async () => {
+  const guardar = vi.fn().mockResolvedValue(true)
+  render(<ProductForm isOpen categorias={[]} onClose={vi.fn()} onGuardar={guardar} producto={crearProducto({ es_pesable: false, unidad_medida: 'UN', stock_actual: 5.013 })} />)
+  const input = screen.getByLabelText('Stock actual') as HTMLInputElement
+  expect(input.value).toBe('5.013')
+  expect(input.checkValidity()).toBe(true)
+  expect(screen.getByRole('status').textContent).toContain('no se redondeará automáticamente')
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }))
+  await waitFor(() => expect(guardar).toHaveBeenCalledWith(expect.objectContaining({ stock_actual: 5.013 })))
+})
+it('no trunca una nueva fracción de stock de un unitario aunque se fuerce el submit', () => {
+  const guardar = vi.fn()
+  render(<ProductForm isOpen categorias={[]} onClose={vi.fn()} onGuardar={guardar} producto={crearProducto({ es_pesable: false, unidad_medida: 'UN', stock_actual: 5.013 })} />)
+  fireEvent.change(screen.getByLabelText('Stock actual'), { target: { value: '6.013' } })
+  fireEvent.submit(screen.getByLabelText('Stock actual').closest('form') as HTMLFormElement)
+  expect(guardar).not.toHaveBeenCalled()
+})
+it('permite conciliar explícitamente el stock anterior con un entero contado', async () => {
+  const guardar = vi.fn().mockResolvedValue(true)
+  render(<ProductForm isOpen categorias={[]} onClose={vi.fn()} onGuardar={guardar} producto={crearProducto({ es_pesable: false, unidad_medida: 'UN', stock_actual: 5.013 })} />)
+  fireEvent.change(screen.getByLabelText('Stock actual'), { target: { value: '5' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }))
+  await waitFor(() => expect(guardar).toHaveBeenCalledWith(expect.objectContaining({ stock_actual: 5 })))
+})
+it('conserva un mínimo fraccionado anterior sin convertirlo a entero', async () => {
+  const guardar = vi.fn().mockResolvedValue(true)
+  render(<ProductForm isOpen categorias={[]} onClose={vi.fn()} onGuardar={guardar} producto={crearProducto({ es_pesable: false, unidad_medida: 'UN', stock_minimo: 0.125 })} />)
+  expect((screen.getByLabelText('Stock mínimo') as HTMLInputElement).checkValidity()).toBe(true)
+  fireEvent.click(screen.getByRole('button', { name: 'Guardar Cambios' }))
+  await waitFor(() => expect(guardar).toHaveBeenCalledWith(expect.objectContaining({ stock_minimo: 0.125 })))
+})

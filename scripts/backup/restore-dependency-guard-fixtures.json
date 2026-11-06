@@ -1,0 +1,28 @@
+{
+  "scope": "LOCAL_COMPATIBILITY_FIXTURE_ONLY_NOT_REMOTE_SQL",
+  "review": "Verified base64 bytes; only RAISE messages/formatting differ in body; hosted search_path pinned separately",
+  "functions": [
+    {
+      "name": "proteger_costo_producto",
+      "baselineFile": "supabase/bootstrap/steps/004_private_product_costs.sql",
+      "baselineBodySha256": "e14f1b0959832e00be0d9004aa6e71c27186bcbab80a2eafe9f68c6b0adaad96",
+      "hostedBodySha256": "cfb7ed2d01db0795c44f718b5c4c7f726609e1b5c71191487e2e1fdc54db0318",
+      "onlyRaiseMessageDifferences": true,
+      "body": "\nDECLARE\n  v_costo_cambio NUMERIC(12, 2);\n  v_usuario_puede_editar BOOLEAN;\nBEGIN\n  v_costo_cambio := NEW.precio_costo;\n\n  v_usuario_puede_editar :=\n    COALESCE(auth.role() = 'service_role', false)\n    OR public.auth_es_superadmin()\n    OR (\n      public.auth_es_dueno_o_superadmin()\n      AND NEW.kiosco_id = public.auth_user_kiosco_id()\n    );\n\n  IF TG_OP = 'INSERT' THEN\n\n    IF v_costo_cambio <> 0\n       AND NOT v_usuario_puede_editar THEN\n      RAISE EXCEPTION\n        'Solo el dueño puede definir el costo del producto'\n        USING ERRCODE = '42501';\n    END IF;\n\n    IF v_usuario_puede_editar THEN\n      INSERT INTO public.producto_costos (\n        producto_id,\n        kiosco_id,\n        precio_costo\n      )\n      VALUES (\n        NEW.id,\n        NEW.kiosco_id,\n        v_costo_cambio\n      )\n      ON CONFLICT (producto_id) DO UPDATE\n      SET kiosco_id = EXCLUDED.kiosco_id,\n          precio_costo = EXCLUDED.precio_costo,\n          fecha_actualizacion = now();\n    END IF;\n\n  ELSIF v_usuario_puede_editar THEN\n\n    INSERT INTO public.producto_costos (\n      producto_id,\n      kiosco_id,\n      precio_costo\n    )\n    VALUES (\n      NEW.id,\n      NEW.kiosco_id,\n      v_costo_cambio\n    )\n    ON CONFLICT (producto_id) DO UPDATE\n    SET kiosco_id = EXCLUDED.kiosco_id,\n        precio_costo = EXCLUDED.precio_costo,\n        fecha_actualizacion = now();\n\n  ELSIF v_costo_cambio IS DISTINCT FROM OLD.precio_costo THEN\n\n    IF NOT v_usuario_puede_editar THEN\n      RAISE EXCEPTION\n        'Solo el dueño puede modificar el costo del producto'\n        USING ERRCODE = '42501';\n    END IF;\n\n  END IF;\n\n  NEW.precio_costo := 0;\n\n  RETURN NEW;\nEND;\n",
+      "config": [
+        "search_path=pg_catalog, public"
+      ]
+    },
+    {
+      "name": "proteger_privilegios_usuario",
+      "baselineFile": "supabase/bootstrap/steps/003_profile_integrity.sql",
+      "baselineBodySha256": "5617c9e2ea6099797ed5a3a33f4d1b064118b918482722afdd5f42b5118832c7",
+      "hostedBodySha256": "f93b163db2331a8ab2a47fd0c993d9d329ffb56232d245448bec60aac9f55dac",
+      "onlyRaiseMessageDifferences": true,
+      "body": "\nDECLARE\n  v_dueno_del_comercio boolean;\nBEGIN\n  IF COALESCE(auth.role() = 'service_role', false)\n     OR public.auth_es_superadmin()\n     OR (\n       auth.uid() IS NULL\n       AND auth.role() IS NULL\n       AND session_user IN ('postgres', 'supabase_admin')\n     ) THEN\n    IF TG_OP = 'DELETE' THEN\n      RETURN OLD;\n    END IF;\n    RETURN NEW;\n  END IF;\n\n  IF TG_OP = 'INSERT' THEN\n    IF NEW.es_superadmin IS TRUE THEN\n      RAISE EXCEPTION\n        'Solo un superadmin puede conceder privilegios de superadmin.'\n        USING ERRCODE = '42501';\n    END IF;\n\n    -- La política RLS existente exige dueño del mismo comercio para INSERT.\n    RETURN NEW;\n  END IF;\n\n  IF OLD.es_superadmin IS TRUE THEN\n    RAISE EXCEPTION\n      'Solo un superadmin puede modificar o eliminar otro superadmin.'\n      USING ERRCODE = '42501';\n  END IF;\n\n  IF TG_OP = 'DELETE' THEN\n    RETURN OLD;\n  END IF;\n\n  IF NEW.es_superadmin IS DISTINCT FROM OLD.es_superadmin THEN\n    RAISE EXCEPTION\n      'Solo un superadmin puede cambiar los privilegios de superadmin.'\n      USING ERRCODE = '42501';\n  END IF;\n\n  IF NEW.id IS DISTINCT FROM OLD.id\n     OR NEW.kiosco_id IS DISTINCT FROM OLD.kiosco_id THEN\n    RAISE EXCEPTION\n      'La identidad y el comercio del perfil requieren administración de superadmin.'\n      USING ERRCODE = '42501';\n  END IF;\n\n  v_dueno_del_comercio :=\n    public.auth_es_dueno_o_superadmin()\n    AND OLD.kiosco_id = public.auth_user_kiosco_id();\n\n  IF (\n    NEW.rol IS DISTINCT FROM OLD.rol\n    OR NEW.activo IS DISTINCT FROM OLD.activo\n    OR NEW.auth_user_id IS DISTINCT FROM OLD.auth_user_id\n  )\n  AND NOT COALESCE(v_dueno_del_comercio, false) THEN\n    RAISE EXCEPTION\n      'Solo el dueño del comercio puede cambiar rol, acceso o estado de un empleado.'\n      USING ERRCODE = '42501';\n  END IF;\n\n  RETURN NEW;\nEND;\n",
+      "config": [
+        "search_path=pg_catalog, public"
+      ]
+    }
+  ]
+}

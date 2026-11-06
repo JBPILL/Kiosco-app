@@ -1,7 +1,9 @@
 import type { EntradaCheckoutManual } from '../types/checkoutManual'
 import type { ItemCarrito, ItemCombo } from '../types/database'
 import type { TipoAjuste } from './carritoImportes'
+import { distribuirTotalConEnvases } from './distribuirTotalConEnvases'
 import { distribuirTotalVenta } from './distribuirTotalVenta'
+import { envasesTransaccionalesActivos } from './pilotExpansion'
 import { leerEntradaCheckoutManual } from '../../supabase/functions/_shared/manualCheckoutRequest'
 
 export interface DatosCobroManual {
@@ -26,7 +28,8 @@ export function crearEntradaCobroManual(datos: DatosCobroManual): EntradaCheckou
   return leerEntradaCheckoutManual({ version: 1, checkoutId: datos.checkoutId, kioscoId: datos.kioscoId,
     usuarioId: datos.usuarioId, sesionCajaId: datos.sesionCajaId, fechaHora: datos.fechaHora,
     clienteId: datos.clienteId, notas: datos.notas, tipoAjuste: datos.tipoAjuste, valorAjuste: datos.valorAjuste,
-    totalEsperado: datos.total, subtotalesEsperados: distribuirTotalVenta(datos.items.map(i => i.subtotal), datos.total),
+    totalEsperado: datos.total, subtotalesEsperados: envasesTransaccionalesActivos()
+      ? distribuirTotalConEnvases(datos.items, datos.total) : distribuirTotalVenta(datos.items.map(item => item.subtotal), datos.total),
     componentesEsperados: datos.componentes.filter(c => combos.has(c.combo_producto_id)).map(c => ({
       comboId: c.combo_producto_id, productoId: c.componente_producto_id, cantidad: c.cantidad,
     })),

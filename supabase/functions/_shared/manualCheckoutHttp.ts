@@ -32,7 +32,7 @@ export async function recibirCheckoutManual(request: Request, deps: ManualChecko
   let cuerpo: unknown
   try { cuerpo = await leerCuerpo(request) }
   catch { return responder(400, 'ENTRADA_INVALIDA', 'Solicitud de cobro inválida') }
-  if (deps.pilotStrictScope && contieneDevolucionEnvase(cuerpo)) {
+  if (deps.pilotStrictScope && !deps.envasesCompartidos && contieneDevolucionEnvase(cuerpo)) {
     return responder(422, 'ENVASE_FUERA_DE_ALCANCE', 'Las devoluciones de envases están fuera del alcance del piloto.')
   }
   let entrada: EntradaCheckoutManual

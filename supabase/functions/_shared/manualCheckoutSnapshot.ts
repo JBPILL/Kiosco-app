@@ -1,5 +1,6 @@
 import type { EntradaCheckoutManual, RegistroCheckoutManual, ResultadoCheckoutManual, SnapshotCheckoutManual } from '../../../src/types/checkoutManual.ts'
 import type { CotizacionPoint } from './pointQuote.ts'
+import { distribuirTotalConEnvases } from '../../../src/lib/distribuirTotalConEnvases.ts'
 import { distribuirTotalVenta } from '../../../src/lib/distribuirTotalVenta.ts'
 import { camposManual, fechaManual, firmaManual, leerEntradaCheckoutManual, numeroManual, objetoManual, uuidManual } from './manualCheckoutRequest.ts'
 import { leerPoliticaDescuentoSupervisor } from '../../../src/lib/supervisorDiscountPolicy.ts'
@@ -13,8 +14,8 @@ export async function idDetalleManual(checkoutId: string, lineaId: string): Prom
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`
 }
 
-export async function construirSnapshotManual(entrada: EntradaCheckoutManual, ticket: CotizacionPoint): Promise<SnapshotCheckoutManual> {
-  const subtotales = distribuirTotalVenta(ticket.items.map(item => item.subtotal), ticket.total)
+export async function construirSnapshotManual(entrada: EntradaCheckoutManual, ticket: CotizacionPoint, envasesCompartidos = false): Promise<SnapshotCheckoutManual> {
+  const subtotales = envasesCompartidos ? distribuirTotalConEnvases(ticket.items, ticket.total) : distribuirTotalVenta(ticket.items.map(item => item.subtotal), ticket.total)
   const detalles = await Promise.all(ticket.items.map(async (item, indice) => ({
     id: await idDetalleManual(entrada.checkoutId, entrada.lineas[indice].id), producto_id: item.producto.id,
     cantidad: item.cantidad, precio_unitario: Math.max(0, Math.round(subtotales[indice] / item.cantidad * 100) / 100),
