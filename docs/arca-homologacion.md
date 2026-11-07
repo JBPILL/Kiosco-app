@@ -2460,6 +2460,29 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
     - **Invariantes Preservados**:
       - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`, `REMOTE_GO = DENIED`.
 
+18. **Integración Fail-Closed con Autoridad de Atestación Independiente y Contrato de Respuesta PR02-P0 (07/11/2026)**:
+    - **Qué garantiza el sistema ahora**:
+      1. **Solicitud de Atestación Canónica y Determinística (`AttestationRequestPackage`)**: Serialización canónica con hash `requestSha256` que vincula `manifestSha256`, `goAuthorizationDocumentSha256` y los artefactos SOAP crudos y normalizados sin secretos.
+      2. **Adaptador Explícito y Fail-Closed para Autoridad Externa (`IndependentAttestationAuthorityAdapter`)**: Implementado mediante `createIndependentAttestationAuthorityAdapter` y `submitAttestationRequest`. Separa estrictamente `REQUEST CREATION` != `REQUEST TRANSPORT` != `EXTERNAL SIGNING` (prohibido en runtime) != `RESPONSE VERIFICATION`. Falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE` cuando no se inyecta transporte externo, clave pública confiable e identidad de autoridad explícitos. Sin acceso de red implícito ni descubrimiento automático.
+      3. **Contrato Explícito de Respuesta (`AttestationResponse`) y Verificación por Clave Pública (`verifyAttestationResponse`, `validateAttestationResponse`)**: Valida `responseVersion: '1.0'`, `attestationId`, `requestId`, `requestSha256`, `manifestSha256`, `processId`, `executionScope`, `commitSha`, `environment`, `authorityId`, `authorityType`, `keyId`, `algorithm: 'Ed25519'`, `issuedAt`, `signerOrigin`, `attestationPayloadSha256` y `signature` (128 hex). Rechaza con códigos explícitos: `ATTESTATION_RESPONSE_MISSING`, `ATTESTATION_RESPONSE_INVALID`, `ATTESTATION_REQUEST_MISMATCH`, `ATTESTATION_MANIFEST_MISMATCH`, `ATTESTATION_PAYLOAD_MISMATCH`, `ATTESTATION_AUTHORITY_MISMATCH`, `ATTESTATION_KEY_ID_MISMATCH`, `ATTESTATION_ALGORITHM_FORBIDDEN`, `ATTESTATION_SIGNATURE_INVALID`, `ATTESTATION_ISSUED_AT_INVALID`, `ATTESTATION_TEST_SIGNER_PROHIBITED`, `ATTESTATION_RESPONSE_REPLAY_DETECTED` y `COLLAPSED_AUTHORITIES_REJECTED`.
+      4. **Prohibición de Firma de Producción y de Fallback Local en Runtime**: Cualquier intento de firmar en producción o usar un firmante local de respaldo en el adaptador o en `IndependentAttestationAuthority` falla cerrado con `PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME`, `PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME` o `LOCAL_FALLBACK_SIGNING_FORBIDDEN`.
+      5. **Separación Criptográfica entre `GO Authority` y `Attestation Authority`**: Comparación binaria SPKI DER que rechaza claves colapsadas con `COLLAPSED_AUTHORITIES_REJECTED`.
+      6. **Separación Estricta entre `TEST_AUTHORITY` y `PRODUCTION_AUTHORITY`**: `createTestIndependentAttestationAuthority` y `createSignedTestAttestationResponse` viven exclusivamente en `src/test/helpers/fiscalEd25519Signer.ts`, producen `authorityType: 'TEST_AUTHORITY'` y `signerOrigin: 'TEST_SIGNER'`, son rechazados por defecto en producción (`allowTestKeys: false` -> `ATTESTATION_TEST_SIGNER_PROHIBITED`) y en modo test (`allowTestKeys: true`) otorgan únicamente `trustScope: 'TEST_ONLY'` (`PRODUCTION_ATTESTED: false`, `OFFICIAL_PROVENANCE_VERIFIED: false`, `P1_IMPORT_ALLOWED: false`).
+      7. **Bloqueo de Auto-Elevación desde `SELF_ATTESTED`**: Pasar `{ independentAuthorityAvailable: true }` o intentar elevar confianza por booleanos/flags falla cerrado con `SELF_ATTESTATION_AUTO_ELEVATION_REJECTED`.
+      8. **Protección Anti-Replay de Respuestas y Cadena Completa en P1**: `ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'` bloquea la reutilización de la misma respuesta en el proceso (`ATTESTATION_RESPONSE_REPLAY_DETECTED`), mientras `validatePr02P1ImportEvidence` verifica la cadena completa `AttestationResponse -> AttestationRequestPackage -> requestSha256 -> manifestSha256 -> evidence digests` y rechaza evidencia simulada incluso con firmante de test (`SIMULATED_EVIDENCE_REJECTED`).
+    - **Qué NO garantiza todavía**:
+      1. No existe aún una autoridad externa de producción conectada.
+      2. `INDEPENDENT_ATTESTATION_AVAILABLE` permanece `false`.
+      3. `P1_IMPORT_ALLOWED` permanece `false`.
+      4. `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` permanece `false` porque WSFE devuelve SOAP XML sin firma digital de aplicación sobre el cuerpo.
+      5. No se ha ejecutado P0, P1 ni P2 de forma remota (`P0_REMOTE_EXECUTED = false`, `P1_REMOTE_EXECUTION_READY = false`, `P2_REMOTE_EXECUTION_READY = false`, `REMOTE_GO = DENIED`).
+    - **Suite de Pruebas Adversariales y Validación**:
+      - 15 nuevas pruebas (casos 85 a 99, incluyendo `ADV-30` a `ADV-43`) en `src/test/fiscalPr02P0Collector.test.ts`.
+      - 99/99 tests PASS en `fiscalPr02P0Collector.test.ts` y 116/116 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+      - Compilación TypeScript (`tsc -b`), build Vite (`npm run build`) y dry-run de wrapper PowerShell exitosos con código 0.
+    - **Invariantes Preservados**:
+      - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`, `REMOTE_GO = DENIED`.
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

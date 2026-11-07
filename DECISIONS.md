@@ -2394,3 +2394,34 @@ Con los vectores locales de PR02-P0 cerrados, el colector local opera legítimam
 - 84/84 tests PASS en `src/test/fiscalPr02P0Collector.test.ts` (incluyendo pruebas adversariales `ADV-21` a `ADV-29`) y 101/101 tests PR02 totales PASS.
 - `npm run build` (`tsc -b && vite build`) y ejecución `-DryRun` del wrapper PowerShell verificados sin errores.
 - En estado local sin atestación externa real: `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `REMOTE_GO = DENIED`, `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`.
+
+
+## Integración Fail-Closed con Autoridad de Atestación Independiente y Contrato de Respuesta PR02-P0 (07/11/2026)
+
+**Contexto:**
+Habiendo definido el paquete canónico de solicitud (`AttestationRequestPackage`) y el verificador de clave pública (`verifyIndependentAttestation`), se requería cerrar la integración del adaptador de autoridad externa (`IndependentAttestationAuthorityAdapter`) y el contrato explícito de respuesta (`AttestationResponse`) bajo estricto diseño fail-closed: sin simular una autoridad de producción inexistente, sin introducir firmas de respaldo locales, diferenciando de forma irrevocable un `TEST_AUTHORITY` (`TEST_ONLY`) de una `PRODUCTION_AUTHORITY`, y bloqueando cualquier reutilización (replay) de respuestas dentro del proceso.
+
+**Decisión:**
+1. **Adaptador Explícito y Fail-Closed (`IndependentAttestationAuthorityAdapter`)**:
+   - Se implementaron `createIndependentAttestationAuthorityAdapter` y `submitAttestationRequest` en `scripts/fiscal/plan-pr02-parameters.mjs`.
+   - El adaptador separa estrictamente `REQUEST CREATION` != `REQUEST TRANSPORT` != `EXTERNAL SIGNING` (prohibido en runtime) != `RESPONSE VERIFICATION`.
+   - Falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE` cuando no se suministra un transporte externo válido, clave pública confiable e identidad de autoridad explícitos. No realiza acceso de red implícito ni descubrimiento automático.
+   - Rechaza cualquier intento de fallback a firma local (`LOCAL_FALLBACK_SIGNING_FORBIDDEN`), cualquier intento de firmar en runtime (`PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME` / `PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME`) y cualquier intento de auto-elevación booleana como `{ independentAuthorityAvailable: true }` (`SELF_ATTESTATION_AUTO_ELEVATION_REJECTED`).
+2. **Contrato Explícito de Respuesta (`AttestationResponse`) y Validación (`verifyAttestationResponse`, `validateAttestationResponse`)**:
+   - Exige estructura estricta sin campos desconocidos (`responseVersion: '1.0'`, `attestationId`, `requestId`, `requestSha256`, `manifestSha256`, `processId`, `executionScope`, `commitSha`, `environment`, `authorityId`, `authorityType`, `keyId`, `algorithm: 'Ed25519'`, `issuedAt`, `signerOrigin`, `attestationPayloadSha256`, `signature`).
+   - Rechaza de forma determinística con códigos específicos: `ATTESTATION_RESPONSE_MISSING`, `ATTESTATION_RESPONSE_INVALID`, `ATTESTATION_REQUEST_MISMATCH`, `ATTESTATION_MANIFEST_MISMATCH`, `ATTESTATION_PAYLOAD_MISMATCH`, `ATTESTATION_AUTHORITY_MISMATCH`, `ATTESTATION_KEY_ID_MISMATCH`, `ATTESTATION_ALGORITHM_FORBIDDEN`, `ATTESTATION_SIGNATURE_INVALID`, `ATTESTATION_ISSUED_AT_INVALID`, `ATTESTATION_TEST_SIGNER_PROHIBITED`, `ATTESTATION_RESPONSE_REPLAY_DETECTED` y `COLLAPSED_AUTHORITIES_REJECTED`.
+3. **Separación Estricta entre `TEST_AUTHORITY` y `PRODUCTION_AUTHORITY`**:
+   - Los helpers `createTestIndependentAttestationAuthority` y `createSignedTestAttestationResponse` residen únicamente en `src/test/helpers/fiscalEd25519Signer.ts`.
+   - En modo producción (`allowTestKeys: false` por defecto), todo firmante o autoridad de test es rechazado con `ATTESTATION_TEST_SIGNER_PROHIBITED`.
+   - En modo test (`allowTestKeys: true`), una respuesta firmada por `TEST_AUTHORITY` produce exclusivamente `trustScope: 'TEST_ONLY'` (`PRODUCTION_ATTESTED: false`, `OFFICIAL_PROVENANCE_VERIFIED: false`, `P1_IMPORT_ALLOWED: false`).
+4. **Anti-Replay de Respuestas y Cadena Completa en P1**:
+   - Se implementa control de un solo uso por proceso para `AttestationResponse` (`ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'`), bloqueando reutilizaciones con `ATTESTATION_RESPONSE_REPLAY_DETECTED`.
+   - `validatePr02P1ImportEvidence` verifica la cadena completa `AttestationResponse -> AttestationRequestPackage -> requestSha256 -> manifestSha256 -> evidence digests` y rechaza evidencia simulada incluso si se acompaña de un firmante de test (`SIMULATED_EVIDENCE_REJECTED`).
+5. **Qué garantiza y qué NO garantiza todavía el sistema**:
+   - **Garantiza ahora**: Solicitud canónica determinística, adaptador fail-closed sin firma local ni fallback, verificación Ed25519 por clave pública, separación `GO Authority != Attestation Authority`, separación `TEST_AUTHORITY != PRODUCTION_AUTHORITY`, bloqueo de auto-elevación booleana y anti-replay por proceso para respuestas de atestación.
+   - **NO garantiza todavía**: No existe aún una autoridad externa de producción conectada (`INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`); `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED = false` porque WSFE devuelve SOAP XML sin firma digital de aplicación sobre el cuerpo; y no se ha ejecutado P0, P1 ni P2 de forma remota (`P0_REMOTE_EXECUTED = false`, `REMOTE_GO = DENIED`).
+
+**Consecuencias:**
+- 99/99 tests PASS en `src/test/fiscalPr02P0Collector.test.ts` (incluyendo pruebas adversariales `ADV-30` a `ADV-43`, casos 85 a 99) y 116/116 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+- `npm run build` (`tsc -b && vite build`) y `run-pr02-p0-staging-private.ps1 -DryRun` verificados con exit code 0.
+- Estado vigente: `ATTESTATION_REQUEST_CONTRACT = PASS`, `ATTESTATION_RESPONSE_CONTRACT = PASS`, `INDEPENDENT_AUTHORITY_ADAPTER = PASS`, `PUBLIC_KEY_VERIFICATION_BOUNDARY = PASS`, `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`, `COLLAPSED_AUTHORITIES_BLOCKED = PASS`, `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`, `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `REMOTE_GO = DENIED`, `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`.

@@ -838,9 +838,48 @@ export const ATTESTATION_SIGNER_ORIGINS = Object.freeze({
   PRODUCTION_ATTESTATION_AUTHORITY: 'PRODUCTION_ATTESTATION_AUTHORITY',
 })
 
+export const ATTESTATION_AUTHORITY_TYPES = Object.freeze({
+  PRODUCTION_AUTHORITY: 'PRODUCTION_AUTHORITY',
+  TEST_AUTHORITY: 'TEST_AUTHORITY',
+})
+
+export const ATTESTATION_ALLOWED_ALGORITHMS = Object.freeze(['Ed25519'])
+
+export const ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'
+
+const _consumedAttestationResponsesProcessLocal = new Set()
+
+export function isAttestationResponseConsumedProcessLocal(responseKey) {
+  if (!responseKey || typeof responseKey !== 'string') return false
+  return _consumedAttestationResponsesProcessLocal.has(responseKey)
+}
+
+export function consumeAttestationResponseProcessLocal(responseKey) {
+  if (!responseKey || typeof responseKey !== 'string') {
+    throw new Error('ATTESTATION_RESPONSE_REPLAY_KEY_INVALID')
+  }
+  if (_consumedAttestationResponsesProcessLocal.has(responseKey)) {
+    throw new Error('ATTESTATION_RESPONSE_REPLAY_DETECTED: La respuesta de atestación ya fue consumida en este proceso')
+  }
+  _consumedAttestationResponsesProcessLocal.add(responseKey)
+  return true
+}
+
+/**
+ * Calcula el identificador determinístico de clave pública Ed25519 (keyId)
+ * basado en los primeros 16 caracteres del SHA-256 sobre el DER SPKI.
+ */
+export function computePublicKeyId(pubKeyInput) {
+  const pubKeyObj = validateP0AttestationPublicKey(pubKeyInput, true)
+  const spkiDer = pubKeyObj.export({ format: 'der', type: 'spki' })
+  const hashHex = crypto.createHash('sha256').update(spkiDer).digest('hex')
+  return `ed25519-spki-${hashHex.slice(0, 16)}`
+}
+
 export const ATTESTATION_TRUST_MODELS = Object.freeze({
   SELF_ATTESTED: 'SELF_ATTESTED',
   INDEPENDENT_ATTESTED: 'INDEPENDENT_ATTESTED',
+  TEST_ONLY: 'TEST_ONLY',
   UNVERIFIED: 'UNVERIFIED',
 })
 
@@ -1298,12 +1337,16 @@ export function assertNoSelfAttestationElevation(attestation, options = {}) {
       (options.elevateToIndependent === true ||
         options.forceIndependentAttestation === true ||
         options.allowSelfAttestedAsIndependent === true ||
+        options.independentAuthorityAvailable === true ||
+        options.elevateTrustModel === true ||
+        options.forceProductionAuthority === true ||
         options.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
         options.trustModel === 'INDEPENDENT_ATTESTED' ||
         options.P1_IMPORT_ALLOWED === true)) ||
     Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION) ||
     env.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
-    env.P1_IMPORT_ALLOWED === 'true'
+    env.P1_IMPORT_ALLOWED === 'true' ||
+    env.INDEPENDENT_ATTESTATION_AVAILABLE === 'true'
   ) {
     throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido autoelevar SELF_ATTESTED a INDEPENDENT_ATTESTED mediante opciones, flags o variables de entorno')
   }
@@ -1312,8 +1355,12 @@ export function assertNoSelfAttestationElevation(attestation, options = {}) {
     throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Atestación ausente o inválida')
   }
 
-  if (attestation.trustModel === 'SELF_ATTESTED' || attestation.ATTESTATION_TRUST_MODEL === 'SELF_ATTESTED') {
-    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Una atestación SELF_ATTESTED del colector local no puede elevarse a INDEPENDENT_ATTESTED')
+  if (
+    attestation.trustModel === 'SELF_ATTESTED' ||
+    attestation.ATTESTATION_TRUST_MODEL === 'SELF_ATTESTED' ||
+    attestation.independentAuthorityAvailable === true
+  ) {
+    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Una atestación SELF_ATTESTED o booleano independentAuthorityAvailable no puede elevarse a INDEPENDENT_ATTESTED')
   }
 
   if (
@@ -1468,6 +1515,9 @@ export function verifyIndependentAttestation(attestation, options = {}) {
     options.elevateToIndependent === true ||
     options.forceIndependentAttestation === true ||
     options.allowSelfAttestedAsIndependent === true ||
+    options.independentAuthorityAvailable === true ||
+    options.elevateTrustModel === true ||
+    options.forceProductionAuthority === true ||
     Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION)
   ) {
     return Object.freeze({
@@ -1728,6 +1778,952 @@ export function verifyP0Attestation(attestation, options = {}) {
 }
 
 /**
+ * Serializa de forma canónica y determinista el payload firmable de una respuesta
+ * de autoridad de atestación independiente (AttestationResponse).
+ */
+export function serializeCanonicalAttestationResponsePayload(res) {
+  if (!res || typeof res !== 'object' || Array.isArray(res)) {
+    throw new Error('ATTESTATION_RESPONSE_INVALID: Se requiere objeto estructurado de respuesta de atestación')
+  }
+  const canonical = {
+    schemaVersion: res.schemaVersion,
+    responseId: res.responseId,
+    authorityType: res.authorityType,
+    authorityId: res.authorityId,
+    keyId: res.keyId,
+    algorithm: res.algorithm,
+    requestId: res.requestId,
+    requestSha256: res.requestSha256 ? String(res.requestSha256).toLowerCase() : '',
+    manifestSha256: res.manifestSha256 ? String(res.manifestSha256).toLowerCase() : '',
+    processId: res.processId,
+    executionScope: res.executionScope,
+    commitSha: res.commitSha ? String(res.commitSha).toLowerCase() : '',
+    environment: res.environment,
+    authorizationId: res.authorizationId,
+    goAuthorizationDocumentSha256: res.goAuthorizationDocumentSha256
+      ? String(res.goAuthorizationDocumentSha256).toLowerCase()
+      : '',
+    rawSoapArtifacts: Array.isArray(res.rawSoapArtifacts)
+      ? res.rawSoapArtifacts.map((a) => ({
+          name: a && a.name ? String(a.name) : '',
+          sha256: a && a.sha256 ? String(a.sha256).toLowerCase() : '',
+        }))
+      : [],
+    normalizedArtifacts: Array.isArray(res.normalizedArtifacts)
+      ? res.normalizedArtifacts.map((a) => ({
+          name: a && a.name ? String(a.name) : '',
+          sha256: a && a.sha256 ? String(a.sha256).toLowerCase() : '',
+        }))
+      : [],
+    consultadoEn: res.consultadoEn,
+    issuedAt: res.issuedAt,
+    ...(res.expiresAt !== undefined && res.expiresAt !== null ? { expiresAt: res.expiresAt } : {}),
+    signerOrigin: res.signerOrigin,
+  }
+  return JSON.stringify(canonical)
+}
+
+/**
+ * Calcula el digest SHA-256 canónico del payload firmable de AttestationResponse.
+ */
+export function computeAttestationResponsePayloadDigest(res) {
+  return sha256(serializeCanonicalAttestationResponsePayload(res))
+}
+
+const ATTESTATION_RESPONSE_ALLOWED_KEYS = new Set([
+  'schemaVersion',
+  'responseId',
+  'authorityType',
+  'authorityId',
+  'keyId',
+  'algorithm',
+  'requestId',
+  'requestSha256',
+  'manifestSha256',
+  'processId',
+  'executionScope',
+  'commitSha',
+  'environment',
+  'authorizationId',
+  'goAuthorizationDocumentSha256',
+  'rawSoapArtifacts',
+  'normalizedArtifacts',
+  'consultadoEn',
+  'issuedAt',
+  'expiresAt',
+  'signerOrigin',
+  'attestationPayloadSha256',
+  'signature',
+])
+
+/**
+ * Verificador fail-closed del contrato explícito de respuesta de atestación (AttestationResponse)
+ * emitido por una Autoridad de Atestación Independiente externa.
+ * Verifica exclusivamente mediante clave pública Ed25519 y vincula solicitud, manifiesto y evidencia.
+ */
+export function verifyAttestationResponse(response, options = {}) {
+  const deniedBase = {
+    valid: false,
+    P1_IMPORT_ALLOWED: false,
+    INDEPENDENT_ATTESTATION_AVAILABLE: false,
+    PRODUCTION_ATTESTED: false,
+    OFFICIAL_PROVENANCE_VERIFIED: false,
+    EVIDENCE_CUSTODY_ATTESTED: false,
+    ATTESTATION_TRUST_MODEL: 'UNVERIFIED',
+    TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
+    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+  }
+
+  const runtimeCheck = verifyRuntimeSigningIsolation({
+    fiscalScriptsDir: options.fiscalScriptsDir,
+    env: options.env,
+  })
+  if (!runtimeCheck.valid) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+      errorCategory: 'COMPROMISED_RUNTIME_BOUNDARY',
+      detail: runtimeCheck.detail,
+    })
+  }
+
+  const env = options.env || process.env
+  if (
+    options.independentAuthorityAvailable === true ||
+    options.elevateToIndependent === true ||
+    options.forceIndependentAttestation === true ||
+    options.allowSelfAttestedAsIndependent === true ||
+    options.elevateTrustModel === true ||
+    options.forceProductionAuthority === true ||
+    Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION) ||
+    env.INDEPENDENT_ATTESTATION_AVAILABLE === 'true'
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'SELF_ATTESTATION_AUTO_ELEVATION_REJECTED',
+      errorCategory: 'UNTRUSTED_SELF_ATTESTATION',
+      detail: 'Prohibido autoelevar el modelo de confianza mediante booleanos como independentAuthorityAvailable: true o flags de entorno',
+    })
+  }
+
+  if (response === undefined || response === null) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_RESPONSE_MISSING',
+      detail: 'Respuesta de autoridad de atestación ausente',
+    })
+  }
+
+  if (typeof response !== 'object' || Array.isArray(response)) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_RESPONSE_INVALID',
+      detail: 'La respuesta de atestación debe ser un objeto estructurado',
+    })
+  }
+
+  // Rechazar cualquier campo inesperado o intento de modificar directamente el modelo de confianza
+  for (const key of Object.keys(response)) {
+    if (!ATTESTATION_RESPONSE_ALLOWED_KEYS.has(key)) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_RESPONSE_INVALID',
+        errorCategory: 'UNEXPECTED_RESPONSE_FIELD',
+        detail: `Campo inesperado o no permitido en respuesta de atestación: '${key}'`,
+      })
+    }
+  }
+
+  // Rechazar presencia de secretos o credenciales
+  const serializedLower = JSON.stringify(response).toLowerCase()
+  for (const forbidden of [
+    '"token":',
+    '"sign":',
+    'loginticket',
+    'cmsbase64',
+    'mock_cms',
+    'privatekey',
+    'private key',
+    '-----begin',
+    'password',
+    'service_role',
+    'anon_key',
+    'secret',
+  ]) {
+    if (serializedLower.includes(forbidden)) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_RESPONSE_INVALID',
+        errorCategory: 'SECRETS_PROHIBITED_IN_RESPONSE',
+        detail: `Material sensible prohibido en respuesta de atestación ('${forbidden}')`,
+      })
+    }
+  }
+
+  // Validar algoritmo permitido (exclusivamente Ed25519)
+  if (!response.algorithm || !ATTESTATION_ALLOWED_ALGORITHMS.includes(response.algorithm)) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_ALGORITHM_FORBIDDEN',
+      detail: `Algoritmo '${response.algorithm}' prohibido; únicamente se permite Ed25519`,
+    })
+  }
+
+  // Validar issuedAt y expiración
+  if (!response.issuedAt || typeof response.issuedAt !== 'string' || !Number.isFinite(Date.parse(response.issuedAt))) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_ISSUED_AT_INVALID',
+      detail: 'issuedAt ausente o no es una fecha ISO-8601 válida',
+    })
+  }
+  const issuedMs = Date.parse(response.issuedAt)
+  const nowMs = options.now
+    ? typeof options.now === 'string' || typeof options.now === 'number'
+      ? new Date(options.now).getTime()
+      : options.now.getTime()
+    : null
+  if (nowMs !== null && Number.isFinite(nowMs) && issuedMs > nowMs + 60000) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_ISSUED_AT_INVALID',
+      detail: 'issuedAt se encuentra en el futuro respecto al reloj de verificación',
+    })
+  }
+  if (response.expiresAt !== undefined && response.expiresAt !== null) {
+    if (typeof response.expiresAt !== 'string' || !Number.isFinite(Date.parse(response.expiresAt))) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_ISSUED_AT_INVALID',
+        detail: 'expiresAt no es una fecha ISO-8601 válida',
+      })
+    }
+    const expMs = Date.parse(response.expiresAt)
+    const checkNow = nowMs !== null && Number.isFinite(nowMs) ? nowMs : Date.now()
+    if (expMs <= checkNow) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_ISSUED_AT_INVALID',
+        detail: 'La respuesta de atestación se encuentra expirada',
+      })
+    }
+  }
+
+  // Validar campos estructurales críticos
+  if (
+    response.schemaVersion !== '1.0' ||
+    !response.responseId ||
+    typeof response.responseId !== 'string' ||
+    response.responseId.trim().length === 0 ||
+    !response.requestId ||
+    typeof response.requestId !== 'string' ||
+    response.requestId.trim().length === 0 ||
+    !response.requestSha256 ||
+    typeof response.requestSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(response.requestSha256) ||
+    !response.manifestSha256 ||
+    typeof response.manifestSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(response.manifestSha256) ||
+    !response.processId ||
+    typeof response.processId !== 'string' ||
+    response.processId.trim().length === 0 ||
+    response.executionScope !== PR02_P0_SCOPE ||
+    !response.commitSha ||
+    typeof response.commitSha !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(response.commitSha) ||
+    response.environment !== 'HOMOLOGACION' ||
+    !response.authorizationId ||
+    typeof response.authorizationId !== 'string' ||
+    response.authorizationId.trim().length === 0 ||
+    !response.goAuthorizationDocumentSha256 ||
+    typeof response.goAuthorizationDocumentSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(response.goAuthorizationDocumentSha256) ||
+    !Array.isArray(response.rawSoapArtifacts) ||
+    response.rawSoapArtifacts.length !== 2 ||
+    response.rawSoapArtifacts[0].name !== 'FEParamGetTiposIva_response.xml' ||
+    !/^[0-9a-f]{64}$/.test(response.rawSoapArtifacts[0].sha256 || '') ||
+    response.rawSoapArtifacts[1].name !== 'FEParamGetCondicionIvaReceptor_response.xml' ||
+    !/^[0-9a-f]{64}$/.test(response.rawSoapArtifacts[1].sha256 || '') ||
+    !Array.isArray(response.normalizedArtifacts) ||
+    response.normalizedArtifacts.length !== 2 ||
+    response.normalizedArtifacts[0].name !== 'FEParamGetTiposIva_normalized.json' ||
+    !/^[0-9a-f]{64}$/.test(response.normalizedArtifacts[0].sha256 || '') ||
+    response.normalizedArtifacts[1].name !== 'FEParamGetCondicionIvaReceptor_normalized.json' ||
+    !/^[0-9a-f]{64}$/.test(response.normalizedArtifacts[1].sha256 || '') ||
+    !response.consultadoEn ||
+    typeof response.consultadoEn !== 'string' ||
+    !Number.isFinite(Date.parse(response.consultadoEn)) ||
+    !response.attestationPayloadSha256 ||
+    typeof response.attestationPayloadSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(response.attestationPayloadSha256) ||
+    response.signature === undefined ||
+    response.signature === null ||
+    typeof response.signature !== 'string' ||
+    response.signature.trim().length === 0
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_RESPONSE_INVALID',
+      detail: 'Faltan campos críticos o el formato estructural de la respuesta de atestación es inválido',
+    })
+  }
+
+  // Validar authorityType, signerOrigin y prohibición de firmante de test como producción
+  if (
+    response.authorityType !== ATTESTATION_AUTHORITY_TYPES.PRODUCTION_AUTHORITY &&
+    response.authorityType !== ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_AUTHORITY_MISMATCH',
+      detail: `authorityType '${response.authorityType}' inválido`,
+    })
+  }
+  if (
+    response.signerOrigin !== ATTESTATION_SIGNER_ORIGINS.PRODUCTION_ATTESTATION_AUTHORITY &&
+    response.signerOrigin !== ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_AUTHORITY_MISMATCH',
+      detail: `signerOrigin '${response.signerOrigin}' inválido`,
+    })
+  }
+  if (
+    (response.authorityType === ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY &&
+      response.signerOrigin === ATTESTATION_SIGNER_ORIGINS.PRODUCTION_ATTESTATION_AUTHORITY) ||
+    (response.authorityType === ATTESTATION_AUTHORITY_TYPES.PRODUCTION_AUTHORITY &&
+      response.signerOrigin === ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER)
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_TEST_SIGNER_PROHIBITED',
+      errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY',
+      detail: 'Inconsistencia entre authorityType y signerOrigin: prohibido presentar un firmante de test como autoridad de producción',
+    })
+  }
+  if (
+    !options.allowTestKeys &&
+    (response.authorityType === ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY ||
+      response.signerOrigin === ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER)
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_TEST_SIGNER_PROHIBITED',
+      errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY',
+      detail: 'Firmante o autoridad de test (TEST_AUTHORITY / TEST_SIGNER) prohibido en modo producción',
+    })
+  }
+
+  if (!response.authorityId || typeof response.authorityId !== 'string' || response.authorityId.trim().length === 0) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_AUTHORITY_MISMATCH',
+      detail: 'authorityId ausente o vacío',
+    })
+  }
+
+  if (options.allowedAuthorityIds !== undefined) {
+    const allowedAuths = Array.isArray(options.allowedAuthorityIds)
+      ? options.allowedAuthorityIds
+      : options.allowedAuthorityIds instanceof Set
+        ? Array.from(options.allowedAuthorityIds)
+        : []
+    if (allowedAuths.length === 0 || !allowedAuths.includes(response.authorityId)) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_AUTHORITY_MISMATCH',
+        detail: `authorityId '${response.authorityId}' no figura en las autoridades permitidas`,
+      })
+    }
+  }
+  if (options.expectedAuthorityId !== undefined && response.authorityId !== options.expectedAuthorityId) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_AUTHORITY_MISMATCH',
+      detail: `authorityId '${response.authorityId}' no coincide con expectedAuthorityId '${options.expectedAuthorityId}'`,
+    })
+  }
+
+  // Clave pública autorizada y verificación de keyId
+  const rawKey =
+    options.trustedAttestationPublicKey ||
+    options.authorityPublicKey ||
+    options.authoritySecret ||
+    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+    process.env[PR02_P0_AUTHORITY_ENV]
+  if (!rawKey) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE',
+      errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE',
+      detail: 'No existe clave pública de autoridad de atestación independiente configurada',
+    })
+  }
+
+  let pubKeyObj
+  try {
+    pubKeyObj = validateP0AttestationPublicKey(rawKey, Boolean(options.allowTestKeys))
+  } catch (err) {
+    if (err.message.includes('TEST_KEY_PROHIBITED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_TEST_SIGNER_PROHIBITED',
+        errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY',
+        detail: err.message,
+      })
+    }
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_KEY_ID_MISMATCH',
+      detail: err.message,
+    })
+  }
+
+  if (options.trustedGoPublicKey) {
+    try {
+      const goKeyObj = validateP0GoPublicKey(options.trustedGoPublicKey, Boolean(options.allowTestKeys))
+      const goDer = goKeyObj.export({ format: 'der', type: 'spki' })
+      const attDer = pubKeyObj.export({ format: 'der', type: 'spki' })
+      if (goDer.equals(attDer)) {
+        return Object.freeze({
+          ...deniedBase,
+          reason: 'COLLAPSED_AUTHORITIES_REJECTED',
+          errorCategory: 'COLLAPSED_AUTHORITIES_REJECTED',
+          detail: 'La clave pública de GO Authority y la de Independent Attestation Authority no pueden colapsar en la misma identidad',
+        })
+      }
+    } catch {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'GO_AUTHORITY_KEY_INVALID',
+      })
+    }
+  }
+
+  const derivedKeyId = computePublicKeyId(pubKeyObj)
+  const isKnownTestKey =
+    isTestAuthorityKey(rawKey) ||
+    isTestAuthorityKey(response.authorityId) ||
+    Boolean(options.isTestAuthority)
+
+  if (
+    isKnownTestKey &&
+    (response.authorityType === ATTESTATION_AUTHORITY_TYPES.PRODUCTION_AUTHORITY ||
+      response.signerOrigin === ATTESTATION_SIGNER_ORIGINS.PRODUCTION_ATTESTATION_AUTHORITY)
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_TEST_SIGNER_PROHIBITED',
+      errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY',
+      detail: 'Una clave o autoridad de test jamás puede emitir una respuesta declarando PRODUCTION_AUTHORITY o PRODUCTION_ATTESTATION_AUTHORITY',
+    })
+  }
+
+  if (!response.keyId || typeof response.keyId !== 'string' || response.keyId.trim().length === 0) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_KEY_ID_MISMATCH',
+      detail: 'keyId ausente o vacío',
+    })
+  }
+
+  if (options.allowedKeyIds !== undefined) {
+    const allowedKeys = Array.isArray(options.allowedKeyIds)
+      ? options.allowedKeyIds
+      : options.allowedKeyIds instanceof Set
+        ? Array.from(options.allowedKeyIds)
+        : []
+    if (allowedKeys.length === 0 || !allowedKeys.includes(response.keyId)) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_KEY_ID_MISMATCH',
+        detail: `keyId '${response.keyId}' no figura en allowedKeyIds`,
+      })
+    }
+  }
+  if (options.expectedKeyId !== undefined && response.keyId !== options.expectedKeyId) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_KEY_ID_MISMATCH',
+      detail: `keyId '${response.keyId}' no coincide con expectedKeyId '${options.expectedKeyId}'`,
+    })
+  }
+  if (response.keyId !== derivedKeyId) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_KEY_ID_MISMATCH',
+      detail: `keyId '${response.keyId}' no corresponde a la huella SPKI de la clave pública autorizada ('${derivedKeyId}')`,
+    })
+  }
+
+  // Verificar digest canónico del payload y firma Ed25519
+  const canonicalPayload = serializeCanonicalAttestationResponsePayload(response)
+  const expectedPayloadSha256 = sha256(canonicalPayload)
+  if (response.attestationPayloadSha256 !== expectedPayloadSha256) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_PAYLOAD_MISMATCH',
+      detail: 'attestationPayloadSha256 no coincide con la serialización canónica del payload de la respuesta',
+    })
+  }
+
+  if (!/^[0-9a-fA-F]{128}$/.test(response.signature)) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_SIGNATURE_INVALID',
+      detail: 'Formato de firma Ed25519 inválido (se requieren 128 caracteres hexadecimales)',
+    })
+  }
+
+  const sigValid = crypto.verify(
+    null,
+    Buffer.from(canonicalPayload, 'utf8'),
+    pubKeyObj,
+    Buffer.from(response.signature, 'hex')
+  )
+  if (!sigValid) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_SIGNATURE_INVALID',
+      detail: 'La firma criptográfica Ed25519 de la respuesta de atestación no verifica con la clave pública autorizada',
+    })
+  }
+
+  const targetCommit = options.commitSha || options.expectedHead
+  if (targetCommit && response.commitSha.toLowerCase() !== String(targetCommit).toLowerCase()) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_REQUEST_MISMATCH',
+      detail: 'commitSha de la respuesta no coincide con el commit esperado',
+    })
+  }
+
+  // Verificar vinculación con AttestationRequestPackage y manifiesto
+  const { attestationRequest, manifest } = options
+  if (attestationRequest) {
+    try {
+      validateAttestationRequest(attestationRequest)
+    } catch (reqErr) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_REQUEST_MISMATCH',
+        detail: `Solicitud de atestación inválida: ${reqErr.message}`,
+      })
+    }
+
+    if (
+      response.requestSha256 !== attestationRequest.requestSha256 ||
+      response.requestId !== attestationRequest.requestId
+    ) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_REQUEST_MISMATCH',
+        detail: 'requestSha256 o requestId de la respuesta no coincide con el AttestationRequestPackage',
+      })
+    }
+
+    if (response.manifestSha256 !== attestationRequest.manifestSha256) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_MANIFEST_MISMATCH',
+        detail: 'manifestSha256 de la respuesta no coincide con el manifestSha256 de la solicitud',
+      })
+    }
+
+    const reqIvaRaw = attestationRequest.rawSoapArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const reqCondRaw = attestationRequest.rawSoapArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    const reqIvaNorm = attestationRequest.normalizedArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const reqCondNorm = attestationRequest.normalizedArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    const resIvaRaw = response.rawSoapArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const resCondRaw = response.rawSoapArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    const resIvaNorm = response.normalizedArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const resCondNorm = response.normalizedArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+
+    if (
+      response.processId !== attestationRequest.processId ||
+      response.executionScope !== attestationRequest.executionScope ||
+      response.commitSha.toLowerCase() !== attestationRequest.commitSha.toLowerCase() ||
+      response.environment !== attestationRequest.environment ||
+      response.authorizationId !== attestationRequest.authorizationId ||
+      response.goAuthorizationDocumentSha256 !== attestationRequest.goAuthorizationDocumentSha256 ||
+      response.consultadoEn !== attestationRequest.consultadoEn ||
+      !reqIvaRaw ||
+      !reqCondRaw ||
+      !reqIvaNorm ||
+      !reqCondNorm ||
+      !resIvaRaw ||
+      !resCondRaw ||
+      !resIvaNorm ||
+      !resCondNorm ||
+      resIvaRaw.sha256 !== reqIvaRaw.sha256 ||
+      resCondRaw.sha256 !== reqCondRaw.sha256 ||
+      resIvaNorm.sha256 !== reqIvaNorm.sha256 ||
+      resCondNorm.sha256 !== reqCondNorm.sha256
+    ) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_REQUEST_MISMATCH',
+        detail: 'Los metadatos o hashes de artefactos de la respuesta no coinciden con la solicitud de atestación',
+      })
+    }
+  }
+
+  if (manifest) {
+    const resIvaRaw = response.rawSoapArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const resCondRaw = response.rawSoapArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    const resIvaNorm = response.normalizedArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const resCondNorm = response.normalizedArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+
+    const matchesCurrentManifestSha = response.manifestSha256 === manifest.manifest_sha256
+    const matchesRequestPreAttestedManifestSha =
+      Boolean(attestationRequest) && response.manifestSha256 === attestationRequest.manifestSha256
+
+    if (
+      (!matchesCurrentManifestSha && !matchesRequestPreAttestedManifestSha) ||
+      !resIvaRaw ||
+      !resCondRaw ||
+      !resIvaNorm ||
+      !resCondNorm ||
+      resIvaRaw.sha256 !== manifest.iva_respuesta_original_sha256 ||
+      resIvaNorm.sha256 !== manifest.iva_archivo_normalizado_sha256 ||
+      resCondRaw.sha256 !== manifest.condition_respuesta_original_sha256 ||
+      resCondNorm.sha256 !== manifest.condition_archivo_normalizado_sha256 ||
+      response.processId !== manifest.identificador_proceso ||
+      response.executionScope !== manifest.ejecucion_autorizada_scope ||
+      (manifest.consultado_en !== undefined && response.consultadoEn !== manifest.consultado_en) ||
+      (manifest.entorno !== undefined && response.environment !== manifest.entorno) ||
+      (manifest.go_authorization_id !== undefined &&
+        manifest.go_authorization_id !== null &&
+        response.authorizationId !== manifest.go_authorization_id) ||
+      (manifest.go_authorization_sha256 !== undefined &&
+        manifest.go_authorization_sha256 !== null &&
+        response.goAuthorizationDocumentSha256 !== manifest.go_authorization_sha256)
+    ) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_MANIFEST_MISMATCH',
+        detail: 'Los digests o metadatos de la respuesta de atestación no coinciden con el manifiesto de evidencia P0',
+      })
+    }
+  }
+
+  // Protección anti-replay process-local (PROCESS_LOCAL_ONE_TIME_USE)
+  const replayKey = `${response.responseId}:${response.requestSha256}:${response.attestationPayloadSha256}:${response.signature}`
+  if (options.enforceAntiReplay !== false) {
+    if (isAttestationResponseConsumedProcessLocal(replayKey)) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_RESPONSE_REPLAY_DETECTED',
+        errorCategory: 'REPLAY_ATTACK_DETECTED',
+        detail: 'Reutilización de respuesta de atestación detectada dentro del mismo proceso (PROCESS_LOCAL_ONE_TIME_USE)',
+      })
+    }
+    if (options.consumeOnVerify !== false) {
+      consumeAttestationResponseProcessLocal(replayKey)
+    }
+  }
+
+  const isTestSigner =
+    isKnownTestKey ||
+    response.authorityType === ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY ||
+    response.signerOrigin === ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER
+
+  if (isTestSigner) {
+    return Object.freeze({
+      valid: true,
+      reason: 'VERIFIED_TEST_ONLY',
+      authorityType: ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY,
+      authorityId: response.authorityId,
+      keyId: response.keyId,
+      algorithm: response.algorithm,
+      requestId: response.requestId,
+      requestSha256: response.requestSha256,
+      manifestSha256: response.manifestSha256,
+      attestationPayloadSha256: response.attestationPayloadSha256,
+      trustScope: 'TEST_ONLY',
+      trustModel: 'TEST_ONLY',
+      ATTESTATION_TRUST_MODEL: 'TEST_ONLY',
+      PRODUCTION_ATTESTED: false,
+      OFFICIAL_PROVENANCE_VERIFIED: false,
+      ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+      EVIDENCE_CUSTODY_ATTESTED: true,
+      TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
+      INDEPENDENT_ATTESTATION_AVAILABLE: false,
+      P1_IMPORT_ALLOWED: false,
+      antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+    })
+  }
+
+  return Object.freeze({
+    valid: true,
+    reason: 'VERIFIED',
+    authorityType: ATTESTATION_AUTHORITY_TYPES.PRODUCTION_AUTHORITY,
+    authorityId: response.authorityId,
+    keyId: response.keyId,
+    algorithm: response.algorithm,
+    requestId: response.requestId,
+    requestSha256: response.requestSha256,
+    manifestSha256: response.manifestSha256,
+    attestationPayloadSha256: response.attestationPayloadSha256,
+    trustScope: 'PRODUCTION_ATTESTED',
+    trustModel: 'INDEPENDENT_ATTESTED',
+    ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED',
+    PRODUCTION_ATTESTED: true,
+    OFFICIAL_PROVENANCE_VERIFIED: true,
+    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    EVIDENCE_CUSTODY_ATTESTED: true,
+    TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
+    INDEPENDENT_ATTESTATION_AVAILABLE: true,
+    P1_IMPORT_ALLOWED: true,
+    antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+  })
+}
+
+/**
+ * Valida fail-closed una respuesta de atestación (AttestationResponse).
+ * Lanza error tipado si la respuesta no supera cualquiera de las verificaciones.
+ */
+export function validateAttestationResponse(response, options = {}) {
+  const result = verifyAttestationResponse(response, options)
+  if (!result.valid) {
+    throw new Error(`${result.reason}: ${result.detail || result.reason}`)
+  }
+  return result
+}
+
+function assertAdapterConfigSecurity(config = {}) {
+  if (!config || typeof config !== 'object' || Array.isArray(config)) {
+    throw new Error('INDEPENDENT_ATTESTATION_ADAPTER_CONFIG_INVALID')
+  }
+
+  assertRuntimeSigningIsolation({
+    fiscalScriptsDir: config.fiscalScriptsDir,
+    env: config.env,
+  })
+
+  const env = config.env || process.env
+  if (
+    config.independentAuthorityAvailable === true ||
+    config.elevateToIndependent === true ||
+    config.forceIndependentAttestation === true ||
+    config.allowSelfAttestedAsIndependent === true ||
+    config.elevateTrustModel === true ||
+    config.forceProductionAuthority === true ||
+    config.P1_IMPORT_ALLOWED === true ||
+    config.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
+    Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION) ||
+    env.INDEPENDENT_ATTESTATION_AVAILABLE === 'true'
+  ) {
+    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Un booleano como independentAuthorityAvailable: true o flags de configuración no pueden elevar el modelo de confianza')
+  }
+
+  if (
+    config.fallbackToLocalSigner ||
+    config.localFallbackSigner ||
+    config.fallbackSigner ||
+    config.signLocallyOnFailure ||
+    config.useLocalSigner ||
+    config.enableLocalSigningFallback ||
+    config.localPrivateKey ||
+    config.privateKey
+  ) {
+    throw new Error('LOCAL_FALLBACK_SIGNING_FORBIDDEN: Prohibido configurar fallback a firma local o claves privadas en el adaptador de atestación independiente')
+  }
+
+  if (config.autoDiscoverRemoteAuthority === true || config.implicitNetworkAccess === true) {
+    throw new Error('IMPLICIT_AUTHORITY_DISCOVERY_FORBIDDEN: Prohibido el descubrimiento automático de autoridad remota o acceso de red implícito')
+  }
+}
+
+/**
+ * Envía un AttestationRequestPackage a través de una frontera de transporte explícita
+ * hacia una Autoridad de Atestación Independiente externa y verifica su respuesta fail-closed.
+ * Sin acceso de red implícito, sin descubrimiento automático y sin fallback a firma local.
+ */
+export async function submitAttestationRequest(requestPkg, adapterOrConfig = {}) {
+  assertAdapterConfigSecurity(adapterOrConfig)
+  validateAttestationRequest(requestPkg)
+
+  const transportCandidate =
+    typeof adapterOrConfig.transport === 'function'
+      ? adapterOrConfig.transport
+      : adapterOrConfig.transport && typeof adapterOrConfig.transport.sendAttestationRequest === 'function'
+        ? (req) => adapterOrConfig.transport.sendAttestationRequest(req)
+        : null
+
+  const rawPubKey =
+    adapterOrConfig.trustedAttestationPublicKey ||
+    adapterOrConfig.authorityPublicKey ||
+    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+    process.env[PR02_P0_AUTHORITY_ENV]
+
+  const authorityId = adapterOrConfig.authorityId || adapterOrConfig.expectedAuthorityId
+
+  if (!transportCandidate || !rawPubKey || !authorityId || typeof authorityId !== 'string' || authorityId.trim().length === 0) {
+    throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: No existe una Autoridad de Atestación Independiente externa configurada (se requiere transporte explícito, authorityId y clave pública autorizada)')
+  }
+
+  const pubKeyObj = validateP0AttestationPublicKey(rawPubKey, Boolean(adapterOrConfig.allowTestKeys))
+  const derivedKeyId = computePublicKeyId(pubKeyObj)
+
+  const allowedAuthorityIds = adapterOrConfig.allowedAuthorityIds || [authorityId]
+  const allowedKeyIds = adapterOrConfig.allowedKeyIds || [derivedKeyId]
+
+  let rawResponse
+  try {
+    rawResponse = await transportCandidate(Object.freeze({ ...requestPkg }))
+  } catch (err) {
+    throw new Error(`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Fallo en transporte externo de autoridad de atestación (prohibido fallback local): ${err && err.message ? err.message : String(err)}`)
+  }
+
+  const verification = validateAttestationResponse(rawResponse, {
+    attestationRequest: requestPkg,
+    manifest: adapterOrConfig.manifest,
+    commitSha: adapterOrConfig.commitSha || requestPkg.commitSha,
+    trustedAttestationPublicKey: rawPubKey,
+    trustedGoPublicKey: adapterOrConfig.trustedGoPublicKey,
+    allowedAuthorityIds,
+    allowedKeyIds,
+    allowTestKeys: Boolean(adapterOrConfig.allowTestKeys),
+    fiscalScriptsDir: adapterOrConfig.fiscalScriptsDir,
+    env: adapterOrConfig.env,
+    now: adapterOrConfig.now,
+    enforceAntiReplay: adapterOrConfig.enforceAntiReplay,
+    consumeOnVerify: adapterOrConfig.consumeOnVerify,
+  })
+
+  return Object.freeze({
+    valid: true,
+    request: requestPkg,
+    response: Object.freeze({ ...rawResponse }),
+    verification,
+  })
+}
+
+/**
+ * Crea un adaptador explícito y fail-closed para la integración con una
+ * Autoridad de Atestación Independiente externa (IndependentAttestationAuthorityAdapter).
+ * Separa estrictamente: REQUEST CREATION ≠ REQUEST TRANSPORT ≠ EXTERNAL SIGNING ≠ RESPONSE VERIFICATION.
+ */
+export function createIndependentAttestationAuthorityAdapter(config = {}) {
+  assertAdapterConfigSecurity(config)
+
+  const rawPubKey =
+    config.trustedAttestationPublicKey ||
+    config.authorityPublicKey ||
+    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+    process.env[PR02_P0_AUTHORITY_ENV]
+  const authorityId = config.authorityId || config.expectedAuthorityId || null
+  const hasTransport =
+    typeof config.transport === 'function' ||
+    Boolean(config.transport && typeof config.transport.sendAttestationRequest === 'function')
+
+  let validatedKeyId = null
+  let hasValidKey = false
+  if (rawPubKey) {
+    try {
+      const pubObj = validateP0AttestationPublicKey(rawPubKey, Boolean(config.allowTestKeys))
+      validatedKeyId = computePublicKeyId(pubObj)
+      hasValidKey = true
+    } catch (err) {
+      if (config.requireAvailable === true || (err && err.message && err.message.includes('TEST_KEY_PROHIBITED'))) {
+        throw err
+      }
+      hasValidKey = false
+    }
+  }
+
+  const isConfigured = Boolean(hasTransport && hasValidKey && authorityId && typeof authorityId === 'string' && authorityId.trim().length > 0)
+
+  if (config.requireAvailable === true && !isConfigured) {
+    throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Configuración incompleta para adaptador de autoridad de atestación independiente')
+  }
+
+  const allowedAuthorityIds = config.allowedAuthorityIds
+    ? Object.freeze(Array.from(config.allowedAuthorityIds))
+    : authorityId
+      ? Object.freeze([authorityId])
+      : Object.freeze([])
+  const allowedKeyIds = config.allowedKeyIds
+    ? Object.freeze(Array.from(config.allowedKeyIds))
+    : validatedKeyId
+      ? Object.freeze([validatedKeyId])
+      : Object.freeze([])
+
+  return Object.freeze({
+    adapterVersion: '1.0',
+    authorityId,
+    keyId: validatedKeyId,
+    allowedAuthorityIds,
+    allowedKeyIds,
+    algorithm: 'Ed25519',
+    // El adaptador técnico no eleva por sí mismo el modelo de confianza
+    ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED',
+    INDEPENDENT_ATTESTATION_AVAILABLE: false,
+    P1_IMPORT_ALLOWED: false,
+    antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+    isConfigured: () => isConfigured,
+    isAuthorityAvailable: () => false,
+    createAttestationRequest: (params) => createAttestationRequest(params),
+    validateAttestationRequest: (pkg) => validateAttestationRequest(pkg),
+    submitAttestationRequest: async (requestPkg, submitOptions = {}) => {
+      assertAdapterConfigSecurity(submitOptions)
+      return submitAttestationRequest(requestPkg, {
+        ...config,
+        ...submitOptions,
+        transport: config.transport,
+        trustedAttestationPublicKey: rawPubKey,
+        authorityId,
+        allowedAuthorityIds,
+        allowedKeyIds,
+      })
+    },
+    verifyAttestationResponse: (response, verifyOptions = {}) =>
+      verifyAttestationResponse(response, {
+        ...config,
+        ...verifyOptions,
+        trustedAttestationPublicKey: verifyOptions.trustedAttestationPublicKey || rawPubKey,
+        allowedAuthorityIds: verifyOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
+        allowedKeyIds: verifyOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
+      }),
+    validateAttestationResponse: (response, verifyOptions = {}) =>
+      validateAttestationResponse(response, {
+        ...config,
+        ...verifyOptions,
+        trustedAttestationPublicKey: verifyOptions.trustedAttestationPublicKey || rawPubKey,
+        allowedAuthorityIds: verifyOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
+        allowedKeyIds: verifyOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
+      }),
+    signProductionAttestation: () => {
+      throw new Error('PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME: El adaptador en el runtime fiscal tiene prohibido firmar atestaciones de producción')
+    },
+    accessProductionPrivateKey: () => {
+      throw new Error('PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME: El adaptador en el runtime fiscal tiene prohibido poseer o acceder a claves privadas de producción')
+    },
+    fallbackToLocalSigner: () => {
+      throw new Error('LOCAL_FALLBACK_SIGNING_FORBIDDEN: Prohibido realizar fallback a firma local desde el adaptador de autoridad independiente')
+    },
+  })
+}
+
+export const IndependentAttestationAuthorityAdapter = Object.freeze({
+  createAdapter: createIndependentAttestationAuthorityAdapter,
+  createAttestationRequest,
+  validateAttestationRequest,
+  submitAttestationRequest,
+  verifyAttestationResponse,
+  validateAttestationResponse,
+  serializeCanonicalAttestationResponsePayload,
+  computeAttestationResponsePayloadDigest,
+  computePublicKeyId,
+  AUTHORITY_TYPES: ATTESTATION_AUTHORITY_TYPES,
+  ALLOWED_ALGORITHMS: ATTESTATION_ALLOWED_ALGORITHMS,
+  ANTI_REPLAY_GUARANTEE_LEVEL: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+})
+
+/**
  * Frontera externa de Autoridad de Atestación Independiente (IndependentAttestationAuthority).
  * El runtime fiscal puede crear solicitudes de atestación y verificar firmas con clave pública,
  * pero tiene terminantemente prohibido acceder a claves privadas o firmar atestaciones de producción.
@@ -1735,17 +2731,30 @@ export function verifyP0Attestation(attestation, options = {}) {
 export const IndependentAttestationAuthority = Object.freeze({
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   SIGNER_ORIGINS: ATTESTATION_SIGNER_ORIGINS,
+  AUTHORITY_TYPES: ATTESTATION_AUTHORITY_TYPES,
+  ALLOWED_ALGORITHMS: ATTESTATION_ALLOWED_ALGORITHMS,
   TRUST_MODELS: ATTESTATION_TRUST_MODELS,
+  RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
   createAttestationRequest,
   validateAttestationRequest,
   computeAttestationRequestDigest,
   serializeCanonicalAttestationRequest,
+  serializeCanonicalAttestationResponsePayload,
+  computeAttestationResponsePayloadDigest,
+  computePublicKeyId,
+  verifyAttestationResponse,
+  validateAttestationResponse,
+  createAdapter: createIndependentAttestationAuthorityAdapter,
+  submitAttestationRequest,
   verifyIndependentAttestation,
   verifyRuntimeSigningIsolation,
   assertRuntimeSigningIsolation,
   assertNoSelfAttestationElevation,
   validatePublicKey: validateP0AttestationPublicKey,
   isAuthorityAvailable: (options = {}) => {
+    if (options && options.independentAuthorityAvailable === true) {
+      throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido declarar disponibilidad de autoridad independiente mediante un booleano')
+    }
     const raw = options.trustedAttestationPublicKey || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
     if (!raw) return false
     try {
@@ -1765,6 +2774,9 @@ export const IndependentAttestationAuthority = Object.freeze({
   generateTrustedIndependentAttestation: () => {
     throw new Error('PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME: Prohibido generar atestaciones independientes acreditadas dentro del runtime del colector')
   },
+  fallbackToLocalSigner: () => {
+    throw new Error('LOCAL_FALLBACK_SIGNING_FORBIDDEN: Prohibido realizar fallback a firma local cuando la autoridad independiente no está disponible')
+  },
 })
 
 /**
@@ -1778,6 +2790,10 @@ export const AttestationAuthority = Object.freeze({
   validateAttestationRequest,
   verifyAttestation: verifyP0Attestation,
   verifyIndependentAttestation,
+  verifyAttestationResponse,
+  validateAttestationResponse,
+  createAdapter: createIndependentAttestationAuthorityAdapter,
+  submitAttestationRequest,
   isAuthorityAvailable: IndependentAttestationAuthority.isAuthorityAvailable,
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   AUTHORITY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
@@ -2104,7 +3120,11 @@ export function validatePr02P1ImportEvidence(options = {}) {
     options.elevateToIndependent === true ||
     options.forceIndependentAttestation === true ||
     options.allowSelfAttestedAsIndependent === true ||
-    Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION)
+    options.independentAuthorityAvailable === true ||
+    options.elevateTrustModel === true ||
+    options.forceProductionAuthority === true ||
+    Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION) ||
+    env.INDEPENDENT_ATTESTATION_AVAILABLE === 'true'
   ) {
     throw new Error('P1_IMPORT_FORBIDDEN: SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido autoelevar SELF_ATTESTED a INDEPENDENT_ATTESTED mediante opciones, flags o variables de entorno')
   }
@@ -2113,6 +3133,17 @@ export function validatePr02P1ImportEvidence(options = {}) {
 
   if (!manifest) {
     throw new Error('P1_IMPORT_MANIFEST_REQUIRED: Se requiere manifiesto oficial P0 para importar evidencia en P1')
+  }
+
+  // Rechazo taxativo de evidencia simulada (incluso si se acompaña de un firmante de test)
+  if (
+    options.isSimulated === true ||
+    manifest.transport_type === 'SIMULATED' ||
+    (manifest.transport_type && manifest.transport_type !== 'OFFICIAL') ||
+    (manifest.attestation && manifest.attestation.transportType === 'SIMULATED') ||
+    (options.independentAttestation && options.independentAttestation.transportType === 'SIMULATED')
+  ) {
+    throw new Error('P1_IMPORT_FORBIDDEN: SIMULATED_EVIDENCE_REJECTED: P0_MANIFEST_TRANSPORT_NOT_OFFICIAL: La evidencia simulada no puede importarse en P1 ni acreditarse mediante un firmante de test')
   }
 
   if (
@@ -2256,6 +3287,60 @@ export function validatePr02P1ImportEvidence(options = {}) {
   const attestationDer = attestationKeyObj.export({ format: 'der', type: 'spki' })
   if (goDer.equals(attestationDer)) {
     throw new Error('P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas')
+  }
+
+  // Verificación de cadena explícita: AttestationResponse -> AttestationRequestPackage -> requestSha256 -> manifestSha256 -> evidence digests
+  if (options.attestationRequest) {
+    try {
+      validateAttestationRequest(options.attestationRequest)
+    } catch (reqErr) {
+      throw new Error(`P1_IMPORT_FORBIDDEN: ATTESTATION_REQUEST_MISMATCH: ${reqErr.message}`)
+    }
+    const reqIvaRaw = options.attestationRequest.rawSoapArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const reqCondRaw = options.attestationRequest.rawSoapArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    const reqIvaNorm = options.attestationRequest.normalizedArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const reqCondNorm = options.attestationRequest.normalizedArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    if (
+      !reqIvaRaw ||
+      !reqCondRaw ||
+      !reqIvaNorm ||
+      !reqCondNorm ||
+      reqIvaRaw.sha256 !== rawIvaSha ||
+      reqCondRaw.sha256 !== rawCondSha ||
+      reqIvaNorm.sha256 !== ivaSha ||
+      reqCondNorm.sha256 !== conditionSha ||
+      options.attestationRequest.processId !== manifest.identificador_proceso ||
+      options.attestationRequest.executionScope !== manifest.ejecucion_autorizada_scope ||
+      options.attestationRequest.authorizationId !== manifest.go_authorization_id ||
+      options.attestationRequest.goAuthorizationDocumentSha256 !== manifest.go_authorization_sha256 ||
+      options.attestationRequest.commitSha.toLowerCase() !== String(expectedHead).toLowerCase()
+    ) {
+      throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_REQUEST_MISMATCH: El AttestationRequestPackage no coincide con los digests de evidencia o el manifiesto P0')
+    }
+  }
+
+  if (options.attestationResponse !== undefined) {
+    if (!options.attestationRequest) {
+      throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_REQUEST_MISMATCH: Se requiere AttestationRequestPackage explícito para verificar la vinculación de AttestationResponse en P1')
+    }
+    const responseCheck = verifyAttestationResponse(options.attestationResponse, {
+      attestationRequest: options.attestationRequest,
+      manifest,
+      commitSha: expectedHead,
+      trustedAttestationPublicKey,
+      trustedGoPublicKey: trustedGoPublicKeyInput,
+      allowedAuthorityIds: options.allowedAuthorityIds,
+      allowedKeyIds: options.allowedKeyIds,
+      allowTestKeys: Boolean(options.allowTestKeys),
+      fiscalScriptsDir: options.fiscalScriptsDir,
+      env: options.env,
+      now,
+      enforceAntiReplay: options.enforceAntiReplay,
+      consumeOnVerify: options.consumeOnVerify,
+    })
+    if (!responseCheck.valid) {
+      throw new Error(`P1_IMPORT_FORBIDDEN: ${responseCheck.reason}: ${responseCheck.detail || responseCheck.reason}`)
+    }
   }
 
   const attestationCheck = verifyP0Attestation(targetAttestation, {

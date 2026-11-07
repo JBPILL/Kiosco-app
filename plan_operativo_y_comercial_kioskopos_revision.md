@@ -2428,3 +2428,37 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
     - `CAE_EMISSIONS_NEW = 0`
+
+
+- **Integración Fail-Closed con Autoridad de Atestación Independiente PR02-P0 (07/11/2026)**:
+  - **Qué garantiza el sistema ahora**:
+    1. Solicitud de atestación canónica y determinística (`AttestationRequestPackage`).
+    2. Adaptador explícito y fail-closed para autoridad externa (`IndependentAttestationAuthorityAdapter`, `createIndependentAttestationAuthorityAdapter`, `submitAttestationRequest`) que falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE` cuando no existe autoridad externa configurada y prohíbe cualquier firma de producción o fallback local en runtime (`PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME`, `LOCAL_FALLBACK_SIGNING_FORBIDDEN`).
+    3. Contrato explícito de respuesta (`AttestationResponse`) y verificación por clave pública Ed25519 (`verifyAttestationResponse`, `validateAttestationResponse`).
+    4. Separación criptográfica entre `GO Authority` y `Attestation Authority` (`COLLAPSED_AUTHORITIES_REJECTED`).
+    5. Separación estricta entre `TEST_AUTHORITY` (`trustScope: 'TEST_ONLY'`) y `PRODUCTION_AUTHORITY` (`ATTESTATION_TEST_SIGNER_PROHIBITED`), con helpers de test aislados en `src/test/helpers/fiscalEd25519Signer.ts`.
+    6. Bloqueo de auto-elevación de confianza desde `SELF_ATTESTED` o mediante booleanos (`SELF_ATTESTATION_AUTO_ELEVATION_REJECTED`).
+    7. Protección anti-replay de un solo uso por proceso para respuestas de atestación (`ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'`, `ATTESTATION_RESPONSE_REPLAY_DETECTED`) y verificación de cadena completa en P1 (`validatePr02P1ImportEvidence`).
+  - **Qué NO garantiza todavía**:
+    1. No existe aún una autoridad externa de producción conectada (`INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`).
+    2. `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` permanece `false` porque WSFE devuelve SOAP XML sin firma digital de aplicación sobre el cuerpo.
+    3. No se ha ejecutado P0, P1 ni P2 de forma remota (`P0_REMOTE_EXECUTED = false`, `P1_REMOTE_EXECUTION_READY = false`, `P2_REMOTE_EXECUTION_READY = false`, `REMOTE_GO = DENIED`).
+  - **Pruebas y Build**: Casos adversariales `ADV-30` a `ADV-43` (tests 85 a 99) añadidos en `src/test/fiscalPr02P0Collector.test.ts`; 99/99 tests PASS en P0 y 116/116 tests PR02 totales PASS; `npm run build` y `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - **Estado**:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `ATTESTATION_REQUEST_CONTRACT = PASS`
+    - `ATTESTATION_RESPONSE_CONTRACT = PASS`
+    - `INDEPENDENT_AUTHORITY_ADAPTER = PASS`
+    - `PUBLIC_KEY_VERIFICATION_BOUNDARY = PASS`
+    - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+    - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+    - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+    - `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+    - `P1_IMPORT_ALLOWED = false`
+    - `REMOTE_GO = DENIED`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`

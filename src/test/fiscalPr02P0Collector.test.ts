@@ -39,6 +39,16 @@ import {
   GoAuthority,
   AttestationAuthority,
   IndependentAttestationAuthority,
+  IndependentAttestationAuthorityAdapter,
+  createIndependentAttestationAuthorityAdapter,
+  submitAttestationRequest,
+  verifyAttestationResponse,
+  validateAttestationResponse,
+  computePublicKeyId,
+  serializeCanonicalAttestationResponsePayload,
+  computeAttestationResponsePayloadDigest,
+  ATTESTATION_AUTHORITY_TYPES,
+  ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
   createAttestationRequest,
   validateAttestationRequest,
   computeAttestationRequestDigest,
@@ -60,6 +70,8 @@ import {
   createSignedTestPr02P0GoAuthorization,
   createSignedTestIndependentAttestation,
   createSignedTestAttestationFromRequest,
+  createSignedTestAttestationResponse,
+  createTestIndependentAttestationAuthority,
   clearConsumedAuthorizationsForTesting,
 } from './helpers/fiscalEd25519Signer'
 
@@ -3576,5 +3588,572 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(p1Res.EVIDENCE_CUSTODY_ATTESTED).toBe(true)
     expect(p1Res.TRUSTED_EXECUTION_BOUNDARY).toBe('VERIFIED')
     expect(p1Res.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+  })
+
+  function buildTestRequestFixture(processSuffix = '001') {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: `GO-ADV-${processSuffix}`,
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: `pid-adv-${processSuffix}`,
+      ejecucion_autorizada_id: `pid-adv-${processSuffix}`,
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: false,
+      transport_type: 'OFFICIAL',
+      iva_respuesta_original_sha256: ivaRawSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: condRawSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: goAuthSha,
+      manifest_sha256: '',
+    }
+    manifestDraft.manifest_sha256 = computeP0ManifestDigest(manifestDraft)
+
+    const requestPkg = createAttestationRequest({
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      requestedAt: '2026-11-05T01:05:00.000Z',
+      requestId: `req-adv-${processSuffix}`,
+    })
+
+    return {
+      goPub,
+      goPriv,
+      goDoc,
+      ivaParsed,
+      condParsed,
+      manifestDraft,
+      requestPkg,
+    }
+  }
+
+  // 85. ADV-30 — Runtime intenta firmar producción
+  it('85. ADV-30: Runtime intenta firmar producción y falla cerrado en IndependentAttestationAuthority y su adaptador', () => {
+    const adapter = createIndependentAttestationAuthorityAdapter()
+    expect(() => adapter.signProductionAttestation()).toThrow(/PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME/)
+    expect(() => adapter.accessProductionPrivateKey()).toThrow(/PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME/)
+    expect(() => IndependentAttestationAuthority.signProductionAttestation()).toThrow(/PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME/)
+    expect(() => IndependentAttestationAuthority.generateTrustedIndependentAttestation()).toThrow(/PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME/)
+  })
+
+  // 86. ADV-31 — Clave privada de producción presente en runtime
+  it('86. ADV-31: Clave privada de producción presente en runtime se detecta y bloquea inmediatamente', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('031')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const signedRes = testAuthority.issueResponse(requestPkg)
+
+    const fakeDirtyDir = path.resolve(process.cwd(), 'temp-dirty-runtime-adv31')
+    try {
+      fs.mkdirSync(fakeDirtyDir, { recursive: true })
+      fs.writeFileSync(path.join(fakeDirtyDir, 'prod-authority.key'), 'PRIVATE_KEY_CONTENT', 'utf8')
+
+      const res = verifyAttestationResponse(signedRes, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        fiscalScriptsDir: fakeDirtyDir,
+      })
+      expect(res.valid).toBe(false)
+      expect(res.reason).toBe('RUNTIME_PRIVATE_KEY_DETECTED')
+      expect(res.P1_IMPORT_ALLOWED).toBe(false)
+
+      expect(() =>
+        createIndependentAttestationAuthorityAdapter({
+          fiscalScriptsDir: fakeDirtyDir,
+        })
+      ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+    } finally {
+      if (fs.existsSync(fakeDirtyDir)) {
+        fs.rmSync(fakeDirtyDir, { recursive: true, force: true })
+      }
+    }
+  })
+
+  // 87. ADV-32 — Respuesta con requestSha256 de otra solicitud
+  it('87. ADV-32: Respuesta con requestSha256 de otra solicitud es rechazada con ATTESTATION_REQUEST_MISMATCH', () => {
+    const fixtureA = buildTestRequestFixture('032A')
+    const fixtureB = buildTestRequestFixture('032B')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+
+    const responseForB = testAuthority.issueResponse(fixtureB.requestPkg)
+
+    const check = verifyAttestationResponse(responseForB, {
+      attestationRequest: fixtureA.requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: fixtureA.goPub,
+      allowTestKeys: true,
+    })
+
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_REQUEST_MISMATCH')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    expect(() =>
+      validateAttestationResponse(responseForB, {
+        attestationRequest: fixtureA.requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: fixtureA.goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/ATTESTATION_REQUEST_MISMATCH/)
+  })
+
+  // 88. ADV-33 — Respuesta con manifestSha256 diferente
+  it('88. ADV-33: Respuesta con manifestSha256 diferente es rechazada con ATTESTATION_MANIFEST_MISMATCH', () => {
+    const { requestPkg, manifestDraft, goPub } = buildTestRequestFixture('033')
+    const keyPair = generateEphemeralAttestationKeyPair()
+
+    const mismatchedResponse = createSignedTestAttestationResponse(requestPkg, keyPair.privateKey, {
+      manifestSha256: 'e'.repeat(64),
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    const check = verifyAttestationResponse(mismatchedResponse, {
+      attestationRequest: requestPkg,
+      manifest: manifestDraft,
+      trustedAttestationPublicKey: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_MANIFEST_MISMATCH')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+  })
+
+  // 89. ADV-34 — Firma válida pero authorityId no permitido
+  it('89. ADV-34: Firma válida pero authorityId no permitido es rechazada con ATTESTATION_AUTHORITY_MISMATCH', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('034')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'unauthorized-rogue-authority-99',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validSignedRes = testAuthority.issueResponse(requestPkg)
+
+    const check = verifyAttestationResponse(validSignedRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowedAuthorityIds: ['official-independent-authority-01'],
+      allowTestKeys: true,
+    })
+
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_AUTHORITY_MISMATCH')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+  })
+
+  // 90. ADV-35 — Firma válida con keyId no permitido
+  it('90. ADV-35: Firma válida con keyId no permitido es rechazada con ATTESTATION_KEY_ID_MISMATCH', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('035')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validSignedRes = testAuthority.issueResponse(requestPkg)
+
+    const check = verifyAttestationResponse(validSignedRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowedKeyIds: ['ed25519-spki-0000000000000000'],
+      allowTestKeys: true,
+    })
+
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_KEY_ID_MISMATCH')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+  })
+
+  // 91. ADV-36 — Algoritmo diferente al permitido
+  it('91. ADV-36: Algoritmo diferente a Ed25519 (p. ej. HS256 / RSA-SHA256 / none) es rechazado con ATTESTATION_ALGORITHM_FORBIDDEN', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('036')
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const badAlgResponse = createSignedTestAttestationResponse(requestPkg, keyPair.privateKey, {
+      algorithm: 'HS256',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    const check = verifyAttestationResponse(badAlgResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_ALGORITHM_FORBIDDEN')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+  })
+
+  // 92. ADV-37 — Firmante de test presentado como producción
+  it('92. ADV-37: Firmante de test presentado como producción es rechazado con ATTESTATION_TEST_SIGNER_PROHIBITED y jamás otorga PRODUCTION_ATTESTED', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('037')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const testResponse = testAuthority.issueResponse(requestPkg)
+
+    // Caso 1: Modo producción (allowTestKeys: false por defecto) rechaza TEST_AUTHORITY / TEST_SIGNER
+    const prodCheck = verifyAttestationResponse(testResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: false,
+    })
+    expect(prodCheck.valid).toBe(false)
+    expect(prodCheck.reason).toBe('ATTESTATION_TEST_SIGNER_PROHIBITED')
+    expect(prodCheck.P1_IMPORT_ALLOWED).toBe(false)
+
+    // Caso 2: Intento de disfrazar TEST_SIGNER con authorityType PRODUCTION_AUTHORITY
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const disguisedResponse = createSignedTestAttestationResponse(requestPkg, keyPair.privateKey, {
+      authorityType: ATTESTATION_AUTHORITY_TYPES.PRODUCTION_AUTHORITY,
+      signerOrigin: ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER,
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const disguisedCheck = verifyAttestationResponse(disguisedResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(disguisedCheck.valid).toBe(false)
+    expect(disguisedCheck.reason).toBe('ATTESTATION_TEST_SIGNER_PROHIBITED')
+
+    // Caso 3: En modo test (allowTestKeys: true), una respuesta de TEST_AUTHORITY resulta estrictamente en TEST_ONLY
+    const testModeCheck = verifyAttestationResponse(testResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumeOnVerify: false,
+    })
+    expect(testModeCheck.valid).toBe(true)
+    expect(testModeCheck.trustScope).toBe('TEST_ONLY')
+    expect(testModeCheck.ATTESTATION_TRUST_MODEL).toBe('TEST_ONLY')
+    expect(testModeCheck.PRODUCTION_ATTESTED).toBe(false)
+    expect(testModeCheck.OFFICIAL_PROVENANCE_VERIFIED).toBe(false)
+    expect(testModeCheck.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+    expect(testModeCheck.P1_IMPORT_ALLOWED).toBe(false)
+  })
+
+  // 93. ADV-38 — Booleano intenta elevar confianza
+  it('93. ADV-38: Booleano independentAuthorityAvailable: true o campos inyectados intentando elevar confianza son rechazados', async () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('038')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        independentAuthorityAvailable: true,
+      })
+    ).toThrow(/SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/)
+
+    await expect(
+      submitAttestationRequest(requestPkg, {
+        independentAuthorityAvailable: true,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        authorityId: testAuthority.authorityId,
+        transport: testAuthority.sendAttestationRequest,
+      })
+    ).rejects.toThrow(/SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/)
+
+    const verifyWithBool = verifyAttestationResponse(validRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      independentAuthorityAvailable: true,
+    })
+    expect(verifyWithBool.valid).toBe(false)
+    expect(verifyWithBool.reason).toBe('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED')
+
+    // Inyección de campo inesperado en el objeto de respuesta intentando mutar el trust model
+    const mutatedRes = {
+      ...validRes,
+      PRODUCTION_ATTESTED: true,
+    }
+    const verifyMutated = verifyAttestationResponse(mutatedRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(verifyMutated.valid).toBe(false)
+    expect(verifyMutated.reason).toBe('ATTESTATION_RESPONSE_INVALID')
+  })
+
+  // 94. ADV-39 — Reutilización de respuesta dentro del mismo proceso
+  it('94. ADV-39: Reutilización de una respuesta de atestación dentro del mismo proceso es bloqueada con ATTESTATION_RESPONSE_REPLAY_DETECTED (PROCESS_LOCAL_ONE_TIME_USE)', async () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('039')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const singleResponse = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: testAuthority.authorityId,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      transport: async () => singleResponse,
+    })
+
+    // El adaptador técnico no cambia el trust model por defecto
+    expect(adapter.ATTESTATION_TRUST_MODEL).toBe('SELF_ATTESTED')
+    expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    expect(adapter.antiReplayGuarantee).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+
+    // Primer uso: válido
+    const firstSubmit = await adapter.submitAttestationRequest(requestPkg)
+    expect(firstSubmit.valid).toBe(true)
+    expect(firstSubmit.verification.antiReplayGuarantee).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+
+    // Segundo uso de la misma respuesta en el mismo proceso: bloqueado por anti-replay
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /ATTESTATION_RESPONSE_REPLAY_DETECTED/
+    )
+  })
+
+  // 95. ADV-40 — Falta autoridad independiente configurada
+  it('95. ADV-40: Falta autoridad independiente configurada falla cerrado con INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE', async () => {
+    const { requestPkg } = buildTestRequestFixture('040')
+    const unconfiguredAdapter = createIndependentAttestationAuthorityAdapter()
+
+    expect(unconfiguredAdapter.isConfigured()).toBe(false)
+    expect(unconfiguredAdapter.isAuthorityAvailable()).toBe(false)
+    expect(unconfiguredAdapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(unconfiguredAdapter.P1_IMPORT_ALLOWED).toBe(false)
+
+    await expect(unconfiguredAdapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE/
+    )
+    await expect(submitAttestationRequest(requestPkg, {})).rejects.toThrow(
+      /INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE/
+    )
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        requireAvailable: true,
+      })
+    ).toThrow(/INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE/)
+  })
+
+  // 96. ADV-41 — Adaptador intenta realizar fallback a firma local
+  it('96. ADV-41: Adaptador intenta realizar fallback a firma local y es bloqueado con LOCAL_FALLBACK_SIGNING_FORBIDDEN', async () => {
+    const { requestPkg } = buildTestRequestFixture('041')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: testAuthority.authorityId,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        fallbackToLocalSigner: true,
+      })
+    ).toThrow(/LOCAL_FALLBACK_SIGNING_FORBIDDEN/)
+
+    await expect(
+      submitAttestationRequest(requestPkg, {
+        authorityId: testAuthority.authorityId,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        localFallbackSigner: () => testAuthority.issueResponse(requestPkg),
+        transport: testAuthority.sendAttestationRequest,
+      })
+    ).rejects.toThrow(/LOCAL_FALLBACK_SIGNING_FORBIDDEN/)
+
+    const adapter = createIndependentAttestationAuthorityAdapter()
+    expect(() => adapter.fallbackToLocalSigner()).toThrow(/LOCAL_FALLBACK_SIGNING_FORBIDDEN/)
+    expect(() => IndependentAttestationAuthority.fallbackToLocalSigner()).toThrow(/LOCAL_FALLBACK_SIGNING_FORBIDDEN/)
+  })
+
+  // 97. ADV-42 — P1 recibe una atestación desvinculada de la solicitud
+  it('97. ADV-42: P1 recibe una respuesta de atestación válida para otra solicitud (request A con response B) y la rechaza con ATTESTATION_REQUEST_MISMATCH', () => {
+    const fixtureA = buildTestRequestFixture('042A')
+    const fixtureB = buildTestRequestFixture('042B')
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+
+    const signedAttestationA = createSignedTestAttestationFromRequest(fixtureA.requestPkg, attPriv)
+    const fullManifestA = {
+      ...fixtureA.manifestDraft,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      attestation: signedAttestationA,
+      manifest_sha256: '',
+    }
+    fullManifestA.manifest_sha256 = computeP0ManifestDigest(fullManifestA)
+
+    const responseB = createSignedTestAttestationResponse(fixtureB.requestPkg, attPriv, {
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: fullManifestA,
+        ivaText: fixtureA.ivaParsed.ivaText,
+        conditionText: fixtureA.condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: fixtureA.goDoc,
+        attestationRequest: fixtureA.requestPkg,
+        attestationResponse: responseB,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: fixtureA.goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/P1_IMPORT_FORBIDDEN: ATTESTATION_REQUEST_MISMATCH/)
+  })
+
+  // 98. ADV-43 — P1 recibe evidencia simulada acompañada por un firmante de test
+  it('98. ADV-43: P1 recibe evidencia simulada acompañada por un firmante de test y la rechaza como evidencia de producción', () => {
+    const fixture = buildTestRequestFixture('043')
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+
+    const signedAttestation = createSignedTestAttestationFromRequest(fixture.requestPkg, attPriv)
+    const simulatedManifest = {
+      ...fixture.manifestDraft,
+      accredited: true,
+      transport_type: 'SIMULATED',
+      attestation: signedAttestation,
+      manifest_sha256: '',
+    }
+    simulatedManifest.manifest_sha256 = computeP0ManifestDigest(simulatedManifest)
+
+    const testResponse = createSignedTestAttestationResponse(fixture.requestPkg, attPriv, {
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    // Incluso con allowTestKeys: true, P1 rechaza evidencia con transporte simulado
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: simulatedManifest,
+        ivaText: fixture.ivaParsed.ivaText,
+        conditionText: fixture.condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: fixture.goDoc,
+        attestationRequest: fixture.requestPkg,
+        attestationResponse: testResponse,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: fixture.goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/P1_IMPORT_FORBIDDEN: SIMULATED_EVIDENCE_REJECTED/)
+
+    // Y en modo producción (allowTestKeys: false), un firmante de test también es rechazado aunque el manifiesto diga OFFICIAL
+    const officialManifestWithTestSigner = {
+      ...fixture.manifestDraft,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      attestation: signedAttestation,
+      manifest_sha256: '',
+    }
+    officialManifestWithTestSigner.manifest_sha256 = computeP0ManifestDigest(officialManifestWithTestSigner)
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest: officialManifestWithTestSigner,
+        ivaText: fixture.ivaParsed.ivaText,
+        conditionText: fixture.condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: fixture.goDoc,
+        attestationRequest: fixture.requestPkg,
+        attestationResponse: testResponse,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: fixture.goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: false,
+      })
+    ).toThrow(/P1_IMPORT_FORBIDDEN: ATTESTATION_TEST_SIGNER_PROHIBITED/)
+  })
+
+  // 99. Validación exhaustiva de códigos de rechazo de AttestationResponse (MISSING, PAYLOAD_MISMATCH, SIGNATURE_INVALID, ISSUED_AT_INVALID, COLLAPSED_AUTHORITIES)
+  it('99. verifyAttestationResponse rechaza ATTESTATION_RESPONSE_MISSING, ATTESTATION_PAYLOAD_MISMATCH, ATTESTATION_SIGNATURE_INVALID, ATTESTATION_ISSUED_AT_INVALID y COLLAPSED_AUTHORITIES_REJECTED', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('044')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    // 1. ATTESTATION_RESPONSE_MISSING
+    const missingCheck = verifyAttestationResponse(null, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(missingCheck.valid).toBe(false)
+    expect(missingCheck.reason).toBe('ATTESTATION_RESPONSE_MISSING')
+
+    // 2. ATTESTATION_PAYLOAD_MISMATCH
+    const badPayloadHashRes = {
+      ...validRes,
+      attestationPayloadSha256: 'a'.repeat(64),
+    }
+    const payloadCheck = verifyAttestationResponse(badPayloadHashRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(payloadCheck.valid).toBe(false)
+    expect(payloadCheck.reason).toBe('ATTESTATION_PAYLOAD_MISMATCH')
+
+    // 3. ATTESTATION_SIGNATURE_INVALID
+    const badSigRes = {
+      ...validRes,
+      signature: 'b'.repeat(128),
+    }
+    const sigCheck = verifyAttestationResponse(badSigRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(sigCheck.valid).toBe(false)
+    expect(sigCheck.reason).toBe('ATTESTATION_SIGNATURE_INVALID')
+
+    // 4. ATTESTATION_ISSUED_AT_INVALID (fecha inválida o futura)
+    const futureRes = testAuthority.issueResponse(requestPkg, {
+      issuedAt: '2099-01-01T00:00:00.000Z',
+    })
+    const issuedAtCheck = verifyAttestationResponse(futureRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      now: '2026-11-05T01:06:00.000Z',
+    })
+    expect(issuedAtCheck.valid).toBe(false)
+    expect(issuedAtCheck.reason).toBe('ATTESTATION_ISSUED_AT_INVALID')
+
+    // 5. COLLAPSED_AUTHORITIES_REJECTED (misma clave pública para GO Authority y Attestation Authority)
+    const collapsedCheck = verifyAttestationResponse(validRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: testAuthority.publicKey,
+      allowTestKeys: true,
+    })
+    expect(collapsedCheck.valid).toBe(false)
+    expect(collapsedCheck.reason).toBe('COLLAPSED_AUTHORITIES_REJECTED')
+
+    // 6. Verificación de helpers canónicos y singleton IndependentAttestationAuthorityAdapter
+    expect(computePublicKeyId(testAuthority.publicKey)).toBe(validRes.keyId)
+    expect(serializeCanonicalAttestationResponsePayload(validRes).length).toBeGreaterThan(0)
+    expect(computeAttestationResponsePayloadDigest(validRes)).toBe(validRes.attestationPayloadSha256)
+    expect(IndependentAttestationAuthorityAdapter.AUTHORITY_TYPES).toEqual(ATTESTATION_AUTHORITY_TYPES)
   })
 })

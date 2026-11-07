@@ -1,11 +1,33 @@
 import type {
   Pr02P0OfficialEvidenceManifest,
   AttestationRequestPackage,
+  AttestationResponse,
+  AttestationResponseVerificationOptions,
+  AttestationResponseVerificationResult,
+  IndependentAttestationAuthorityAdapterConfig,
+  IndependentAttestationAuthorityAdapterInstance,
+  SubmitAttestationRequestResult,
 } from './plan-pr02-parameters.d.mts'
 export {
   createAttestationRequest,
   validateAttestationRequest,
+  serializeCanonicalAttestationResponsePayload,
+  computeAttestationResponsePayloadDigest,
+  computePublicKeyId,
+  verifyAttestationResponse,
+  validateAttestationResponse,
+  createIndependentAttestationAuthorityAdapter,
+  submitAttestationRequest,
+  IndependentAttestationAuthorityAdapter,
   IndependentAttestationAuthority,
+  ATTESTATION_AUTHORITY_TYPES,
+  ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+  type AttestationResponse,
+  type AttestationResponseVerificationOptions,
+  type AttestationResponseVerificationResult,
+  type IndependentAttestationAuthorityAdapterConfig,
+  type IndependentAttestationAuthorityAdapterInstance,
+  type SubmitAttestationRequestResult,
 } from './plan-pr02-parameters.d.mts'
 
 export const PR02_P0_SCOPE: string
@@ -246,6 +268,15 @@ export interface Pr02P0ExecutionReport {
   readonly CONTENT_INTEGRITY?: string
   readonly OFFICIAL_PROVENANCE: string
   readonly ANTI_REPLAY_GUARANTEE_LEVEL?: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
+  readonly ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL?: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly ATTESTATION_REQUEST_CONTRACT?: 'PASS'
+  readonly ATTESTATION_RESPONSE_CONTRACT?: 'PASS'
+  readonly INDEPENDENT_AUTHORITY_ADAPTER?: 'PASS'
+  readonly PUBLIC_KEY_VERIFICATION_BOUNDARY?: 'PASS'
+  readonly RUNTIME_PRIVATE_KEY_ISOLATION?: 'PASS'
+  readonly SELF_ATTESTATION_ELEVATION_BLOCKED?: 'PASS'
+  readonly COLLAPSED_AUTHORITIES_BLOCKED?: 'PASS'
+  readonly TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED?: 'PASS'
   readonly EVIDENCE_INTEGRITY?: 'PASS' | 'NOT_RUN' | 'FAIL'
   readonly EVIDENCE_CUSTODY_ATTESTED?: boolean
   readonly ATTESTATION_TRUST_MODEL?: 'SELF_ATTESTED' | 'INDEPENDENT_ATTESTED' | 'UNVERIFIED'

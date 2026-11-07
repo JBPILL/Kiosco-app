@@ -7,8 +7,17 @@ import {
   PR02_P0_COLECTOR_IDENTIDAD,
   ANTI_REPLAY_GUARANTEE_LEVEL,
   ATTESTATION_SIGNER_ORIGINS,
+  ATTESTATION_AUTHORITY_TYPES,
   ATTESTATION_TRUST_MODELS,
+  computePublicKeyId,
+  serializeCanonicalAttestationResponsePayload,
+  computeAttestationResponsePayloadDigest,
   type AttestationRequestPackage,
+  type AttestationResponse,
+  type AttestationAuthorityType,
+  type AttestationAllowedAlgorithm,
+  type AttestationSignerOrigin,
+  type AttestationRequestArtifact,
 } from '../../../scripts/fiscal/plan-pr02-parameters.mjs'
 
 export interface KeyPairPem {
@@ -262,6 +271,122 @@ export function createSignedTestAttestationFromRequest(
     },
     privateKeyInput
   )
+}
+
+/**
+ * Crea y firma un `AttestationResponse` explícito a partir de un `AttestationRequestPackage`
+ * exclusivamente para propósitos de prueba (`TEST_AUTHORITY` / `TEST_SIGNER`).
+ */
+export function createSignedTestAttestationResponse(
+  reqPkg: AttestationRequestPackage,
+  privateKeyInput: string | crypto.KeyObject,
+  overrides: Partial<{
+    schemaVersion: '1.0'
+    responseId: string
+    authorityType: AttestationAuthorityType
+    authorityId: string
+    keyId: string
+    algorithm: AttestationAllowedAlgorithm | string
+    requestId: string
+    requestSha256: string
+    manifestSha256: string
+    processId: string
+    executionScope: string
+    commitSha: string
+    environment: 'HOMOLOGACION'
+    authorizationId: string
+    goAuthorizationDocumentSha256: string
+    rawSoapArtifacts: readonly AttestationRequestArtifact[]
+    normalizedArtifacts: readonly AttestationRequestArtifact[]
+    consultadoEn: string
+    issuedAt: string
+    expiresAt: string
+    signerOrigin: AttestationSignerOrigin
+    attestationPayloadSha256: string
+    signature: string
+  }> = {}
+): AttestationResponse {
+  const privKeyObj =
+    typeof privateKeyInput === 'string'
+      ? crypto.createPrivateKey(privateKeyInput)
+      : privateKeyInput
+  const pubKeyObj = crypto.createPublicKey(privKeyObj)
+  const derivedKeyId = computePublicKeyId(pubKeyObj)
+
+  const draft = {
+    schemaVersion: (overrides.schemaVersion || '1.0') as '1.0',
+    responseId: overrides.responseId || `att-res-${randomUUID()}`,
+    authorityType: (overrides.authorityType || ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY) as AttestationAuthorityType,
+    authorityId: overrides.authorityId || 'test-independent-attestation-authority-v1',
+    keyId: overrides.keyId || derivedKeyId,
+    algorithm: (overrides.algorithm || 'Ed25519') as AttestationAllowedAlgorithm,
+    requestId: overrides.requestId || reqPkg.requestId,
+    requestSha256: overrides.requestSha256 || reqPkg.requestSha256,
+    manifestSha256: overrides.manifestSha256 || reqPkg.manifestSha256,
+    processId: overrides.processId || reqPkg.processId,
+    executionScope: overrides.executionScope || reqPkg.executionScope,
+    commitSha: String(overrides.commitSha || reqPkg.commitSha).toLowerCase(),
+    environment: (overrides.environment || reqPkg.environment) as 'HOMOLOGACION',
+    authorizationId: overrides.authorizationId || reqPkg.authorizationId,
+    goAuthorizationDocumentSha256:
+      overrides.goAuthorizationDocumentSha256 || reqPkg.goAuthorizationDocumentSha256,
+    rawSoapArtifacts: overrides.rawSoapArtifacts || reqPkg.rawSoapArtifacts,
+    normalizedArtifacts: overrides.normalizedArtifacts || reqPkg.normalizedArtifacts,
+    consultadoEn: overrides.consultadoEn || reqPkg.consultadoEn,
+    issuedAt: overrides.issuedAt || new Date().toISOString(),
+    ...(overrides.expiresAt ? { expiresAt: overrides.expiresAt } : {}),
+    signerOrigin: (overrides.signerOrigin || ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER) as AttestationSignerOrigin,
+  }
+
+  const canonicalPayload = serializeCanonicalAttestationResponsePayload(draft)
+  const attestationPayloadSha256 =
+    overrides.attestationPayloadSha256 || computeAttestationResponsePayloadDigest(draft)
+  const signature = overrides.signature || signEd25519(canonicalPayload, privKeyObj)
+
+  return Object.freeze({
+    ...draft,
+    attestationPayloadSha256,
+    signature,
+  })
+}
+
+/**
+ * Instancia aislada de `TestIndependentAttestationAuthority` exclusivamente para pruebas.
+ * Produce respuestas identificadas explícitamente como `TEST_AUTHORITY` / `TEST_SIGNER`,
+ * las cuales resultan en `TEST_ONLY` cuando `allowTestKeys: true` y son rechazadas en modo producción.
+ */
+export function createTestIndependentAttestationAuthority(options?: {
+  authorityId?: string
+  keyPair?: KeyPairPem
+  issuedAt?: string
+}) {
+  const keyPair = options?.keyPair || generateEphemeralAttestationKeyPair()
+  const authorityId = options?.authorityId || 'test-independent-attestation-authority-v1'
+  const keyId = computePublicKeyId(keyPair.publicKey)
+
+  return Object.freeze({
+    authorityType: ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY,
+    signerOrigin: ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER,
+    authorityId,
+    keyId,
+    publicKey: keyPair.publicKey,
+    sendAttestationRequest: (reqPkg: AttestationRequestPackage) =>
+      createSignedTestAttestationResponse(reqPkg, keyPair.privateKey, {
+        authorityId,
+        keyId,
+        issuedAt: options?.issuedAt,
+      }),
+    issueResponse: (
+      reqPkg: AttestationRequestPackage,
+      overrides: Parameters<typeof createSignedTestAttestationResponse>[2] = {}
+    ) =>
+      createSignedTestAttestationResponse(reqPkg, keyPair.privateKey, {
+        authorityId,
+        keyId,
+        issuedAt: options?.issuedAt,
+        ...overrides,
+      }),
+  })
 }
 
 /**

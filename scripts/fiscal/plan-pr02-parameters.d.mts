@@ -110,9 +110,23 @@ export const ATTESTATION_SIGNER_ORIGINS: {
   readonly PRODUCTION_ATTESTATION_AUTHORITY: 'PRODUCTION_ATTESTATION_AUTHORITY'
 }
 
+export const ATTESTATION_AUTHORITY_TYPES: {
+  readonly PRODUCTION_AUTHORITY: 'PRODUCTION_AUTHORITY'
+  readonly TEST_AUTHORITY: 'TEST_AUTHORITY'
+}
+
+export const ATTESTATION_ALLOWED_ALGORITHMS: readonly ['Ed25519']
+
+export const ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
+
+export function isAttestationResponseConsumedProcessLocal(responseKey: string): boolean
+export function consumeAttestationResponseProcessLocal(responseKey: string): boolean
+export function computePublicKeyId(pubKeyInput: unknown): string
+
 export const ATTESTATION_TRUST_MODELS: {
   readonly SELF_ATTESTED: 'SELF_ATTESTED'
   readonly INDEPENDENT_ATTESTED: 'INDEPENDENT_ATTESTED'
+  readonly TEST_ONLY: 'TEST_ONLY'
   readonly UNVERIFIED: 'UNVERIFIED'
 }
 
@@ -362,11 +376,243 @@ export function verifyP0Attestation(
   }
 ): ReturnType<typeof verifyIndependentAttestation>
 
+export type AttestationAuthorityType = 'PRODUCTION_AUTHORITY' | 'TEST_AUTHORITY'
+export type AttestationAllowedAlgorithm = 'Ed25519'
+export type AttestationSignerOrigin = 'TEST_SIGNER' | 'PRODUCTION_ATTESTATION_AUTHORITY'
+
+export type AttestationRejectionReason =
+  | 'ATTESTATION_RESPONSE_MISSING'
+  | 'ATTESTATION_RESPONSE_INVALID'
+  | 'ATTESTATION_REQUEST_MISMATCH'
+  | 'ATTESTATION_MANIFEST_MISMATCH'
+  | 'ATTESTATION_PAYLOAD_MISMATCH'
+  | 'ATTESTATION_AUTHORITY_MISMATCH'
+  | 'ATTESTATION_KEY_ID_MISMATCH'
+  | 'ATTESTATION_ALGORITHM_FORBIDDEN'
+  | 'ATTESTATION_SIGNATURE_INVALID'
+  | 'ATTESTATION_ISSUED_AT_INVALID'
+  | 'ATTESTATION_TEST_SIGNER_PROHIBITED'
+  | 'ATTESTATION_RESPONSE_REPLAY_DETECTED'
+  | 'COLLAPSED_AUTHORITIES_REJECTED'
+  | 'INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE'
+  | 'SELF_ATTESTATION_AUTO_ELEVATION_REJECTED'
+  | 'RUNTIME_PRIVATE_KEY_DETECTED'
+  | 'GO_AUTHORITY_KEY_INVALID'
+
+export interface AttestationResponse {
+  readonly schemaVersion: '1.0'
+  readonly responseId: string
+  readonly authorityType: AttestationAuthorityType
+  readonly authorityId: string
+  readonly keyId: string
+  readonly algorithm: AttestationAllowedAlgorithm
+  readonly requestId: string
+  readonly requestSha256: string
+  readonly manifestSha256: string
+  readonly processId: string
+  readonly executionScope: string
+  readonly commitSha: string
+  readonly environment: 'HOMOLOGACION'
+  readonly authorizationId: string
+  readonly goAuthorizationDocumentSha256: string
+  readonly rawSoapArtifacts: readonly AttestationRequestArtifact[]
+  readonly normalizedArtifacts: readonly AttestationRequestArtifact[]
+  readonly consultadoEn: string
+  readonly issuedAt: string
+  readonly expiresAt?: string
+  readonly signerOrigin: AttestationSignerOrigin
+  readonly attestationPayloadSha256: string
+  readonly signature: string
+}
+
+export interface AttestationResponseVerificationOptions {
+  readonly attestationRequest?: AttestationRequestPackage | unknown
+  readonly manifest?: Pr02P0OfficialEvidenceManifest | unknown
+  readonly commitSha?: string
+  readonly expectedHead?: string
+  readonly trustedAttestationPublicKey?: unknown
+  readonly authorityPublicKey?: unknown
+  readonly authoritySecret?: unknown
+  readonly trustedGoPublicKey?: unknown
+  readonly allowedAuthorityIds?: readonly string[] | Set<string>
+  readonly expectedAuthorityId?: string
+  readonly allowedKeyIds?: readonly string[] | Set<string>
+  readonly expectedKeyId?: string
+  readonly allowTestKeys?: boolean
+  readonly isTestAuthority?: boolean
+  readonly fiscalScriptsDir?: string
+  readonly env?: Record<string, string | undefined>
+  readonly now?: string | number | Date
+  readonly enforceAntiReplay?: boolean
+  readonly consumeOnVerify?: boolean
+  readonly independentAuthorityAvailable?: boolean
+  readonly elevateToIndependent?: boolean
+  readonly forceIndependentAttestation?: boolean
+  readonly allowSelfAttestedAsIndependent?: boolean
+  readonly elevateTrustModel?: boolean
+  readonly forceProductionAuthority?: boolean
+}
+
+export interface AttestationResponseVerificationResult {
+  readonly valid: boolean
+  readonly reason: 'VERIFIED' | 'VERIFIED_TEST_ONLY' | AttestationRejectionReason
+  readonly errorCategory?: string
+  readonly detail?: string
+  readonly authorityType?: AttestationAuthorityType
+  readonly authorityId?: string
+  readonly keyId?: string
+  readonly algorithm?: AttestationAllowedAlgorithm
+  readonly requestId?: string
+  readonly requestSha256?: string
+  readonly manifestSha256?: string
+  readonly attestationPayloadSha256?: string
+  readonly trustScope?: 'PRODUCTION_ATTESTED' | 'TEST_ONLY'
+  readonly trustModel?: 'INDEPENDENT_ATTESTED' | 'TEST_ONLY' | 'UNVERIFIED'
+  readonly ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED' | 'TEST_ONLY' | 'UNVERIFIED'
+  readonly PRODUCTION_ATTESTED: boolean
+  readonly OFFICIAL_PROVENANCE_VERIFIED: boolean
+  readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false
+  readonly EVIDENCE_CUSTODY_ATTESTED: boolean
+  readonly TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' | 'UNVERIFIED'
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE: boolean
+  readonly P1_IMPORT_ALLOWED: boolean
+  readonly antiReplayGuarantee: 'PROCESS_LOCAL_ONE_TIME_USE'
+}
+
+export function serializeCanonicalAttestationResponsePayload(res: unknown): string
+export function computeAttestationResponsePayloadDigest(res: unknown): string
+export function verifyAttestationResponse(
+  response: unknown,
+  options?: AttestationResponseVerificationOptions
+): AttestationResponseVerificationResult
+export function validateAttestationResponse(
+  response: unknown,
+  options?: AttestationResponseVerificationOptions
+): AttestationResponseVerificationResult
+
+export type AttestationAuthorityTransportFn = (
+  requestPkg: AttestationRequestPackage
+) => Promise<AttestationResponse> | AttestationResponse
+
+export interface AttestationAuthorityTransportObject {
+  sendAttestationRequest(requestPkg: AttestationRequestPackage): Promise<AttestationResponse> | AttestationResponse
+}
+
+export interface IndependentAttestationAuthorityAdapterConfig {
+  readonly authorityId?: string
+  readonly expectedAuthorityId?: string
+  readonly allowedAuthorityIds?: readonly string[] | Set<string>
+  readonly trustedAttestationPublicKey?: unknown
+  readonly authorityPublicKey?: unknown
+  readonly trustedGoPublicKey?: unknown
+  readonly allowedKeyIds?: readonly string[] | Set<string>
+  readonly transport?: AttestationAuthorityTransportFn | AttestationAuthorityTransportObject
+  readonly allowTestKeys?: boolean
+  readonly requireAvailable?: boolean
+  readonly manifest?: Pr02P0OfficialEvidenceManifest | unknown
+  readonly commitSha?: string
+  readonly fiscalScriptsDir?: string
+  readonly env?: Record<string, string | undefined>
+  readonly now?: string | number | Date
+  readonly enforceAntiReplay?: boolean
+  readonly consumeOnVerify?: boolean
+  readonly independentAuthorityAvailable?: boolean
+  readonly elevateToIndependent?: boolean
+  readonly forceIndependentAttestation?: boolean
+  readonly allowSelfAttestedAsIndependent?: boolean
+  readonly elevateTrustModel?: boolean
+  readonly forceProductionAuthority?: boolean
+  readonly P1_IMPORT_ALLOWED?: boolean
+  readonly ATTESTATION_TRUST_MODEL?: string
+  readonly fallbackToLocalSigner?: unknown
+  readonly localFallbackSigner?: unknown
+  readonly fallbackSigner?: unknown
+  readonly signLocallyOnFailure?: unknown
+  readonly useLocalSigner?: unknown
+  readonly enableLocalSigningFallback?: unknown
+  readonly localPrivateKey?: unknown
+  readonly privateKey?: unknown
+  readonly autoDiscoverRemoteAuthority?: boolean
+  readonly implicitNetworkAccess?: boolean
+}
+
+export interface SubmitAttestationRequestResult {
+  readonly valid: true
+  readonly request: AttestationRequestPackage
+  readonly response: AttestationResponse
+  readonly verification: AttestationResponseVerificationResult
+}
+
+export function submitAttestationRequest(
+  requestPkg: AttestationRequestPackage,
+  adapterOrConfig?: IndependentAttestationAuthorityAdapterConfig
+): Promise<SubmitAttestationRequestResult>
+
+export interface IndependentAttestationAuthorityAdapterInstance {
+  readonly adapterVersion: '1.0'
+  readonly authorityId: string | null
+  readonly keyId: string | null
+  readonly allowedAuthorityIds: readonly string[]
+  readonly allowedKeyIds: readonly string[]
+  readonly algorithm: 'Ed25519'
+  readonly ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED'
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
+  readonly P1_IMPORT_ALLOWED: false
+  readonly antiReplayGuarantee: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly isConfigured: () => boolean
+  readonly isAuthorityAvailable: () => false
+  readonly createAttestationRequest: typeof createAttestationRequest
+  readonly validateAttestationRequest: typeof validateAttestationRequest
+  readonly submitAttestationRequest: (
+    requestPkg: AttestationRequestPackage,
+    submitOptions?: IndependentAttestationAuthorityAdapterConfig
+  ) => Promise<SubmitAttestationRequestResult>
+  readonly verifyAttestationResponse: (
+    response: unknown,
+    verifyOptions?: AttestationResponseVerificationOptions
+  ) => AttestationResponseVerificationResult
+  readonly validateAttestationResponse: (
+    response: unknown,
+    verifyOptions?: AttestationResponseVerificationOptions
+  ) => AttestationResponseVerificationResult
+  readonly signProductionAttestation: () => never
+  readonly accessProductionPrivateKey: () => never
+  readonly fallbackToLocalSigner: () => never
+}
+
+export function createIndependentAttestationAuthorityAdapter(
+  config?: IndependentAttestationAuthorityAdapterConfig
+): IndependentAttestationAuthorityAdapterInstance
+
+export interface IndependentAttestationAuthorityAdapterNamespace {
+  readonly createAdapter: typeof createIndependentAttestationAuthorityAdapter
+  readonly createAttestationRequest: typeof createAttestationRequest
+  readonly validateAttestationRequest: typeof validateAttestationRequest
+  readonly submitAttestationRequest: typeof submitAttestationRequest
+  readonly verifyAttestationResponse: typeof verifyAttestationResponse
+  readonly validateAttestationResponse: typeof validateAttestationResponse
+  readonly serializeCanonicalAttestationResponsePayload: typeof serializeCanonicalAttestationResponsePayload
+  readonly computeAttestationResponsePayloadDigest: typeof computeAttestationResponsePayloadDigest
+  readonly computePublicKeyId: typeof computePublicKeyId
+  readonly AUTHORITY_TYPES: typeof ATTESTATION_AUTHORITY_TYPES
+  readonly ALLOWED_ALGORITHMS: typeof ATTESTATION_ALLOWED_ALGORITHMS
+  readonly ANTI_REPLAY_GUARANTEE_LEVEL: typeof ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL
+}
+
+export const IndependentAttestationAuthorityAdapter: IndependentAttestationAuthorityAdapterNamespace
+
 export interface IndependentAttestationAuthorityInterface {
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
   readonly computeAttestationRequestDigest: typeof computeAttestationRequestDigest
   readonly serializeCanonicalAttestationRequest: typeof serializeCanonicalAttestationRequest
+  readonly serializeCanonicalAttestationResponsePayload: typeof serializeCanonicalAttestationResponsePayload
+  readonly computeAttestationResponsePayloadDigest: typeof computeAttestationResponsePayloadDigest
+  readonly computePublicKeyId: typeof computePublicKeyId
+  readonly verifyAttestationResponse: typeof verifyAttestationResponse
+  readonly validateAttestationResponse: typeof validateAttestationResponse
+  readonly createAdapter: typeof createIndependentAttestationAuthorityAdapter
+  readonly submitAttestationRequest: typeof submitAttestationRequest
   readonly verifyIndependentAttestation: typeof verifyIndependentAttestation
   readonly verifyAttestation: typeof verifyP0Attestation
   readonly validatePublicKey: typeof validateP0AttestationPublicKey
@@ -379,15 +625,20 @@ export interface IndependentAttestationAuthorityInterface {
   readonly signProductionAttestation: () => never
   readonly accessProductionPrivateKey: () => never
   readonly generateTrustedIndependentAttestation: () => never
+  readonly fallbackToLocalSigner: () => never
   readonly isAuthorityAvailable: (options?: {
     trustedAttestationPublicKey?: unknown
     allowTestKeys?: boolean
     independentAttestation?: unknown
+    independentAuthorityAvailable?: boolean
   }) => boolean
   readonly PUBLIC_KEY_ENV: string
   readonly AUTHORITY_ENV: string
   readonly SIGNER_ORIGINS: typeof ATTESTATION_SIGNER_ORIGINS
+  readonly AUTHORITY_TYPES: typeof ATTESTATION_AUTHORITY_TYPES
+  readonly ALLOWED_ALGORITHMS: typeof ATTESTATION_ALLOWED_ALGORITHMS
   readonly TRUST_MODELS: typeof ATTESTATION_TRUST_MODELS
+  readonly RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL: typeof ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL
 }
 
 export const IndependentAttestationAuthority: IndependentAttestationAuthorityInterface
@@ -463,7 +714,13 @@ export function validatePr02P1ImportEvidence(options?: {
   trustedGoAuthoritySecret?: unknown
   goAuthorizationDoc?: unknown
   independentAttestation?: unknown
-  attestationRequest?: unknown
+  attestationRequest?: AttestationRequestPackage | unknown
+  attestationResponse?: AttestationResponse | unknown
+  allowedAuthorityIds?: readonly string[] | Set<string>
+  allowedKeyIds?: readonly string[] | Set<string>
+  enforceAntiReplay?: boolean
+  consumeOnVerify?: boolean
+  isSimulated?: boolean
   allowTestKeys?: boolean
   consumedAuthorizationsDir?: string
   fiscalScriptsDir?: string

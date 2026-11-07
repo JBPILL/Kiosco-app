@@ -1354,3 +1354,43 @@ Remediación criptográfica y adversarial de las 6 vulnerabilidades de frontera 
   - `STAGING_WRITES_NEW = 0`
   - `PRODUCTION_MUTATIONS = 0`
   - `CAE_EMISSIONS_NEW = 0`
+
+
+### 2026-11-07 - Integración Fail-Closed con Autoridad de Atestación Independiente PR02-P0
+
+- **Adaptador Explícito de Autoridad Independiente (`IndependentAttestationAuthorityAdapter`)**:
+  - Implementados `createIndependentAttestationAuthorityAdapter` y `submitAttestationRequest` en `scripts/fiscal/plan-pr02-parameters.mjs`.
+  - Separación estricta: `REQUEST CREATION` != `REQUEST TRANSPORT` != `EXTERNAL SIGNING` (prohibido en runtime) != `RESPONSE VERIFICATION`.
+  - Falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE` cuando no hay transporte externo, clave pública e identidad configurados. Sin acceso de red implícito, sin descubrimiento automático y sin fallback a firmante local (`LOCAL_FALLBACK_SIGNING_FORBIDDEN`).
+- **Contrato Explícito de Respuesta (`AttestationResponse`) y Verificación (`verifyAttestationResponse`, `validateAttestationResponse`)**:
+  - Verificación de esquema cerrado, hash canónico (`attestationPayloadSha256`), firma Ed25519 (128 hex), `requestSha256`, `manifestSha256`, `authorityId`, `keyId` (huella SPKI DER), `algorithm: 'Ed25519'`, `issuedAt`, separación de claves `GO != Attestation` y aislamiento del directorio `scripts/fiscal/`.
+  - Protección anti-replay de un solo uso por proceso para respuestas de atestación (`ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'`, `ATTESTATION_RESPONSE_REPLAY_DETECTED`).
+- **Separación `TEST_AUTHORITY` vs `PRODUCTION_AUTHORITY` y Honestidad del Modelo de Confianza**:
+  - `createTestIndependentAttestationAuthority` y `createSignedTestAttestationResponse` aislados en `src/test/helpers/fiscalEd25519Signer.ts`.
+  - Rechazados por defecto en modo producción (`allowTestKeys: false` -> `ATTESTATION_TEST_SIGNER_PROHIBITED`) y limitados a `trustScope: 'TEST_ONLY'` (`PRODUCTION_ATTESTED: false`, `P1_IMPORT_ALLOWED: false`) cuando `allowTestKeys: true`.
+  - Sin autoridad externa de producción conectada, el sistema mantiene `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false` y `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED = false`.
+- **Endurecimiento de P1 (`validatePr02P1ImportEvidence`)**:
+  - Verifica la cadena completa `AttestationResponse -> AttestationRequestPackage -> requestSha256 -> manifestSha256 -> evidence digests`.
+  - Rechaza evidencia simulada incluso si se acompaña de un firmante de test (`SIMULATED_EVIDENCE_REJECTED`).
+- **Suite de Pruebas Adversariales y Build**:
+  - Casos adversariales `ADV-30` a `ADV-43` y validación de códigos de rechazo (tests 85 a 99) añadidos en `src/test/fiscalPr02P0Collector.test.ts`.
+  - 99/99 tests PASS en `fiscalPr02P0Collector.test.ts`, 116/116 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+  - `npm run build` (`tsc -b && vite build`) y `run-pr02-p0-staging-private.ps1 -DryRun` PASS con código 0.
+- **Estado**:
+  - `PR02_P0_LOCAL_HARDENING = PASS`
+  - `ATTESTATION_REQUEST_CONTRACT = PASS`
+  - `ATTESTATION_RESPONSE_CONTRACT = PASS`
+  - `INDEPENDENT_AUTHORITY_ADAPTER = PASS`
+  - `PUBLIC_KEY_VERIFICATION_BOUNDARY = PASS`
+  - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+  - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+  - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+  - `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`
+  - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+  - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+  - `P1_IMPORT_ALLOWED = false`
+  - `REMOTE_GO = DENIED`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`
+  - `CAE_EMISSIONS_NEW = 0`
