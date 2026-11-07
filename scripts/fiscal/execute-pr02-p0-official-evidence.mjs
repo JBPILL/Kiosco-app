@@ -37,6 +37,9 @@ import {
   validatePr02P0Manifest,
   createP0Attestation,
   verifyP0Attestation,
+  createAttestationRequest,
+  validateAttestationRequest,
+  IndependentAttestationAuthority,
   evaluateExistingTa,
   resolveCurrentGitHead,
   resolveCurrentGitRemoteHead,
@@ -63,6 +66,9 @@ export {
   PR02_P0_GO_AUTHORITY_ENV,
   PR02_P0_GO_PUBLIC_KEY_ENV,
   PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  createAttestationRequest,
+  validateAttestationRequest,
+  IndependentAttestationAuthority,
   ANTI_REPLAY_GUARANTEE_LEVEL,
   validatePr02P0GoAuthorization,
   consumeGoAuthorizationDurable,
@@ -844,6 +850,14 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
   if (deps.officialGoAuthorized !== undefined && deps.officialGoAuthorized !== true) {
     throw new Error('UNAUTHORIZED_EXECUTION: officialGoAuthorized en deps debe ser true para autorizar ejecución oficial')
   }
+  if (
+    options.elevateToIndependent === true ||
+    options.forceIndependentAttestation === true ||
+    options.trustModel === 'INDEPENDENT_ATTESTED' ||
+    Boolean(process.env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION)
+  ) {
+    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido autoelevar SELF_ATTESTED a INDEPENDENT_ATTESTED en el colector P0')
+  }
 
   let isAuthorized = false
   let isDryRun = true
@@ -963,8 +977,11 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
       ANTI_REPLAY_GUARANTEE_LEVEL,
       EVIDENCE_INTEGRITY: 'NOT_RUN',
       EVIDENCE_CUSTODY_ATTESTED: false,
+      ATTESTATION_TRUST_MODEL: 'UNVERIFIED',
       TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
       ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+      INDEPENDENT_ATTESTATION_AVAILABLE: false,
+      P1_IMPORT_ALLOWED: false,
       P0_PROVENANCE_TRUST_MODEL: 'SELF_ATTESTED',
       P1_OFFICIAL_PROVENANCE_TRUST: 'LIMITED',
       ARCA_CALLS_NEW: 0,
@@ -1418,6 +1435,19 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
   const remoteExecuted = !isSimulatedTransport && auditSummary.completed.length > 0
   const isAccredited = manifest.accredited === true
 
+  let attestationRequest = null
+  if (goAuthId && goAuthSha && /^[0-9a-f]{64}$/.test(goAuthSha)) {
+    try {
+      attestationRequest = createAttestationRequest({
+        manifest,
+        commitSha: expectedHead,
+        requestedAt: serverNowIso,
+      })
+    } catch {
+      attestationRequest = null
+    }
+  }
+
   return Object.freeze({
     execution: 'AUTHORIZED_EXECUTION',
     scope: PR02_P0_SCOPE,
@@ -1455,8 +1485,11 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     ANTI_REPLAY_GUARANTEE_LEVEL,
     EVIDENCE_INTEGRITY: isDryRun ? 'NOT_RUN' : 'PASS',
     EVIDENCE_CUSTODY_ATTESTED: false,
+    ATTESTATION_TRUST_MODEL: isAccredited ? 'INDEPENDENT_ATTESTED' : 'SELF_ATTESTED',
     TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
     ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    INDEPENDENT_ATTESTATION_AVAILABLE: isAccredited,
+    P1_IMPORT_ALLOWED: isAccredited,
     P0_PROVENANCE_TRUST_MODEL: 'SELF_ATTESTED',
     P1_OFFICIAL_PROVENANCE_TRUST: 'LIMITED',
     PR02_P0_REMOTE_EXECUTION_READY: false,
@@ -1472,6 +1505,7 @@ export async function executePr02P0OfficialEvidence(rawOptions = {}, deps = {}) 
     PRODUCTION_MUTATIONS: 0,
     auditCounts: auditSummary,
     manifest,
+    attestationRequest,
     evidenceFiles: persistenceReport ? persistenceReport.files : [],
   })
 }

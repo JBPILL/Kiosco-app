@@ -38,6 +38,15 @@ import {
   ANTI_REPLAY_GUARANTEE_LEVEL,
   GoAuthority,
   AttestationAuthority,
+  IndependentAttestationAuthority,
+  createAttestationRequest,
+  validateAttestationRequest,
+  computeAttestationRequestDigest,
+  verifyIndependentAttestation,
+  verifyRuntimeSigningIsolation,
+  assertNoSelfAttestationElevation,
+  ATTESTATION_SIGNER_ORIGINS,
+  ATTESTATION_TRUST_MODELS,
   PR02_P0_AUTHORITY_ENV,
   PR02_P0_GO_PUBLIC_KEY_ENV,
   PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
@@ -50,6 +59,7 @@ import {
   generateEphemeralAttestationKeyPair,
   createSignedTestPr02P0GoAuthorization,
   createSignedTestIndependentAttestation,
+  createSignedTestAttestationFromRequest,
   clearConsumedAuthorizationsForTesting,
 } from './helpers/fiscalEd25519Signer'
 
@@ -2929,5 +2939,642 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     // Verificación estricta de variables y estados de entorno
     expect(process.env.ARCA_CALLS_NEW || '0').toBe('0')
     expect(process.env.STAGING_WRITES_NEW || '0').toBe('0')
+  })
+
+  // =========================================================================
+  // PRUEBAS ADVERSARIALES OBLIGATORIAS DE FRONTERA DE ATESTACIÓN INDEPENDIENTE
+  // (ADV-21 a ADV-29)
+  // =========================================================================
+
+  // ADV-21: Mutar JSON SELF_ATTESTED a INDEPENDENT_ATTESTED -> REJECTED
+  it('75. [ADV-21] Mutar un JSON SELF_ATTESTED a INDEPENDENT_ATTESTED o intentar auto-elevar mediante flags/env es rechazado', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-adv21-mutate',
+      ejecucion_autorizada_id: 'pid-adv21-mutate',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex'),
+      iva_archivo_normalizado_sha256: createHash('sha256').update(ivaParsed.ivaText).digest('hex'),
+      condition_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex'),
+      condition_archivo_normalizado_sha256: createHash('sha256').update(condParsed.conditionText).digest('hex'),
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const selfAttestation = createP0Attestation({
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      transportType: 'OFFICIAL',
+      goAuthorizationId: goDoc.authorization.identificador,
+      goAuthorizationSha256: goAuthSha,
+    })
+
+    // 1. Mutar JSON de SELF_ATTESTED a INDEPENDENT_ATTESTED sin firma o con firma apócrifa
+    const mutatedAttestation = {
+      ...selfAttestation,
+      trustModel: 'INDEPENDENT_ATTESTED',
+      ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED',
+      TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' as const,
+      EVIDENCE_CUSTODY_ATTESTED: true,
+      INDEPENDENT_ATTESTATION_AVAILABLE: true,
+      P1_IMPORT_ALLOWED: true,
+      accredited: true,
+      provenance: 'VERIFIED',
+      signature: 'a'.repeat(128),
+    }
+
+    const checkMutated = verifyIndependentAttestation(mutatedAttestation, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(checkMutated.valid).toBe(false)
+    expect(checkMutated.P1_IMPORT_ALLOWED).toBe(false)
+    expect(checkMutated.reason).toBe('ATTESTATION_SIGNATURE_VERIFICATION_FAILED')
+
+    // 2. Intento de auto-elevar por parámetro o variable de entorno es bloqueado con SELF_ATTESTATION_AUTO_ELEVATION_REJECTED
+    expect(() =>
+      assertNoSelfAttestationElevation({ trustModel: 'INDEPENDENT_ATTESTED' })
+    ).toThrow(/SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/)
+    expect(() =>
+      assertNoSelfAttestationElevation({}, { ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED' })
+    ).toThrow(/SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/)
+    expect(() =>
+      assertNoSelfAttestationElevation({ P1_IMPORT_ALLOWED: true })
+    ).toThrow(/SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/)
+
+    // 3. Prohibición estricta de invocar métodos de firma de producción en runtime fiscal
+    expect(() => IndependentAttestationAuthority.signProductionAttestation()).toThrow(
+      /PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME/
+    )
+    expect(() => IndependentAttestationAuthority.accessProductionPrivateKey()).toThrow(
+      /PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME/
+    )
+    expect(() => IndependentAttestationAuthority.generateTrustedIndependentAttestation()).toThrow(
+      /PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME/
+    )
+  })
+
+  // ADV-22: Firma válida con clave de test no configurada como autoridad confiable -> REJECTED
+  it('76. [ADV-22] Firma Ed25519 matemáticamente válida pero emitida con clave no configurada como autoridad confiable es rechazada', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: trustedAttPub } = generateEphemeralAttestationKeyPair()
+    const { privateKey: untrustedAttPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-adv22-untrusted',
+      ejecucion_autorizada_id: 'pid-adv22-untrusted',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: ivaRawSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: condRawSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const reqPkg = createAttestationRequest({
+      manifest: {
+        ...manifestDraft,
+        go_authorization_id: goDoc.authorization.identificador,
+        go_authorization_sha256: goAuthSha,
+        manifest_sha256: computeP0ManifestDigest(manifestDraft),
+      },
+      commitSha: VALID_HEAD,
+    })
+
+    // Firmado con clave privada NO confiable (distinta de trustedAttPub)
+    const signedWithUntrustedKey = createSignedTestAttestationFromRequest(reqPkg, untrustedAttPriv)
+
+    const check = verifyIndependentAttestation(signedWithUntrustedKey, {
+      attestationRequest: reqPkg,
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: trustedAttPub,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_SIGNATURE_VERIFICATION_FAILED')
+  })
+
+  // ADV-23: Firma válida, pero payload canónico modificado después de firmar -> REJECTED
+  it('77. [ADV-23] Firma Ed25519 válida pero payload canónico modificado después de firmar es rechazada', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-adv23-tamper',
+      ejecucion_autorizada_id: 'pid-adv23-tamper',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: ivaRawSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: condRawSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const reqPkg = createAttestationRequest({
+      manifest: {
+        ...manifestDraft,
+        go_authorization_id: goDoc.authorization.identificador,
+        go_authorization_sha256: goAuthSha,
+        manifest_sha256: computeP0ManifestDigest(manifestDraft),
+      },
+      commitSha: VALID_HEAD,
+    })
+
+    const validAttestation = createSignedTestAttestationFromRequest(reqPkg, attPriv)
+
+    // Modificar un campo del payload después de firmar
+    const tamperedAttestation = {
+      ...validAttestation,
+      ivaNormSha: 'f'.repeat(64),
+    }
+
+    const check = verifyIndependentAttestation(tamperedAttestation, {
+      attestationRequest: reqPkg,
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_SIGNATURE_VERIFICATION_FAILED')
+  })
+
+  // ADV-24: Autoridad GO y autoridad de atestación usando la misma clave pública -> COLLAPSED_AUTHORITIES_REJECTED
+  it('78. [ADV-24] verifyIndependentAttestation rechaza directamente autoridades colapsadas con COLLAPSED_AUTHORITIES_REJECTED', () => {
+    const { publicKey: sharedPub, privateKey: sharedPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'pid-adv24-collapsed',
+      commitSha: VALID_HEAD,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha,
+      ivaNormSha,
+      condRawSha,
+      condNormSha,
+      goAuthorizationId: 'GO-ADV24-001',
+      goAuthorizationSha256: '1'.repeat(64),
+    }, sharedPriv)
+
+    const check = verifyIndependentAttestation(attestation, {
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: sharedPub,
+      trustedGoPublicKey: sharedPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('COLLAPSED_AUTHORITIES_REJECTED')
+    expect(check.errorCategory).toBe('COLLAPSED_AUTHORITIES_REJECTED')
+  })
+
+  // ADV-25: Atestación válida para otro commit -> REJECTED
+  it('79. [ADV-25] Atestación independiente con firma válida pero emitida para otro commit SHA es rechazada', () => {
+    const { publicKey: goPub } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const otherCommit = 'b'.repeat(40)
+
+    const attestationForOtherCommit = createSignedTestIndependentAttestation({
+      processId: 'pid-adv25-commit',
+      commitSha: otherCommit,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: '1'.repeat(64),
+      ivaNormSha: '2'.repeat(64),
+      condRawSha: '3'.repeat(64),
+      condNormSha: '4'.repeat(64),
+      goAuthorizationId: 'GO-ADV25-001',
+      goAuthorizationSha256: '5'.repeat(64),
+    }, attPriv)
+
+    const check = verifyIndependentAttestation(attestationForOtherCommit, {
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_COMMIT_MISMATCH')
+  })
+
+  // ADV-26: Atestación válida para otro entorno -> REJECTED
+  it('80. [ADV-26] Atestación independiente con firma válida pero emitida para otro entorno (PRODUCCION/STAGING) es rechazada', () => {
+    const { publicKey: goPub } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+
+    const attestationForWrongEnv = createSignedTestIndependentAttestation({
+      processId: 'pid-adv26-env',
+      commitSha: VALID_HEAD,
+      entorno: 'PRODUCCION',
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha: '1'.repeat(64),
+      ivaNormSha: '2'.repeat(64),
+      condRawSha: '3'.repeat(64),
+      condNormSha: '4'.repeat(64),
+      goAuthorizationId: 'GO-ADV26-001',
+      goAuthorizationSha256: '5'.repeat(64),
+    }, attPriv)
+
+    const check = verifyIndependentAttestation(attestationForWrongEnv, {
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_ENVIRONMENT_MISMATCH')
+  })
+
+  // ADV-27: Atestación válida sin XML SOAP crudo presente pero con JSON normalizado -> REJECTED
+  it('81. [ADV-27] Atestación independiente válida sin artefactos XML SOAP crudos presentes pero con JSON normalizado es rechazada', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    // 1. En createAttestationRequest / validateAttestationRequest sin sha256 de SOAP crudo falla cerrado
+    expect(() =>
+      createAttestationRequest({
+        manifest: {
+          identificador_proceso: 'pid-adv27',
+          ejecucion_autorizada_scope: PR02_P0_SCOPE,
+          consultado_en: '2026-11-05T01:00:00.000Z',
+          entorno: 'HOMOLOGACION',
+          colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+          go_authorization_id: 'GO-ADV27',
+          go_authorization_sha256: '1'.repeat(64),
+          manifest_sha256: '2'.repeat(64),
+          iva_respuesta_original_sha256: '', // Falta hash de SOAP crudo
+          iva_archivo_normalizado_sha256: createHash('sha256').update(ivaParsed.ivaText).digest('hex'),
+          condition_respuesta_original_sha256: createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex'),
+          condition_archivo_normalizado_sha256: createHash('sha256').update(condParsed.conditionText).digest('hex'),
+        },
+        commitSha: VALID_HEAD,
+      })
+    ).toThrow(/ATTESTATION_REQUEST_RAW_ARTIFACTS_INVALID/)
+
+    // 2. En validatePr02P1ImportEvidence con atestación firmada válida y JSON normalizado presente, pero sin raw SOAP XML
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-adv27-import',
+      ejecucion_autorizada_id: 'pid-adv27-import',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: ivaRawSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: condRawSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const validAttestation = createSignedTestIndependentAttestation({
+      processId: 'pid-adv27-import',
+      commitSha: VALID_HEAD,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha,
+      ivaNormSha,
+      condRawSha,
+      condNormSha,
+      goAuthorizationId: goDoc.authorization.identificador,
+      goAuthorizationSha256: goAuthSha,
+    }, attPriv)
+
+    const manifest = {
+      ...manifestDraft,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: goAuthSha,
+      attestation: validAttestation,
+      manifest_sha256: computeP0ManifestDigest({ ...manifestDraft, attestation: validAttestation }),
+    }
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: undefined,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/RAW_SOAP_RESPONSES_REQUIRED/)
+  })
+
+  // ADV-28: Atestación con hashes válidos, pero clave privada o función de firma presente en scripts/fiscal -> REJECTED
+  it('82. [ADV-28] Si aparece una clave privada o llamada de firma dentro del directorio de runtime fiscal, es rechazado con RUNTIME_PRIVATE_KEY_DETECTED', () => {
+    const { publicKey: goPub } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+
+    // 1. Verificar que el directorio real scripts/fiscal está limpio y aislado
+    const realIsolation = verifyRuntimeSigningIsolation()
+    expect(realIsolation.valid).toBe(true)
+
+    // 2. Simular un directorio fiscal contaminado con una clave privada o llamada de firma en un directorio temporal de test
+    const contaminatedFiscalDir = path.resolve(TEST_EVIDENCE_DIR, 'contaminated-fiscal-scripts')
+    fs.mkdirSync(contaminatedFiscalDir, { recursive: true })
+    try {
+      const contaminatedFile = path.join(contaminatedFiscalDir, 'leaked-signer.mjs')
+      const pemHeader = ['-----BEGIN', 'PRIVATE', 'KEY-----'].join(' ')
+      fs.writeFileSync(contaminatedFile, `export const leaked = "${pemHeader}"\n`, 'utf8')
+
+      const isolationCheck = verifyRuntimeSigningIsolation({ fiscalScriptsDir: contaminatedFiscalDir })
+      expect(isolationCheck.valid).toBe(false)
+      expect(isolationCheck.reason).toBe('RUNTIME_PRIVATE_KEY_DETECTED')
+
+      const validAttestation = createSignedTestIndependentAttestation({
+        processId: 'pid-adv28-isolation',
+        commitSha: VALID_HEAD,
+        consultadoEn: '2026-11-05T01:00:00.000Z',
+        ivaRawSha: '1'.repeat(64),
+        ivaNormSha: '2'.repeat(64),
+        condRawSha: '3'.repeat(64),
+        condNormSha: '4'.repeat(64),
+        goAuthorizationId: 'GO-ADV28-001',
+        goAuthorizationSha256: '5'.repeat(64),
+      }, attPriv)
+
+      const check = verifyIndependentAttestation(validAttestation, {
+        commitSha: VALID_HEAD,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        fiscalScriptsDir: contaminatedFiscalDir,
+      })
+      expect(check.valid).toBe(false)
+      expect(check.reason).toBe('RUNTIME_PRIVATE_KEY_DETECTED')
+      expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    } finally {
+      cleanupTestDir()
+    }
+  })
+
+  // ADV-29: Intentar aceptar atestación de test (TEST_SIGNER) como si fuera autoridad de producción -> REJECTED
+  it('83. [ADV-29] Intentar aceptar una atestación emitida por el helper de tests (TEST_SIGNER) en modo producción (allowTestKeys: false) es rechazado', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-adv29-test-signer',
+      ejecucion_autorizada_id: 'pid-adv29-test-signer',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: ivaRawSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: condRawSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    // Por defecto el helper de tests marca signerOrigin = 'TEST_SIGNER'
+    const testAttestation = createSignedTestIndependentAttestation({
+      processId: 'pid-adv29-test-signer',
+      commitSha: VALID_HEAD,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha,
+      ivaNormSha,
+      condRawSha,
+      condNormSha,
+      goAuthorizationId: goDoc.authorization.identificador,
+      goAuthorizationSha256: goAuthSha,
+    }, attPriv)
+
+    expect(testAttestation.signerOrigin).toBe(ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER)
+
+    // Cuando allowTestKeys es false (por defecto en producción), es rechazado con ATTESTATION_TEST_SIGNER_PROHIBITED
+    const checkProd = verifyIndependentAttestation(testAttestation, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: false,
+    })
+    expect(checkProd.valid).toBe(false)
+    expect(checkProd.reason).toBe('ATTESTATION_TEST_SIGNER_PROHIBITED')
+    expect(checkProd.P1_IMPORT_ALLOWED).toBe(false)
+
+    // Si alguien intenta mutar signerOrigin a PRODUCTION_ATTESTATION_AUTHORITY después de firmar, la firma Ed25519 falla
+    const mutatedOriginAttestation = {
+      ...testAttestation,
+      signerOrigin: ATTESTATION_SIGNER_ORIGINS.PRODUCTION_ATTESTATION_AUTHORITY,
+    }
+    const checkMutatedOrigin = verifyIndependentAttestation(mutatedOriginAttestation, {
+      manifest: manifestDraft,
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: false,
+    })
+    expect(checkMutatedOrigin.valid).toBe(false)
+    expect(checkMutatedOrigin.reason).toBe('ATTESTATION_SIGNATURE_VERIFICATION_FAILED')
+
+    // En validatePr02P1ImportEvidence con allowTestKeys: false también se rechaza
+    const manifest = {
+      ...manifestDraft,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: goAuthSha,
+      attestation: testAttestation,
+      manifest_sha256: computeP0ManifestDigest({ ...manifestDraft, attestation: testAttestation }),
+    }
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: attPub,
+        trustedGoPublicKey: goPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: false,
+      })
+    ).toThrow(/ATTESTATION_TEST_SIGNER_PROHIBITED/)
+  })
+
+  // 84. Paquete de solicitud de atestación canónico (AttestationRequestPackage) y flujo completo hacia P1
+  it('84. createAttestationRequest y validateAttestationRequest generan paquete determinístico sin secretos y verifican las 15 condiciones', () => {
+    const { publicKey: goPub, privateKey: goPriv } = generateEphemeralGoAuthorityKeyPair()
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      identificador: 'GO-REQ-PKG-001',
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'OWNER_OFFICIAL_APPROVER_2026',
+    }, goPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-req-pkg-001',
+      ejecucion_autorizada_id: 'pid-req-pkg-001',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: ivaRawSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: condRawSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: goAuthSha,
+    }
+    const manifestSha = computeP0ManifestDigest(manifestDraft)
+
+    const reqPkg = createAttestationRequest({
+      manifest: { ...manifestDraft, manifest_sha256: manifestSha },
+      commitSha: VALID_HEAD,
+      requestedAt: '2026-11-05T01:05:00.000Z',
+    })
+
+    expect(reqPkg.schemaVersion).toBe('1.0')
+    expect(reqPkg.executionScope).toBe(PR02_P0_SCOPE)
+    expect(reqPkg.environment).toBe('HOMOLOGACION')
+    expect(reqPkg.commitSha).toBe(VALID_HEAD.toLowerCase())
+    expect(reqPkg.manifestSha256).toBe(manifestSha)
+    expect(reqPkg.rawSoapArtifacts.length).toBe(2)
+    expect(reqPkg.normalizedArtifacts.length).toBe(2)
+    expect(reqPkg.requestSha256).toBe(computeAttestationRequestDigest(reqPkg))
+
+    const reqValidation = validateAttestationRequest(reqPkg, { expectedCommitSha: VALID_HEAD })
+    expect(reqValidation.valid).toBe(true)
+    expect(reqValidation.requestSha256).toBe(reqPkg.requestSha256)
+
+    // Firmar la solicitud con el helper de tests y verificar con allowTestKeys: true
+    const signedAttestation = createSignedTestAttestationFromRequest(reqPkg, attPriv)
+    const fullManifest = {
+      ...manifestDraft,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      attestation: signedAttestation,
+      manifest_sha256: '',
+    }
+    fullManifest.manifest_sha256 = computeP0ManifestDigest(fullManifest)
+
+    const reqPkgWithFinalManifest = createAttestationRequest({
+      manifest: fullManifest,
+      commitSha: VALID_HEAD,
+      requestedAt: '2026-11-05T01:05:00.000Z',
+      requestId: reqPkg.requestId,
+    })
+    const finalAttestation = createSignedTestAttestationFromRequest(reqPkgWithFinalManifest, attPriv)
+    fullManifest.attestation = finalAttestation
+    fullManifest.manifest_sha256 = computeP0ManifestDigest(fullManifest)
+
+    const p1Res = validatePr02P1ImportEvidence({
+      manifest: fullManifest,
+      ivaText: ivaParsed.ivaText,
+      conditionText: condParsed.conditionText,
+      rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+      rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+      goAuthorizationDoc: goDoc,
+      attestationRequest: reqPkgWithFinalManifest,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: goPub,
+      expectedHead: VALID_HEAD,
+      allowTestKeys: true,
+    })
+
+    expect(p1Res.status).toBe('PASS')
+    expect(p1Res.P1_IMPORT_ALLOWED).toBe(true)
+    expect(p1Res.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(true)
+    expect(p1Res.ATTESTATION_TRUST_MODEL).toBe(ATTESTATION_TRUST_MODELS.INDEPENDENT_ATTESTED)
+    expect(p1Res.EVIDENCE_CUSTODY_ATTESTED).toBe(true)
+    expect(p1Res.TRUSTED_EXECUTION_BOUNDARY).toBe('VERIFIED')
+    expect(p1Res.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
   })
 })

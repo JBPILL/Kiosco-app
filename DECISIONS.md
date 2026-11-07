@@ -2370,3 +2370,27 @@ Durante la auditoría adversarial independiente del cierre de frontera PR02-P0, 
 Se garantiza criptográficamente que la aprobación administrativa y la atestación de procedencia provienen de entidades no colapsadas.
 `PR02_P0_LOCAL_HARDENING = PASS`, `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`, `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`, `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
 Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+## Diseño e Implementación de la Frontera de Atestación Independiente PR02-P0 (07/11/2026)
+
+**Contexto:**
+Con los vectores locales de PR02-P0 cerrados, el colector local opera legítimamente bajo `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`, lo cual impide acreditar procedencia oficial independiente para la importación del catálogo en P1 (`P1_IMPORT_ALLOWED = false`) mientras no intervenga una autoridad externa. Se requería diseñar e implementar la frontera técnica completa para una `IndependentAttestationAuthority` sin simular una autoridad externa inexistente y garantizando que el runtime fiscal jamás almacene claves privadas ni firme atestaciones de producción.
+
+**Decisión:**
+1. **Paquete Canónico de Solicitud de Atestación (`AttestationRequestPackage`)**:
+   - Se implementaron `createAttestationRequest`, `validateAttestationRequest`, `computeAttestationRequestDigest` y `serializeCanonicalAttestationRequest` en `scripts/fiscal/plan-pr02-parameters.mjs`.
+   - El paquete serializa determinísticamente los metadatos e hashes SHA-256 (`manifestSha256`, `goAuthorizationDocumentSha256`, los 2 XML SOAP crudos en `rawSoapArtifacts` y los 2 archivos normalizados en `normalizedArtifacts`) junto con `requestSha256`, rechazando cualquier secreto, token TA, CMS o clave privada.
+2. **Contrato de `IndependentAttestationAuthority` y Aislamiento de Runtime**:
+   - El runtime fiscal puede crear solicitudes de atestación y verificar firmas Ed25519 mediante clave pública (`verifyIndependentAttestation`), pero tiene prohibido firmar en producción (`signProductionAttestation`, `accessProductionPrivateKey` y `generateTrustedIndependentAttestation` lanzan `PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME` / `PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME`).
+   - `verifyRuntimeSigningIsolation` inspecciona el directorio `scripts/fiscal/` para garantizar cero claves privadas, cero llamadas a `crypto.sign` / `createPrivateKey` / `generateKeyPair` y cero imports del helper de tests (`RUNTIME_PRIVATE_KEY_DETECTED`).
+3. **Separación entre `SELF_ATTESTED`, `TEST_SIGNER` e `INDEPENDENT_ATTESTED`**:
+   - Se bloquea cualquier autoelevación de `SELF_ATTESTED` a `INDEPENDENT_ATTESTED` (`assertNoSelfAttestationElevation` -> `SELF_ATTESTATION_AUTO_ELEVATION_REJECTED`).
+   - Las atestaciones de prueba emitidas por `src/test/helpers/fiscalEd25519Signer.ts` incluyen `signerOrigin: 'TEST_SIGNER'` dentro del payload firmado y son rechazadas en modo producción (`allowTestKeys: false`) con `ATTESTATION_TEST_SIGNER_PROHIBITED`.
+   - `verifyIndependentAttestation` verifica las 15 condiciones obligatorias antes de conceder `ATTESTATION_TRUST_MODEL = 'INDEPENDENT_ATTESTED'` y `P1_IMPORT_ALLOWED = true`.
+4. **Honestidad Criptográfica sobre Origen ARCA (`ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED = false`)**:
+   - Dado que WSFE devuelve respuestas SOAP XML sin firma digital de aplicación por parte de ARCA, `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` permanece invariablemente en `false`, rechazándose cualquier afirmación contraria.
+
+**Consecuencias:**
+- 84/84 tests PASS en `src/test/fiscalPr02P0Collector.test.ts` (incluyendo pruebas adversariales `ADV-21` a `ADV-29`) y 101/101 tests PR02 totales PASS.
+- `npm run build` (`tsc -b && vite build`) y ejecución `-DryRun` del wrapper PowerShell verificados sin errores.
+- En estado local sin atestación externa real: `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `REMOTE_GO = DENIED`, `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`.

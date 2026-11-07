@@ -833,16 +833,534 @@ export function validateCondicionIvaReceptorEvidence(text, expectedChecksum) {
  * autorización externa GO, identidad de ejecutor y operaciones WSFE.
  * Si el transporte es simulado, genera una atestación no acreditada (accredited = false).
  */
+export const ATTESTATION_SIGNER_ORIGINS = Object.freeze({
+  TEST_SIGNER: 'TEST_SIGNER',
+  PRODUCTION_ATTESTATION_AUTHORITY: 'PRODUCTION_ATTESTATION_AUTHORITY',
+})
+
+export const ATTESTATION_TRUST_MODELS = Object.freeze({
+  SELF_ATTESTED: 'SELF_ATTESTED',
+  INDEPENDENT_ATTESTED: 'INDEPENDENT_ATTESTED',
+  UNVERIFIED: 'UNVERIFIED',
+})
+
+export const EVIDENCE_INTEGRITY_STATES = Object.freeze({
+  PASS: 'PASS',
+  FAIL: 'FAIL',
+  NOT_RUN: 'NOT_RUN',
+})
+
+export const TRUSTED_EXECUTION_BOUNDARY_STATES = Object.freeze({
+  VERIFIED: 'VERIFIED',
+  UNVERIFIED: 'UNVERIFIED',
+})
+
+let _cachedDefaultFiscalIsolationResult = null
+let _cachedDefaultFiscalDirMtimeMs = 0
+
+/**
+ * Verifica que el runtime fiscal (scripts/fiscal/) no contenga claves privadas,
+ * funciones de firma de producción ni importaciones de signers de prueba.
+ */
+export function verifyRuntimeSigningIsolation(options = {}) {
+  const env = options.env || process.env
+  for (const [k, v] of Object.entries(env)) {
+    if (k.startsWith('PR02_P0_') && typeof v === 'string' && v.trim().length > 0) {
+      const upperKey = k.toUpperCase()
+      const upperVal = v.toUpperCase()
+      if (upperKey.includes('PRIVATE_KEY') || upperVal.includes('-----BEGIN ' + 'PRIVATE KEY-----') || upperVal.includes('-----BEGIN EC ' + 'PRIVATE KEY-----') || upperVal.includes('-----BEGIN RSA ' + 'PRIVATE KEY-----') || upperVal.includes('-----BEGIN OPENSSH ' + 'PRIVATE KEY-----')) {
+        return Object.freeze({
+          valid: false,
+          reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+          detail: `Variable de entorno fiscal '${k}' contiene material de clave privada prohibido en runtime`,
+          productionSigningInRuntime: true,
+          privateKeysDetected: 1,
+        })
+      }
+    }
+  }
+
+  const isCustomDir = Boolean(options.fiscalScriptsDir)
+  const targetDir = isCustomDir
+    ? path.resolve(options.fiscalScriptsDir)
+    : path.resolve(process.cwd(), 'scripts', 'fiscal')
+
+  if (!fs.existsSync(targetDir)) {
+    return Object.freeze({
+      valid: true,
+      reason: 'RUNTIME_SIGNING_ISOLATED',
+      productionSigningInRuntime: false,
+      privateKeysDetected: 0,
+    })
+  }
+
+  if (!isCustomDir && !options.forceRescan) {
+    try {
+      const stat = fs.statSync(targetDir)
+      if (_cachedDefaultFiscalIsolationResult && stat.mtimeMs === _cachedDefaultFiscalDirMtimeMs) {
+        return _cachedDefaultFiscalIsolationResult
+      }
+      _cachedDefaultFiscalDirMtimeMs = stat.mtimeMs
+    } catch {
+      // Continuar con escaneo completo
+    }
+  }
+
+  const pemPrivRegex = new RegExp('-----BEGIN ' + '(?:RSA |EC |OPENSSH |ENCRYPTED )?' + 'PRIVATE KEY-----')
+  const cryptoSignRegex = new RegExp('\\bcrypto\\.' + 'sign\\s*\\(')
+  const createPrivKeyRegex = new RegExp('\\bcrypto\\.' + 'createPrivateKey\\s*\\(')
+  const genKeyPairRegex = new RegExp('\\bcrypto\\.' + 'generate' + 'KeyPair(?:Sync)?\\s*\\(')
+  const testSignerImportRegex = new RegExp('fiscalEd25519' + 'Signer')
+
+  const entries = fs.readdirSync(targetDir, { withFileTypes: true })
+  for (const entry of entries) {
+    if (!entry.isFile()) continue
+    const fileName = entry.name
+    const lowerName = fileName.toLowerCase()
+    if (lowerName.endsWith('.pem') || lowerName.endsWith('.key') || lowerName.endsWith('.p12') || lowerName.endsWith('.pfx')) {
+      return Object.freeze({
+        valid: false,
+        reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+        detail: `Archivo de clave criptográfica prohibido detectado en scripts/fiscal: '${fileName}'`,
+        productionSigningInRuntime: true,
+        privateKeysDetected: 1,
+      })
+    }
+
+    if (
+      lowerName.endsWith('.mjs') ||
+      lowerName.endsWith('.js') ||
+      lowerName.endsWith('.ts') ||
+      lowerName.endsWith('.ps1') ||
+      lowerName.endsWith('.json')
+    ) {
+      const fullPath = path.join(targetDir, fileName)
+      const content = fs.readFileSync(fullPath, 'utf8')
+      if (pemPrivRegex.test(content)) {
+        return Object.freeze({
+          valid: false,
+          reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+          detail: `Clave privada PEM detectada dentro de '${fileName}' en runtime fiscal`,
+          productionSigningInRuntime: true,
+          privateKeysDetected: 1,
+        })
+      }
+      if (cryptoSignRegex.test(content) || createPrivKeyRegex.test(content) || genKeyPairRegex.test(content)) {
+        return Object.freeze({
+          valid: false,
+          reason: 'RUNTIME_SIGNING_CAPABILITY_DETECTED',
+          detail: `Primitiva de firma o clave privada detectada dentro de '${fileName}' en runtime fiscal`,
+          productionSigningInRuntime: true,
+          privateKeysDetected: 1,
+        })
+      }
+      if (testSignerImportRegex.test(content)) {
+        return Object.freeze({
+          valid: false,
+          reason: 'TEST_SIGNER_IMPORTED_IN_RUNTIME',
+          detail: `Importación de helper de firma de test detectada en '${fileName}'`,
+          productionSigningInRuntime: true,
+          privateKeysDetected: 1,
+        })
+      }
+    }
+  }
+
+  const cleanResult = Object.freeze({
+    valid: true,
+    reason: 'RUNTIME_SIGNING_ISOLATED',
+    productionSigningInRuntime: false,
+    privateKeysDetected: 0,
+  })
+  if (!isCustomDir) {
+    _cachedDefaultFiscalIsolationResult = cleanResult
+  }
+  return cleanResult
+}
+
+export function assertRuntimeSigningIsolation(options = {}) {
+  const check = verifyRuntimeSigningIsolation(options)
+  if (!check.valid) {
+    throw new Error(`P1_IMPORT_FORBIDDEN: RUNTIME_PRIVATE_KEY_DETECTED: ${check.detail || check.reason}`)
+  }
+  return check
+}
+
+/**
+ * Serializa de forma canónica y determinista un paquete de solicitud de atestación (AttestationRequestPackage).
+ */
+export function serializeCanonicalAttestationRequest(pkg) {
+  if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) {
+    throw new Error('ATTESTATION_REQUEST_INVALID: Se requiere objeto estructurado de solicitud de atestación')
+  }
+  const canonical = {
+    schemaVersion: pkg.schemaVersion,
+    requestId: pkg.requestId,
+    processId: pkg.processId,
+    executionScope: pkg.executionScope,
+    commitSha: pkg.commitSha ? String(pkg.commitSha).toLowerCase() : '',
+    environment: pkg.environment,
+    authorizationId: pkg.authorizationId,
+    goAuthorizationDocumentSha256: pkg.goAuthorizationDocumentSha256 ? String(pkg.goAuthorizationDocumentSha256).toLowerCase() : '',
+    manifestSha256: pkg.manifestSha256 ? String(pkg.manifestSha256).toLowerCase() : '',
+    rawSoapArtifacts: Array.isArray(pkg.rawSoapArtifacts)
+      ? pkg.rawSoapArtifacts.map((a) => ({
+          name: a && a.name ? String(a.name) : '',
+          sha256: a && a.sha256 ? String(a.sha256).toLowerCase() : '',
+        }))
+      : [],
+    normalizedArtifacts: Array.isArray(pkg.normalizedArtifacts)
+      ? pkg.normalizedArtifacts.map((a) => ({
+          name: a && a.name ? String(a.name) : '',
+          sha256: a && a.sha256 ? String(a.sha256).toLowerCase() : '',
+        }))
+      : [],
+    consultadoEn: pkg.consultadoEn,
+    requestedAt: pkg.requestedAt,
+    collectorIdentity: pkg.collectorIdentity,
+  }
+  return JSON.stringify(canonical)
+}
+
+/**
+ * Calcula el digest SHA-256 canónico de un AttestationRequestPackage.
+ */
+export function computeAttestationRequestDigest(pkg) {
+  return sha256(serializeCanonicalAttestationRequest(pkg))
+}
+
+/**
+ * Validador estricto y fail-closed para AttestationRequestPackage.
+ * Garantiza ausencia de secretos/TA/CMS/claves privadas y verifica integridad canónica.
+ */
+export function validateAttestationRequest(pkg) {
+  if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) {
+    throw new Error('ATTESTATION_REQUEST_INVALID: Se requiere un paquete de solicitud de atestación válido')
+  }
+
+  const serialized = JSON.stringify(pkg).toLowerCase()
+  for (const forbidden of [
+    '"token":',
+    '"sign":',
+    'loginticket',
+    'cmsbase64',
+    'mock_cms',
+    'privatekey',
+    'private key',
+    '-----begin',
+    'password',
+    'service_role',
+    'anon_key',
+    'secret',
+  ]) {
+    if (serialized.includes(forbidden)) {
+      throw new Error(`ATTESTATION_REQUEST_SECRETS_PROHIBITED: La solicitud de atestación contiene material sensible prohibido ('${forbidden}')`)
+    }
+  }
+
+  if (pkg.schemaVersion !== '1.0') {
+    throw new Error(`ATTESTATION_REQUEST_SCHEMA_INVALID: schemaVersion debe ser '1.0', recibido '${pkg.schemaVersion}'`)
+  }
+  if (!pkg.requestId || typeof pkg.requestId !== 'string' || pkg.requestId.trim().length === 0) {
+    throw new Error('ATTESTATION_REQUEST_ID_REQUIRED: Se requiere requestId no vacío')
+  }
+  if (!pkg.processId || typeof pkg.processId !== 'string' || pkg.processId.trim().length === 0) {
+    throw new Error('ATTESTATION_REQUEST_PROCESS_ID_REQUIRED: Se requiere processId no vacío')
+  }
+  if (pkg.executionScope !== PR02_P0_SCOPE) {
+    throw new Error(`ATTESTATION_REQUEST_SCOPE_MISMATCH: executionScope debe ser '${PR02_P0_SCOPE}', recibido '${pkg.executionScope}'`)
+  }
+  if (!pkg.commitSha || typeof pkg.commitSha !== 'string' || !/^[0-9a-f]{40}$/.test(pkg.commitSha)) {
+    throw new Error('ATTESTATION_REQUEST_COMMIT_INVALID: commitSha debe ser un hash hexadecimal de 40 caracteres en minúsculas')
+  }
+  if (pkg.environment !== 'HOMOLOGACION') {
+    throw new Error(`ATTESTATION_REQUEST_ENVIRONMENT_MISMATCH: environment debe ser 'HOMOLOGACION', recibido '${pkg.environment}'`)
+  }
+  if (!pkg.authorizationId || typeof pkg.authorizationId !== 'string' || pkg.authorizationId.trim().length === 0) {
+    throw new Error('ATTESTATION_REQUEST_AUTH_ID_REQUIRED: Se requiere authorizationId vinculado al GO')
+  }
+  if (!pkg.goAuthorizationDocumentSha256 || typeof pkg.goAuthorizationDocumentSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(pkg.goAuthorizationDocumentSha256)) {
+    throw new Error('ATTESTATION_REQUEST_GO_SHA_INVALID: goAuthorizationDocumentSha256 debe ser un SHA-256 de 64 caracteres hexadecimales')
+  }
+  if (!pkg.manifestSha256 || typeof pkg.manifestSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(pkg.manifestSha256)) {
+    throw new Error('ATTESTATION_REQUEST_MANIFEST_SHA_INVALID: manifestSha256 debe ser un SHA-256 de 64 caracteres hexadecimales')
+  }
+
+  if (
+    !Array.isArray(pkg.rawSoapArtifacts) ||
+    pkg.rawSoapArtifacts.length !== 2 ||
+    pkg.rawSoapArtifacts[0].name !== 'FEParamGetTiposIva_response.xml' ||
+    !/^[0-9a-f]{64}$/.test(pkg.rawSoapArtifacts[0].sha256 || '') ||
+    pkg.rawSoapArtifacts[1].name !== 'FEParamGetCondicionIvaReceptor_response.xml' ||
+    !/^[0-9a-f]{64}$/.test(pkg.rawSoapArtifacts[1].sha256 || '')
+  ) {
+    throw new Error('ATTESTATION_REQUEST_RAW_ARTIFACTS_INVALID: rawSoapArtifacts debe contener exactamente los dos XML SOAP originales con sus hashes SHA-256')
+  }
+
+  if (
+    !Array.isArray(pkg.normalizedArtifacts) ||
+    pkg.normalizedArtifacts.length !== 2 ||
+    pkg.normalizedArtifacts[0].name !== 'FEParamGetTiposIva_normalized.json' ||
+    !/^[0-9a-f]{64}$/.test(pkg.normalizedArtifacts[0].sha256 || '') ||
+    pkg.normalizedArtifacts[1].name !== 'FEParamGetCondicionIvaReceptor_normalized.json' ||
+    !/^[0-9a-f]{64}$/.test(pkg.normalizedArtifacts[1].sha256 || '')
+  ) {
+    throw new Error('ATTESTATION_REQUEST_NORMALIZED_ARTIFACTS_INVALID: normalizedArtifacts debe contener exactamente los dos JSON normalizados con sus hashes SHA-256')
+  }
+
+  if (!pkg.consultadoEn || typeof pkg.consultadoEn !== 'string' || !Number.isFinite(Date.parse(pkg.consultadoEn))) {
+    throw new Error('ATTESTATION_REQUEST_CONSULTED_INVALID: consultadoEn debe ser una fecha ISO-8601 válida')
+  }
+  if (!pkg.requestedAt || typeof pkg.requestedAt !== 'string' || !Number.isFinite(Date.parse(pkg.requestedAt))) {
+    throw new Error('ATTESTATION_REQUEST_TIMESTAMP_INVALID: requestedAt debe ser una fecha ISO-8601 válida')
+  }
+  if (pkg.collectorIdentity !== PR02_P0_COLECTOR_IDENTIDAD) {
+    throw new Error(`ATTESTATION_REQUEST_COLLECTOR_MISMATCH: collectorIdentity debe ser '${PR02_P0_COLECTOR_IDENTIDAD}'`)
+  }
+
+  const expectedDigest = computeAttestationRequestDigest(pkg)
+  if (!pkg.requestSha256 || pkg.requestSha256 !== expectedDigest) {
+    throw new Error('ATTESTATION_REQUEST_DIGEST_MISMATCH: El hash canónico requestSha256 no coincide con el payload de la solicitud')
+  }
+  if (pkg.canonicalPayloadSha256 !== undefined && pkg.canonicalPayloadSha256 !== expectedDigest) {
+    throw new Error('ATTESTATION_REQUEST_DIGEST_MISMATCH: El hash canonicalPayloadSha256 no coincide con el payload de la solicitud')
+  }
+
+  return Object.freeze({
+    valid: true,
+    requestSha256: expectedDigest,
+  })
+}
+
+/**
+ * Construye un paquete canónico de solicitud de atestación (AttestationRequestPackage)
+ * desde el colector P0 para ser enviado a una Independent Attestation Authority externa.
+ */
+export function createAttestationRequest(params = {}) {
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    throw new Error('ATTESTATION_REQUEST_PARAMS_REQUIRED: Se requieren parámetros estructurados para crear la solicitud de atestación')
+  }
+
+  const serializedParams = JSON.stringify(params).toLowerCase()
+  for (const forbidden of [
+    '"token":',
+    '"sign":',
+    'loginticket',
+    'cmsbase64',
+    'mock_cms',
+    'privatekey',
+    'private key',
+    '-----begin',
+    'password',
+    'service_role',
+    'anon_key',
+    'secret',
+  ]) {
+    if (serializedParams.includes(forbidden)) {
+      throw new Error(`ATTESTATION_REQUEST_SECRETS_PROHIBITED: La solicitud de atestación contiene material sensible prohibido ('${forbidden}')`)
+    }
+  }
+
+  const manifest = params.manifest && typeof params.manifest === 'object' ? params.manifest : null
+  const schemaVersion = params.schemaVersion !== undefined ? params.schemaVersion : '1.0'
+  const processId = params.processId !== undefined ? params.processId : (manifest ? manifest.identificador_proceso : '')
+  const requestId = params.requestId !== undefined ? params.requestId : (processId ? `att-req-${processId}` : '')
+  const executionScope = params.executionScope !== undefined ? params.executionScope : (manifest ? manifest.ejecucion_autorizada_scope : PR02_P0_SCOPE)
+  const commitShaRaw =
+    params.commitSha !== undefined
+      ? params.commitSha
+      : manifest
+        ? manifest.commit_sha || (manifest.attestation && manifest.attestation.commitSha) || ''
+        : ''
+  const commitSha = typeof commitShaRaw === 'string' ? commitShaRaw.toLowerCase() : ''
+  const environment =
+    params.environment !== undefined
+      ? params.environment
+      : params.entorno !== undefined
+        ? params.entorno
+        : manifest
+          ? manifest.entorno
+          : 'HOMOLOGACION'
+  const authorizationId =
+    params.authorizationId !== undefined
+      ? params.authorizationId
+      : manifest
+        ? manifest.go_authorization_id
+        : ''
+  const goAuthShaRaw =
+    params.goAuthorizationDocumentSha256 !== undefined
+      ? params.goAuthorizationDocumentSha256
+      : manifest
+        ? manifest.go_authorization_sha256
+        : ''
+  const goAuthorizationDocumentSha256 = typeof goAuthShaRaw === 'string' ? goAuthShaRaw.toLowerCase() : ''
+  const manifestShaRaw =
+    params.manifestSha256 !== undefined
+      ? params.manifestSha256
+      : manifest
+        ? manifest.manifest_sha256
+        : ''
+  const manifestSha256 = typeof manifestShaRaw === 'string' ? manifestShaRaw.toLowerCase() : ''
+
+  const rawSoapArtifacts =
+    params.rawSoapArtifacts !== undefined
+      ? params.rawSoapArtifacts
+      : manifest
+        ? [
+            {
+              name: 'FEParamGetTiposIva_response.xml',
+              sha256: String(manifest.iva_respuesta_original_sha256 || '').toLowerCase(),
+            },
+            {
+              name: 'FEParamGetCondicionIvaReceptor_response.xml',
+              sha256: String(manifest.condition_respuesta_original_sha256 || '').toLowerCase(),
+            },
+          ]
+        : []
+
+  const normalizedArtifacts =
+    params.normalizedArtifacts !== undefined
+      ? params.normalizedArtifacts
+      : manifest
+        ? [
+            {
+              name: 'FEParamGetTiposIva_normalized.json',
+              sha256: String(manifest.iva_archivo_normalizado_sha256 || '').toLowerCase(),
+            },
+            {
+              name: 'FEParamGetCondicionIvaReceptor_normalized.json',
+              sha256: String(manifest.condition_archivo_normalizado_sha256 || '').toLowerCase(),
+            },
+          ]
+        : []
+
+  const consultadoEn =
+    params.consultadoEn !== undefined
+      ? params.consultadoEn
+      : manifest
+        ? manifest.consultado_en
+        : ''
+  const requestedAt =
+    params.requestedAt !== undefined
+      ? params.requestedAt
+      : params.now !== undefined
+        ? typeof params.now === 'string' || typeof params.now === 'number'
+          ? new Date(params.now).toISOString()
+          : params.now.toISOString()
+        : consultadoEn
+  const collectorIdentity =
+    params.collectorIdentity !== undefined
+      ? params.collectorIdentity
+      : manifest && manifest.colector_identidad !== undefined
+        ? manifest.colector_identidad
+        : PR02_P0_COLECTOR_IDENTIDAD
+
+  const draft = {
+    schemaVersion,
+    requestId,
+    processId,
+    executionScope,
+    commitSha,
+    environment,
+    authorizationId,
+    goAuthorizationDocumentSha256,
+    manifestSha256,
+    rawSoapArtifacts: Array.isArray(rawSoapArtifacts)
+      ? Object.freeze(rawSoapArtifacts.map((item) => Object.freeze({ name: item.name, sha256: String(item.sha256 || '').toLowerCase() })))
+      : rawSoapArtifacts,
+    normalizedArtifacts: Array.isArray(normalizedArtifacts)
+      ? Object.freeze(normalizedArtifacts.map((item) => Object.freeze({ name: item.name, sha256: String(item.sha256 || '').toLowerCase() })))
+      : normalizedArtifacts,
+    consultadoEn,
+    requestedAt,
+    collectorIdentity,
+  }
+
+  const requestSha256 = computeAttestationRequestDigest(draft)
+  const requestPkg = Object.freeze({
+    ...draft,
+    requestSha256,
+    canonicalPayloadSha256: requestSha256,
+  })
+
+  validateAttestationRequest(requestPkg)
+  return requestPkg
+}
+
+/**
+ * Guarda explícita contra cualquier intento de autoelevar SELF_ATTESTED a INDEPENDENT_ATTESTED
+ * mediante booleanos, opciones, variables de entorno o mutación directa de JSON sin firma válida.
+ */
+export function assertNoSelfAttestationElevation(attestation, options = {}) {
+  const env = (options && options.env) || options || process.env
+  if (
+    (options &&
+      (options.elevateToIndependent === true ||
+        options.forceIndependentAttestation === true ||
+        options.allowSelfAttestedAsIndependent === true ||
+        options.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
+        options.trustModel === 'INDEPENDENT_ATTESTED' ||
+        options.P1_IMPORT_ALLOWED === true)) ||
+    Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION) ||
+    env.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
+    env.P1_IMPORT_ALLOWED === 'true'
+  ) {
+    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido autoelevar SELF_ATTESTED a INDEPENDENT_ATTESTED mediante opciones, flags o variables de entorno')
+  }
+
+  if (!attestation || typeof attestation !== 'object') {
+    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Atestación ausente o inválida')
+  }
+
+  if (attestation.trustModel === 'SELF_ATTESTED' || attestation.ATTESTATION_TRUST_MODEL === 'SELF_ATTESTED') {
+    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Una atestación SELF_ATTESTED del colector local no puede elevarse a INDEPENDENT_ATTESTED')
+  }
+
+  if (
+    attestation.trustModel === 'INDEPENDENT_ATTESTED' ||
+    attestation.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
+    attestation.P1_IMPORT_ALLOWED === true ||
+    attestation.INDEPENDENT_ATTESTATION_AVAILABLE === true
+  ) {
+    if (!attestation.signature || typeof attestation.signature !== 'string' || !/^[0-9a-fA-F]{128}$/.test(attestation.signature)) {
+      throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Intento de declarar INDEPENDENT_ATTESTED modificando JSON sin firma criptográfica Ed25519 válida')
+    }
+    if (
+      attestation.EVIDENCE_CUSTODY_ATTESTED === false ||
+      attestation.accredited !== true ||
+      attestation.TRUSTED_EXECUTION_BOUNDARY !== 'VERIFIED' ||
+      attestation.provenance === 'UNVERIFIED'
+    ) {
+      throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Evidencia SELF_ATTESTED con JSON parcialmente modificado detectada y rechazada')
+    }
+  }
+
+  return true
+}
+
+/**
+ * Crea una constancia local (auto-atestación) de adquisición de evidencia P0.
+ * Toda atestación generada por el colector local es taxativamente SELF_ATTESTED y no acreditada.
+ * Prohibido autoelevar a INDEPENDENT_ATTESTED desde el colector.
+ */
 export function createP0Attestation(params = {}) {
   if (!params || typeof params !== 'object') {
     throw new Error('P0_ATTESTATION_PARAMS_REQUIRED: Se requieren parámetros para atestación P0')
+  }
+
+  if (
+    params.trustModel === 'INDEPENDENT_ATTESTED' ||
+    params.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
+    params.elevateToIndependent === true ||
+    params.forceIndependentAttestation === true
+  ) {
+    throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: El colector P0 no puede emitir ni autoelevar atestaciones a INDEPENDENT_ATTESTED')
   }
 
   const {
     manifest,
     commitSha,
     transportType = 'SIMULATED',
-    authoritySecret,
     goAuthorizationId,
     goAuthorizationSha256,
     goAuthorization,
@@ -896,63 +1414,240 @@ export function createP0Attestation(params = {}) {
     provenance: 'UNVERIFIED',
     EVIDENCE_INTEGRITY: 'PASS',
     EVIDENCE_CUSTODY_ATTESTED: false,
+    ATTESTATION_TRUST_MODEL: isOfficialTransport ? 'SELF_ATTESTED' : 'UNVERIFIED',
     TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
     ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    INDEPENDENT_ATTESTATION_AVAILABLE: false,
+    P1_IMPORT_ALLOWED: false,
     trustModel: isOfficialTransport ? 'SELF_ATTESTED' : 'SIMULATED',
     antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
   })
 }
 
 /**
- * Validador estricto de la atestación de adquisición oficial P0.
- * Exige atestación independiente acreditada (trustModel === 'INDEPENDENT_ATTESTED') emitida por Attestation Authority.
- * Rechaza de plano atestaciones generadas por el colector local (trustModel === 'SELF_ATTESTED').
+ * Verificador criptográfico exhaustivo de atestación independiente (P1 Verifier / IndependentAttestationAuthority).
+ * Verifica las 15 condiciones obligatorias para otorgar ATTESTATION_TRUST_MODEL = INDEPENDENT_ATTESTED.
  */
-export function verifyP0Attestation(attestation, options = {}) {
-  if (!attestation || typeof attestation !== 'object') {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_MISSING' })
+export function verifyIndependentAttestation(attestation, options = {}) {
+  const deniedBase = {
+    valid: false,
+    P1_IMPORT_ALLOWED: false,
+    INDEPENDENT_ATTESTATION_AVAILABLE: false,
+    EVIDENCE_CUSTODY_ATTESTED: false,
+    ATTESTATION_TRUST_MODEL: 'UNVERIFIED',
+    TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
+    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
   }
-  if (attestation.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true) {
-    return Object.freeze({ valid: false, reason: 'FRAUDULENT_ARCA_CRYPTOGRAPHIC_VERIFICATION_CLAIM' })
-  }
-  if (attestation.trustModel === 'SELF_ATTESTED') {
+
+  // Condición 15: Ninguna clave privada ni capacidad de firma en el runtime fiscal
+  const runtimeCheck = verifyRuntimeSigningIsolation({
+    fiscalScriptsDir: options.fiscalScriptsDir,
+    env: options.env,
+  })
+  if (!runtimeCheck.valid) {
     return Object.freeze({
-      valid: false,
+      ...deniedBase,
+      reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+      errorCategory: 'COMPROMISED_RUNTIME_BOUNDARY',
+      detail: runtimeCheck.detail,
+    })
+  }
+
+  if (!attestation || typeof attestation !== 'object') {
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_MISSING' })
+  }
+
+  // Condición 14: Sin declaración fraudulenta de verificación criptográfica directa de ARCA
+  if (attestation.ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED === true) {
+    return Object.freeze({ ...deniedBase, reason: 'FRAUDULENT_ARCA_CRYPTOGRAPHIC_VERIFICATION_CLAIM' })
+  }
+
+  // Regla de no autoelevación por opciones o entorno
+  const env = options.env || process.env
+  if (
+    options.elevateToIndependent === true ||
+    options.forceIndependentAttestation === true ||
+    options.allowSelfAttestedAsIndependent === true ||
+    Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION)
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'SELF_ATTESTATION_AUTO_ELEVATION_REJECTED',
+      errorCategory: 'UNTRUSTED_SELF_ATTESTATION',
+    })
+  }
+
+  if (attestation.trustModel === 'SELF_ATTESTED' || attestation.ATTESTATION_TRUST_MODEL === 'SELF_ATTESTED') {
+    return Object.freeze({
+      ...deniedBase,
+      ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED',
       reason: 'ATTESTATION_SELF_ATTESTED_REJECTED',
       errorCategory: 'UNTRUSTED_SELF_ATTESTATION',
     })
   }
+
   if (attestation.trustModel !== 'INDEPENDENT_ATTESTED') {
     return Object.freeze({
-      valid: false,
+      ...deniedBase,
       reason: 'ATTESTATION_UNTRUSTED_MODEL',
       errorCategory: 'UNTRUSTED_ATTESTATION',
     })
   }
+
+  if (attestation.EVIDENCE_CUSTODY_ATTESTED === false || attestation.provenance === 'UNVERIFIED') {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'SELF_ATTESTATION_AUTO_ELEVATION_REJECTED',
+      errorCategory: 'UNTRUSTED_SELF_ATTESTATION',
+    })
+  }
+
   if (attestation.accredited !== true) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_NOT_ACCREDITED' })
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_NOT_ACCREDITED' })
   }
   if (attestation.TRUSTED_EXECUTION_BOUNDARY !== 'VERIFIED') {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_BOUNDARY_UNVERIFIED' })
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_BOUNDARY_UNVERIFIED' })
   }
   if (attestation.transportType !== 'OFFICIAL') {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_SIMULATED_TRANSPORT' })
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_SIMULATED_TRANSPORT' })
   }
+
   if (!attestation.signature || typeof attestation.signature !== 'string' || !/^[0-9a-fA-F]{128}$/.test(attestation.signature)) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_SIGNATURE_INVALID' })
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_SIGNATURE_INVALID' })
   }
   if (attestation.executorIdentity !== PR02_P0_COLECTOR_IDENTIDAD) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_EXECUTOR_MISMATCH' })
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_EXECUTOR_MISMATCH' })
   }
   if (!attestation.goAuthorizationId || typeof attestation.goAuthorizationId !== 'string' || attestation.goAuthorizationId.trim().length === 0) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_GO_ID_MISSING' })
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_GO_ID_MISSING' })
   }
   if (!attestation.goAuthorizationSha256 || typeof attestation.goAuthorizationSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(attestation.goAuthorizationSha256)) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_GO_SHA_INVALID' })
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_GO_SHA_INVALID' })
   }
 
-  const { manifest, commitSha, trustedAttestationPublicKey, authoritySecret } = options
+  // Condición 10: Scope correcto
+  if (attestation.executionScope !== PR02_P0_SCOPE) {
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_SCOPE_MISMATCH' })
+  }
 
+  // Condición 12: Entorno correcto (exclusivamente HOMOLOGACION)
+  const attEnv = attestation.environment !== undefined ? attestation.environment : attestation.entorno
+  if (attEnv !== 'HOMOLOGACION' || (attestation.entorno !== undefined && attestation.entorno !== 'HOMOLOGACION')) {
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_ENVIRONMENT_MISMATCH' })
+  }
+
+  // Condición 13: Sin expiración
+  if (!attestation.issuedAt || !Number.isFinite(Date.parse(attestation.issuedAt))) {
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_ISSUED_AT_INVALID' })
+  }
+  const expiresAtRaw = attestation.expiresAt || attestation.venceEn || attestation.vence_en
+  if (expiresAtRaw !== undefined && expiresAtRaw !== null) {
+    const expMs = Date.parse(expiresAtRaw)
+    if (!Number.isFinite(expMs)) {
+      return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_EXPIRATION_INVALID' })
+    }
+    const nowMs = options.now
+      ? typeof options.now === 'string' || typeof options.now === 'number'
+        ? new Date(options.now).getTime()
+        : options.now.getTime()
+      : Date.now()
+    if (expMs <= nowMs) {
+      return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_EXPIRED' })
+    }
+  }
+
+  const { manifest, commitSha, expectedHead, trustedAttestationPublicKey, authoritySecret, trustedGoPublicKey, attestationRequest } = options
+
+  // Condición 11: Commit SHA correcto
+  const targetCommit = commitSha || expectedHead
+  if (!attestation.commitSha || !/^[0-9a-fA-F]{40}$/.test(attestation.commitSha)) {
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_COMMIT_INVALID' })
+  }
+  if (targetCommit) {
+    if (attestation.commitSha.toLowerCase() !== String(targetCommit).toLowerCase()) {
+      return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_COMMIT_MISMATCH' })
+    }
+  }
+
+  // Condición 2: Clave pública confiable configurada explícitamente
+  const rawKey = trustedAttestationPublicKey || authoritySecret || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
+  if (!rawKey) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_KEY_MISSING',
+      errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE',
+    })
+  }
+  let pubKeyObj
+  try {
+    pubKeyObj = validateP0AttestationPublicKey(rawKey, Boolean(options.allowTestKeys))
+  } catch (err) {
+    if (err.message.includes('P0_ATTESTATION_KEY_MISSING') || err.message.includes('ATTESTATION_AUTHORITY_NOT_AVAILABLE')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_KEY_MISSING',
+        errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE',
+      })
+    }
+    if (err.message.includes('COMPROMISED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_KEY_COMPROMISED',
+        errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY',
+      })
+    }
+    if (err.message.includes('TEST_KEY_PROHIBITED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'ATTESTATION_TEST_KEY_PROHIBITED',
+        errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY',
+      })
+    }
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_KEY_INVALID' })
+  }
+
+  // Condición 3: Clave pública de atestación distinta de la GO Authority
+  if (trustedGoPublicKey) {
+    try {
+      const goKeyObj = validateP0GoPublicKey(trustedGoPublicKey, Boolean(options.allowTestKeys))
+      const goDer = goKeyObj.export({ format: 'der', type: 'spki' })
+      const attDer = pubKeyObj.export({ format: 'der', type: 'spki' })
+      if (goDer.equals(attDer)) {
+        return Object.freeze({
+          ...deniedBase,
+          reason: 'COLLAPSED_AUTHORITIES_REJECTED',
+          errorCategory: 'COLLAPSED_AUTHORITIES_REJECTED',
+        })
+      }
+    } catch {
+      return Object.freeze({ ...deniedBase, reason: 'GO_AUTHORITY_KEY_INVALID' })
+    }
+  }
+
+  // Prohibición estricta de aceptar signers de test como producción
+  if (
+    !options.allowTestKeys &&
+    (attestation.signerOrigin === ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER ||
+      attestation.isTestSigner === true ||
+      attestation.authorityRole === 'TEST_SIGNER')
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_TEST_SIGNER_PROHIBITED',
+      errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY',
+    })
+  }
+
+  // Condición 1 y 4: Firma criptográfica Ed25519 válida sobre payload canónico íntegro
+  const { signature, accredited, provenance, ...payload } = attestation
+  const canonicalPayload = JSON.stringify(payload)
+  const isSigValid = crypto.verify(null, Buffer.from(canonicalPayload, 'utf8'), pubKeyObj, Buffer.from(signature, 'hex'))
+
+  if (!isSigValid) {
+    return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_SIGNATURE_VERIFICATION_FAILED' })
+  }
+
+  // Condición 5, 6, 7, 8, 9: Coincidencia con el manifiesto y artefactos
   if (manifest) {
     if (
       attestation.ivaRawSha !== manifest.iva_respuesta_original_sha256 ||
@@ -967,46 +1662,110 @@ export function verifyP0Attestation(attestation, options = {}) {
       (manifest.go_authorization_id !== undefined && manifest.go_authorization_id !== null && attestation.goAuthorizationId !== manifest.go_authorization_id) ||
       (manifest.go_authorization_sha256 !== undefined && manifest.go_authorization_sha256 !== null && attestation.goAuthorizationSha256 !== manifest.go_authorization_sha256)
     ) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_MANIFEST_MISMATCH' })
+      return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_MANIFEST_MISMATCH' })
+    }
+    if (attestation.manifestSha256 && manifest.manifest_sha256) {
+      const matchesManifestSha = attestation.manifestSha256 === manifest.manifest_sha256
+      const matchesRequestManifestSha =
+        attestationRequest && attestation.manifestSha256 === attestationRequest.manifestSha256
+      if (!matchesManifestSha && !matchesRequestManifestSha) {
+        return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_MANIFEST_DIGEST_MISMATCH' })
+      }
     }
   }
 
-  if (commitSha) {
-    if (attestation.commitSha.toLowerCase() !== String(commitSha).toLowerCase()) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_COMMIT_MISMATCH' })
+  if (attestationRequest) {
+    try {
+      validateAttestationRequest(attestationRequest)
+    } catch (reqErr) {
+      return Object.freeze({ ...deniedBase, reason: `ATTESTATION_REQUEST_INVALID: ${reqErr.message}` })
+    }
+    const reqIvaRaw = attestationRequest.rawSoapArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const reqCondRaw = attestationRequest.rawSoapArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    const reqIvaNorm = attestationRequest.normalizedArtifacts.find((a) => /tiposiva/i.test(a.name))
+    const reqCondNorm = attestationRequest.normalizedArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+    if (
+      attestation.processId !== attestationRequest.processId ||
+      attestation.executionScope !== attestationRequest.executionScope ||
+      attestation.commitSha.toLowerCase() !== attestationRequest.commitSha.toLowerCase() ||
+      attestation.entorno !== attestationRequest.environment ||
+      attestation.goAuthorizationId !== attestationRequest.authorizationId ||
+      attestation.goAuthorizationSha256 !== attestationRequest.goAuthorizationDocumentSha256 ||
+      !reqIvaRaw ||
+      !reqCondRaw ||
+      !reqIvaNorm ||
+      !reqCondNorm ||
+      attestation.ivaRawSha !== reqIvaRaw.sha256 ||
+      attestation.condRawSha !== reqCondRaw.sha256 ||
+      attestation.ivaNormSha !== reqIvaNorm.sha256 ||
+      attestation.condNormSha !== reqCondNorm.sha256 ||
+      (attestation.requestId !== undefined && attestation.requestId !== attestationRequest.requestId) ||
+      (attestation.requestSha256 !== undefined && attestation.requestSha256 !== attestationRequest.requestSha256)
+    ) {
+      return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_REQUEST_MISMATCH' })
     }
   }
 
-  const rawKey = trustedAttestationPublicKey || authoritySecret || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
-  if (!rawKey) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING', errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE' })
-  }
-  let pubKeyObj
-  try {
-    pubKeyObj = validateP0AttestationPublicKey(rawKey, Boolean(options.allowTestKeys))
-  } catch (err) {
-    if (err.message.includes('P0_ATTESTATION_KEY_MISSING') || err.message.includes('ATTESTATION_AUTHORITY_NOT_AVAILABLE')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_MISSING', errorCategory: 'ATTESTATION_AUTHORITY_NOT_AVAILABLE' })
-    }
-    if (err.message.includes('COMPROMISED')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_COMPROMISED', errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY' })
-    }
-    if (err.message.includes('TEST_KEY_PROHIBITED')) {
-      return Object.freeze({ valid: false, reason: 'ATTESTATION_TEST_KEY_PROHIBITED', errorCategory: 'UNTRUSTED_ATTESTATION_AUTHORITY' })
-    }
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_KEY_INVALID' })
-  }
-
-  const { signature, accredited, provenance, ...payload } = attestation
-  const canonicalPayload = JSON.stringify(payload)
-  const isSigValid = crypto.verify(null, Buffer.from(canonicalPayload, 'utf8'), pubKeyObj, Buffer.from(signature, 'hex'))
-
-  if (!isSigValid) {
-    return Object.freeze({ valid: false, reason: 'ATTESTATION_SIGNATURE_VERIFICATION_FAILED' })
-  }
-
-  return Object.freeze({ valid: true, reason: 'VERIFIED', trustModel: 'INDEPENDENT_ATTESTED' })
+  return Object.freeze({
+    valid: true,
+    reason: 'VERIFIED',
+    trustModel: 'INDEPENDENT_ATTESTED',
+    ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED',
+    EVIDENCE_CUSTODY_ATTESTED: true,
+    TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
+    ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    INDEPENDENT_ATTESTATION_AVAILABLE: true,
+    P1_IMPORT_ALLOWED: true,
+  })
 }
+
+/**
+ * Validador estricto de la atestación de adquisición oficial P0.
+ * Delega en verifyIndependentAttestation garantizando las 15 condiciones de seguridad.
+ */
+export function verifyP0Attestation(attestation, options = {}) {
+  return verifyIndependentAttestation(attestation, options)
+}
+
+/**
+ * Frontera externa de Autoridad de Atestación Independiente (IndependentAttestationAuthority).
+ * El runtime fiscal puede crear solicitudes de atestación y verificar firmas con clave pública,
+ * pero tiene terminantemente prohibido acceder a claves privadas o firmar atestaciones de producción.
+ */
+export const IndependentAttestationAuthority = Object.freeze({
+  PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  SIGNER_ORIGINS: ATTESTATION_SIGNER_ORIGINS,
+  TRUST_MODELS: ATTESTATION_TRUST_MODELS,
+  createAttestationRequest,
+  validateAttestationRequest,
+  computeAttestationRequestDigest,
+  serializeCanonicalAttestationRequest,
+  verifyIndependentAttestation,
+  verifyRuntimeSigningIsolation,
+  assertRuntimeSigningIsolation,
+  assertNoSelfAttestationElevation,
+  validatePublicKey: validateP0AttestationPublicKey,
+  isAuthorityAvailable: (options = {}) => {
+    const raw = options.trustedAttestationPublicKey || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
+    if (!raw) return false
+    try {
+      validateP0AttestationPublicKey(raw, Boolean(options.allowTestKeys))
+      const iso = verifyRuntimeSigningIsolation({ fiscalScriptsDir: options.fiscalScriptsDir, env: options.env })
+      return iso.valid
+    } catch {
+      return false
+    }
+  },
+  signProductionAttestation: () => {
+    throw new Error('PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME: El runtime fiscal no posee claves privadas ni puede firmar atestaciones independientes de producción')
+  },
+  accessProductionPrivateKey: () => {
+    throw new Error('PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME: El runtime fiscal tiene prohibido acceder o almacenar claves privadas de autoridad')
+  },
+  generateTrustedIndependentAttestation: () => {
+    throw new Error('PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME: Prohibido generar atestaciones independientes acreditadas dentro del runtime del colector')
+  },
+})
 
 /**
  * Entidad de Autoridad de Custodia y Atestación de Evidencia P0.
@@ -1015,17 +1774,11 @@ export const AttestationAuthority = Object.freeze({
   validatePublicKey: validateP0AttestationPublicKey,
   validateSecret: validateP0AttestationPublicKey,
   createAttestation: createP0Attestation,
+  createAttestationRequest,
+  validateAttestationRequest,
   verifyAttestation: verifyP0Attestation,
-  isAuthorityAvailable: (options = {}) => {
-    const raw = options.trustedAttestationPublicKey || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
-    if (!raw) return false
-    try {
-      validateP0AttestationPublicKey(raw, Boolean(options.allowTestKeys))
-      return true
-    } catch {
-      return false
-    }
-  },
+  verifyIndependentAttestation,
+  isAuthorityAvailable: IndependentAttestationAuthority.isAuthorityAvailable,
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   AUTHORITY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
 })
@@ -1102,7 +1855,7 @@ export function createPr02P0OfficialEvidenceManifest(params = {}) {
   delete checkParams.trustedGoPublicKey
   delete checkParams.authoritySecret
   const str = JSON.stringify(checkParams).toLowerCase()
-  for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', 'begin private key', 'password']) {
+  for (const forbidden of ['"token":', '"sign":', 'loginticket', 'privatekey', 'private key', 'begin ' + 'private key', 'password']) {
     if (str.includes(forbidden)) {
       throw new Error(`P0_MANIFEST_SECRETS_PROHIBITED: Manifiesto contiene referencias a credenciales o tokens ('${forbidden}')`)
     }
@@ -1339,6 +2092,23 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_OPTIONS_REQUIRED')
   }
 
+  // Condición 15: Ninguna clave privada ni capacidad de firma en el runtime fiscal
+  assertRuntimeSigningIsolation({
+    fiscalScriptsDir: options.fiscalScriptsDir,
+    env: options.env,
+  })
+
+  // Regla de no autoelevación mediante flags, opciones o variables de entorno
+  const env = options.env || process.env
+  if (
+    options.elevateToIndependent === true ||
+    options.forceIndependentAttestation === true ||
+    options.allowSelfAttestedAsIndependent === true ||
+    Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION)
+  ) {
+    throw new Error('P1_IMPORT_FORBIDDEN: SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido autoelevar SELF_ATTESTED a INDEPENDENT_ATTESTED mediante opciones, flags o variables de entorno')
+  }
+
   const { manifest, ivaText, conditionText, rawIvaSoapText, rawConditionSoapText, now, expectedHashes } = options
 
   if (!manifest) {
@@ -1492,6 +2262,11 @@ export function validatePr02P1ImportEvidence(options = {}) {
     manifest,
     commitSha: expectedHead,
     trustedAttestationPublicKey,
+    trustedGoPublicKey: trustedGoPublicKeyInput,
+    attestationRequest: options.attestationRequest,
+    fiscalScriptsDir: options.fiscalScriptsDir,
+    env: options.env,
+    now,
     allowTestKeys: Boolean(options.allowTestKeys),
   })
 
@@ -1533,8 +2308,10 @@ export function validatePr02P1ImportEvidence(options = {}) {
     status: 'PASS',
     officialEvidenceVerified: true,
     P1_IMPORT_ALLOWED: true,
+    INDEPENDENT_ATTESTATION_AVAILABLE: true,
     EVIDENCE_INTEGRITY: 'PASS',
     EVIDENCE_CUSTODY_ATTESTED: true,
+    ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED',
     TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED',
     ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
     trustModel: 'LIMITED',

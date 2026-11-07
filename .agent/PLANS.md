@@ -1321,3 +1321,36 @@ Remediación criptográfica y adversarial de las 6 vulnerabilidades de frontera 
   - `ARCA_CALLS_NEW = 0`
   - `STAGING_WRITES_NEW = 0`
   - `PRODUCTION_MUTATIONS = 0`
+
+
+### 2026-11-07 - Diseño e Implementación de la Frontera de Atestación Independiente PR02-P0
+
+- **Paquete Canónico de Solicitud de Atestación (`AttestationRequestPackage`)**:
+  - Implementación de `createAttestationRequest`, `validateAttestationRequest`, `computeAttestationRequestDigest` y `serializeCanonicalAttestationRequest` en `scripts/fiscal/plan-pr02-parameters.mjs`.
+  - Serialización determinística sin secretos con hash SHA-256 (`requestSha256`) vinculando `manifestSha256`, `goAuthorizationDocumentSha256`, los 2 artefactos SOAP crudos (`rawSoapArtifacts`) y los 2 artefactos normalizados (`normalizedArtifacts`).
+- **Contrato de `IndependentAttestationAuthority` y Aislamiento de Runtime**:
+  - El runtime fiscal puede solicitar y verificar atestaciones mediante clave pública (`verifyIndependentAttestation`), pero tiene bloqueada cualquier capacidad de firma en producción (`signProductionAttestation`, `accessProductionPrivateKey`, `generateTrustedIndependentAttestation` lanzan error).
+  - `verifyRuntimeSigningIsolation` verifica la ausencia total de claves privadas, llamadas de firma (`crypto.sign`, `createPrivateKey`, `generateKeyPair`) e imports del signer de tests en `scripts/fiscal/`.
+- **No Autoelevación y Separación `SELF_ATTESTED` vs `INDEPENDENT_ATTESTED` vs `TEST_SIGNER`**:
+  - `assertNoSelfAttestationElevation` bloquea todo intento de elevar `SELF_ATTESTED` a `INDEPENDENT_ATTESTED` mediante flags, opciones, variables de entorno o mutación JSON sin firma Ed25519 válida.
+  - Las firmas de prueba (`src/test/helpers/fiscalEd25519Signer.ts`) llevan `signerOrigin: 'TEST_SIGNER'` y son rechazadas cuando `allowTestKeys` es `false` (`ATTESTATION_TEST_SIGNER_PROHIBITED`).
+  - `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` se mantiene invariablemente en `false` dado que ARCA WSFE devuelve XML SOAP plano sin firma digital de aplicación.
+- **Suite de Pruebas Adversariales y Build**:
+  - Casos adversariales `ADV-21` a `ADV-29` y prueba integral de `AttestationRequestPackage` (tests 75 a 84) en `src/test/fiscalPr02P0Collector.test.ts`.
+  - 84/84 tests PASS en `fiscalPr02P0Collector.test.ts`, 101/101 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+  - `npm run build` (`tsc -b && vite build`) y `run-pr02-p0-staging-private.ps1 -DryRun` PASS con código 0.
+- **Estado**:
+  - `PR02_P0_LOCAL_HARDENING = PASS`
+  - `ATTESTATION_REQUEST_CONTRACT = PASS`
+  - `INDEPENDENT_ATTESTATION_VERIFIER = PASS`
+  - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+  - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+  - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+  - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+  - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+  - `P1_IMPORT_ALLOWED = false`
+  - `REMOTE_GO = DENIED`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`
+  - `CAE_EMISSIONS_NEW = 0`

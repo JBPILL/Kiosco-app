@@ -1,4 +1,12 @@
-import type { Pr02P0OfficialEvidenceManifest } from './plan-pr02-parameters.d.mts'
+import type {
+  Pr02P0OfficialEvidenceManifest,
+  AttestationRequestPackage,
+} from './plan-pr02-parameters.d.mts'
+export {
+  createAttestationRequest,
+  validateAttestationRequest,
+  IndependentAttestationAuthority,
+} from './plan-pr02-parameters.d.mts'
 
 export const PR02_P0_SCOPE: string
 export const PR02_PARAMETERS_TARGET_PROJECT_REF: string
@@ -240,8 +248,11 @@ export interface Pr02P0ExecutionReport {
   readonly ANTI_REPLAY_GUARANTEE_LEVEL?: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
   readonly EVIDENCE_INTEGRITY?: 'PASS' | 'NOT_RUN' | 'FAIL'
   readonly EVIDENCE_CUSTODY_ATTESTED?: boolean
+  readonly ATTESTATION_TRUST_MODEL?: 'SELF_ATTESTED' | 'INDEPENDENT_ATTESTED' | 'UNVERIFIED'
   readonly TRUSTED_EXECUTION_BOUNDARY?: 'VERIFIED' | 'UNVERIFIED'
   readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED?: boolean
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE?: boolean
+  readonly P1_IMPORT_ALLOWED?: boolean
   readonly P0_PROVENANCE_TRUST_MODEL?: 'SELF_ATTESTED'
   readonly P1_OFFICIAL_PROVENANCE_TRUST?: 'LIMITED'
   readonly PR02_P0_REMOTE_EXECUTION_READY: boolean
@@ -258,6 +269,7 @@ export interface Pr02P0ExecutionReport {
   readonly UNAUTHORIZED_CONNECTION_ATTEMPTS?: number
   readonly auditCounts?: Pr02P0ExecutionAuditCounts
   readonly manifest?: Pr02P0OfficialEvidenceManifest
+  readonly attestationRequest?: AttestationRequestPackage
   readonly evidenceFiles?: readonly string[]
 }
 

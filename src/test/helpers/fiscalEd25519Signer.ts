@@ -6,6 +6,9 @@ import {
   PR02_PARAMETERS_TARGET_PROJECT_REF,
   PR02_P0_COLECTOR_IDENTIDAD,
   ANTI_REPLAY_GUARANTEE_LEVEL,
+  ATTESTATION_SIGNER_ORIGINS,
+  ATTESTATION_TRUST_MODELS,
+  type AttestationRequestPackage,
 } from '../../../scripts/fiscal/plan-pr02-parameters.mjs'
 
 export interface KeyPairPem {
@@ -134,7 +137,7 @@ export function createSignedTestPr02P0GoAuthorization(
 
 /**
  * Crea y firma una atestación independiente de adquisición de evidencia oficial P0
- * emitida por una entidad externa de atestación (Attestation Authority).
+ * emitida por una entidad externa de atestación (Attestation Authority) en entorno de pruebas.
  */
 export function createSignedTestIndependentAttestation(
   params: {
@@ -153,7 +156,12 @@ export function createSignedTestIndependentAttestation(
     condNormSha: string
     goAuthorizationId: string
     goAuthorizationSha256: string
+    requestId?: string
+    requestSha256?: string
+    manifestSha256?: string
+    signerOrigin?: 'TEST_SIGNER' | 'PRODUCTION_ATTESTATION_AUTHORITY'
     issuedAt?: string
+    expiresAt?: string
   },
   privateKeyInput: string | crypto.KeyObject
 ) {
@@ -179,11 +187,19 @@ export function createSignedTestIndependentAttestation(
     condNormSha: params.condNormSha,
     goAuthorizationId: params.goAuthorizationId,
     goAuthorizationSha256: params.goAuthorizationSha256,
+    ...(params.requestId ? { requestId: params.requestId } : {}),
+    ...(params.requestSha256 ? { requestSha256: params.requestSha256 } : {}),
+    ...(params.manifestSha256 ? { manifestSha256: params.manifestSha256 } : {}),
+    signerOrigin: params.signerOrigin || ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER,
     issuedAt,
+    ...(params.expiresAt ? { expiresAt: params.expiresAt } : {}),
     EVIDENCE_INTEGRITY: 'PASS' as const,
     EVIDENCE_CUSTODY_ATTESTED: true,
+    ATTESTATION_TRUST_MODEL: ATTESTATION_TRUST_MODELS.INDEPENDENT_ATTESTED,
     TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' as const,
     ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    INDEPENDENT_ATTESTATION_AVAILABLE: true,
+    P1_IMPORT_ALLOWED: true,
     trustModel: 'INDEPENDENT_ATTESTED',
     antiReplayGuarantee: ANTI_REPLAY_GUARANTEE_LEVEL,
   }
@@ -197,6 +213,55 @@ export function createSignedTestIndependentAttestation(
     accredited: true,
     provenance: 'VERIFIED',
   })
+}
+
+/**
+ * Crea y firma una atestación independiente directamente a partir de un
+ * `AttestationRequestPackage` en entorno de pruebas (`TEST_SIGNER`).
+ */
+export function createSignedTestAttestationFromRequest(
+  reqPkg: AttestationRequestPackage,
+  privateKeyInput: string | crypto.KeyObject,
+  overrides: Partial<{
+    commitSha: string
+    entorno: string
+    signerOrigin: 'TEST_SIGNER' | 'PRODUCTION_ATTESTATION_AUTHORITY'
+    issuedAt: string
+    expiresAt: string
+    requestSha256: string
+    manifestSha256: string
+  }> = {}
+) {
+  const ivaRaw = reqPkg.rawSoapArtifacts.find((a) => /tiposiva/i.test(a.name))
+  const condRaw = reqPkg.rawSoapArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+  const ivaNorm = reqPkg.normalizedArtifacts.find((a) => /tiposiva/i.test(a.name))
+  const condNorm = reqPkg.normalizedArtifacts.find((a) => /condicionivareceptor/i.test(a.name))
+
+  return createSignedTestIndependentAttestation(
+    {
+      processId: reqPkg.processId,
+      executionId: reqPkg.processId,
+      executionScope: reqPkg.executionScope,
+      commitSha: overrides.commitSha || reqPkg.commitSha,
+      consultadoEn: reqPkg.consultadoEn,
+      entorno: overrides.entorno || reqPkg.environment,
+      transportType: 'OFFICIAL',
+      executorIdentity: reqPkg.collectorIdentity,
+      ivaRawSha: ivaRaw?.sha256 || '',
+      ivaNormSha: ivaNorm?.sha256 || '',
+      condRawSha: condRaw?.sha256 || '',
+      condNormSha: condNorm?.sha256 || '',
+      goAuthorizationId: reqPkg.authorizationId,
+      goAuthorizationSha256: reqPkg.goAuthorizationDocumentSha256,
+      requestId: reqPkg.requestId,
+      requestSha256: overrides.requestSha256 || reqPkg.requestSha256,
+      manifestSha256: overrides.manifestSha256 || reqPkg.manifestSha256,
+      signerOrigin: overrides.signerOrigin || ATTESTATION_SIGNER_ORIGINS.TEST_SIGNER,
+      issuedAt: overrides.issuedAt,
+      expiresAt: overrides.expiresAt,
+    },
+    privateKeyInput
+  )
 }
 
 /**

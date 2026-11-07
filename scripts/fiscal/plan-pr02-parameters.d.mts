@@ -100,11 +100,86 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
 export const PR02_P0_AUTHORITY_ENV: string
 export const PR02_P0_GO_PUBLIC_KEY_ENV: string
 export const PR02_P0_ATTESTATION_PUBLIC_KEY_ENV: string
-export const PR02_P0_AUTHORITY_ENV: string
 export const PR02_P0_GO_AUTHORITY_ENV: string
 export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
 export const PR02_P0_COMPROMISED_KEYS: readonly string[]
 export const ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
+
+export const ATTESTATION_SIGNER_ORIGINS: {
+  readonly TEST_SIGNER: 'TEST_SIGNER'
+  readonly PRODUCTION_ATTESTATION_AUTHORITY: 'PRODUCTION_ATTESTATION_AUTHORITY'
+}
+
+export const ATTESTATION_TRUST_MODELS: {
+  readonly SELF_ATTESTED: 'SELF_ATTESTED'
+  readonly INDEPENDENT_ATTESTED: 'INDEPENDENT_ATTESTED'
+  readonly UNVERIFIED: 'UNVERIFIED'
+}
+
+export const EVIDENCE_INTEGRITY_STATES: {
+  readonly PASS: 'PASS'
+  readonly FAIL: 'FAIL'
+  readonly NOT_RUN: 'NOT_RUN'
+}
+
+export const TRUSTED_EXECUTION_BOUNDARY_STATES: {
+  readonly VERIFIED: 'VERIFIED'
+  readonly UNVERIFIED: 'UNVERIFIED'
+}
+
+export function verifyRuntimeSigningIsolation(options?: { fiscalScriptsDir?: string }): {
+  readonly valid: boolean
+  readonly reason?: string
+  readonly file?: string
+}
+export function assertRuntimeSigningIsolation(options?: { fiscalScriptsDir?: string }): void
+
+export interface AttestationRequestArtifact {
+  readonly name: string
+  readonly sha256: string
+}
+
+export interface AttestationRequestPackage {
+  readonly schemaVersion: '1.0'
+  readonly requestId: string
+  readonly processId: string
+  readonly executionScope: string
+  readonly commitSha: string
+  readonly environment: 'HOMOLOGACION'
+  readonly authorizationId: string
+  readonly goAuthorizationDocumentSha256: string
+  readonly manifestSha256: string
+  readonly rawSoapArtifacts: readonly AttestationRequestArtifact[]
+  readonly normalizedArtifacts: readonly AttestationRequestArtifact[]
+  readonly consultadoEn: string
+  readonly requestedAt: string
+  readonly collectorIdentity: string
+  readonly requestSha256: string
+}
+
+export function serializeCanonicalAttestationRequest(req: unknown): string
+export function computeAttestationRequestDigest(req: unknown): string
+export function validateAttestationRequest(
+  req: unknown,
+  options?: { expectedCommitSha?: string; manifest?: unknown }
+): {
+  readonly valid: true
+  readonly requestSha256: string
+  readonly canonicalJson: string
+}
+export function createAttestationRequest(params: {
+  manifest: unknown
+  commitSha?: string
+  authorizationId?: string
+  goAuthorizationDocumentSha256?: string
+  requestedAt?: string | number | Date
+  requestId?: string
+}): AttestationRequestPackage
+
+export function assertNoSelfAttestationElevation(
+  params?: Record<string, unknown>,
+  env?: Record<string, string | undefined>
+): void
 
 export function isTestAuthorityKey(secret: unknown): boolean
 export function parseEd25519PublicKey(raw: unknown, name?: string): import('node:crypto').KeyObject
@@ -202,14 +277,22 @@ export interface Pr02P0Attestation {
   readonly goAuthorizationId?: string | null
   readonly goAuthorizationSha256?: string | null
   readonly goAuthorization?: string | null
+  readonly requestId?: string
+  readonly requestSha256?: string
+  readonly manifestSha256?: string
+  readonly signerOrigin?: 'TEST_SIGNER' | 'PRODUCTION_ATTESTATION_AUTHORITY'
   readonly issuedAt: string
+  readonly expiresAt?: string
   readonly signature: string | null
   readonly accredited: boolean
   readonly provenance: string
-  readonly EVIDENCE_INTEGRITY?: 'PASS' | 'FAIL'
+  readonly EVIDENCE_INTEGRITY?: 'PASS' | 'FAIL' | 'NOT_RUN'
   readonly EVIDENCE_CUSTODY_ATTESTED?: boolean
+  readonly ATTESTATION_TRUST_MODEL?: 'SELF_ATTESTED' | 'INDEPENDENT_ATTESTED' | 'UNVERIFIED'
   readonly TRUSTED_EXECUTION_BOUNDARY?: 'VERIFIED' | 'UNVERIFIED'
   readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED?: boolean
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE?: boolean
+  readonly P1_IMPORT_ALLOWED?: boolean
   readonly trustModel?: string
   readonly antiReplayGuarantee?: string
 }
@@ -225,30 +308,90 @@ export function createP0Attestation(params?: {
   executorIdentity?: string
   operacionesWsfe?: readonly string[]
   now?: string | number | Date
+  env?: Record<string, string | undefined>
 }): Pr02P0Attestation
+
+export function verifyIndependentAttestation(
+  attestation: unknown,
+  options?: {
+    manifest?: unknown
+    attestationRequest?: unknown
+    commitSha?: string
+    trustedAttestationPublicKey?: unknown
+    authoritySecret?: unknown
+    trustedGoPublicKey?: unknown
+    trustedGoAuthoritySecret?: unknown
+    goAuthorizationId?: string
+    goAuthorizationSha256?: string
+    allowTestKeys?: boolean
+    fiscalScriptsDir?: string
+    now?: string | number | Date
+    env?: Record<string, string | undefined>
+  }
+): {
+  readonly valid: boolean
+  readonly reason?: string
+  readonly errorCategory?: string
+  readonly trustModel?: 'SELF_ATTESTED' | 'INDEPENDENT_ATTESTED' | 'UNVERIFIED'
+  readonly ATTESTATION_TRUST_MODEL?: 'SELF_ATTESTED' | 'INDEPENDENT_ATTESTED' | 'UNVERIFIED'
+  readonly EVIDENCE_INTEGRITY?: 'PASS' | 'FAIL' | 'NOT_RUN'
+  readonly EVIDENCE_CUSTODY_ATTESTED?: boolean
+  readonly TRUSTED_EXECUTION_BOUNDARY?: 'VERIFIED' | 'UNVERIFIED'
+  readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED?: false
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE?: boolean
+  readonly P1_IMPORT_ALLOWED?: boolean
+  readonly signerOrigin?: 'TEST_SIGNER' | 'PRODUCTION_ATTESTATION_AUTHORITY'
+}
 
 export function verifyP0Attestation(
   attestation: unknown,
   options?: {
     manifest?: unknown
+    attestationRequest?: unknown
     commitSha?: string
     trustedAttestationPublicKey?: unknown
     authoritySecret?: unknown
+    trustedGoPublicKey?: unknown
+    trustedGoAuthoritySecret?: unknown
     goAuthorizationId?: string
     goAuthorizationSha256?: string
     allowTestKeys?: boolean
+    fiscalScriptsDir?: string
+    now?: string | number | Date
+    env?: Record<string, string | undefined>
   }
-): { readonly valid: boolean; readonly reason?: string; readonly errorCategory?: string; readonly trustModel?: string }
+): ReturnType<typeof verifyIndependentAttestation>
 
-export interface AttestationAuthorityInterface {
+export interface IndependentAttestationAuthorityInterface {
+  readonly createAttestationRequest: typeof createAttestationRequest
+  readonly validateAttestationRequest: typeof validateAttestationRequest
+  readonly computeAttestationRequestDigest: typeof computeAttestationRequestDigest
+  readonly serializeCanonicalAttestationRequest: typeof serializeCanonicalAttestationRequest
+  readonly verifyIndependentAttestation: typeof verifyIndependentAttestation
+  readonly verifyAttestation: typeof verifyP0Attestation
   readonly validatePublicKey: typeof validateP0AttestationPublicKey
   readonly validateSecret: typeof validateP0AttestationPublicKey
+  readonly createSelfAttestation: typeof createP0Attestation
   readonly createAttestation: typeof createP0Attestation
-  readonly verifyAttestation: typeof verifyP0Attestation
-  readonly isAuthorityAvailable: (options?: { trustedAttestationPublicKey?: unknown; allowTestKeys?: boolean }) => boolean
+  readonly verifyRuntimeSigningIsolation: typeof verifyRuntimeSigningIsolation
+  readonly assertRuntimeSigningIsolation: typeof assertRuntimeSigningIsolation
+  readonly assertNoSelfAttestationElevation: typeof assertNoSelfAttestationElevation
+  readonly signProductionAttestation: () => never
+  readonly accessProductionPrivateKey: () => never
+  readonly generateTrustedIndependentAttestation: () => never
+  readonly isAuthorityAvailable: (options?: {
+    trustedAttestationPublicKey?: unknown
+    allowTestKeys?: boolean
+    independentAttestation?: unknown
+  }) => boolean
   readonly PUBLIC_KEY_ENV: string
   readonly AUTHORITY_ENV: string
+  readonly SIGNER_ORIGINS: typeof ATTESTATION_SIGNER_ORIGINS
+  readonly TRUST_MODELS: typeof ATTESTATION_TRUST_MODELS
 }
+
+export const IndependentAttestationAuthority: IndependentAttestationAuthorityInterface
+export type AttestationAuthorityInterface = IndependentAttestationAuthorityInterface
 export const AttestationAuthority: AttestationAuthorityInterface
 
 export interface Pr02P0OfficialEvidenceManifest {
@@ -320,15 +463,21 @@ export function validatePr02P1ImportEvidence(options?: {
   trustedGoAuthoritySecret?: unknown
   goAuthorizationDoc?: unknown
   independentAttestation?: unknown
+  attestationRequest?: unknown
   allowTestKeys?: boolean
   consumedAuthorizationsDir?: string
+  fiscalScriptsDir?: string
+  env?: Record<string, string | undefined>
   expectedHashes?: { iva?: string; condition?: string }
+  [key: string]: unknown
 }): {
   readonly status: 'PASS'
   readonly officialEvidenceVerified: true
-  readonly P1_IMPORT_ALLOWED?: boolean
+  readonly P1_IMPORT_ALLOWED: true
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE: true
   readonly EVIDENCE_INTEGRITY: 'PASS'
   readonly EVIDENCE_CUSTODY_ATTESTED: true
+  readonly ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED'
   readonly TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED'
   readonly ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false
   readonly trustModel: 'LIMITED'

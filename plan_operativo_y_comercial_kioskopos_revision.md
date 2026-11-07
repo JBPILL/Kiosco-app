@@ -2406,3 +2406,25 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `ARCA_CALLS_NEW = 0`
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
+
+- **Diseño e Implementación de la Frontera de Atestación Independiente PR02-P0 (07/11/2026)**:
+  - Contrato formal de `IndependentAttestationAuthority` y paquete canónico `AttestationRequestPackage` (`createAttestationRequest`, `validateAttestationRequest`, `computeAttestationRequestDigest`, `serializeCanonicalAttestationRequest`) sin secretos y con digest `requestSha256`.
+  - Aislamiento estricto del runtime fiscal (`verifyRuntimeSigningIsolation`): prohibición de claves privadas, llamadas de firma o importación de helpers de test en `scripts/fiscal/`.
+  - Prohibición de autoelevación (`assertNoSelfAttestationElevation`) de `SELF_ATTESTED` a `INDEPENDENT_ATTESTED` y rechazo de `TEST_SIGNER` en modo producción (`ATTESTATION_TEST_SIGNER_PROHIBITED`).
+  - Verificación de las 15 condiciones obligatorias en `verifyIndependentAttestation`, manteniendo `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED = false` dado que WSFE retorna XML SOAP sin firma digital de aplicación.
+  - Pruebas y Build: Casos adversariales `ADV-21` a `ADV-29` (tests 75 a 84) añadidos en `src/test/fiscalPr02P0Collector.test.ts`; 84/84 tests PASS en P0 y 101/101 tests PR02 totales PASS; `npm run build` y `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `ATTESTATION_REQUEST_CONTRACT = PASS`
+    - `INDEPENDENT_ATTESTATION_VERIFIER = PASS`
+    - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+    - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+    - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+    - `P1_IMPORT_ALLOWED = false`
+    - `REMOTE_GO = DENIED`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`

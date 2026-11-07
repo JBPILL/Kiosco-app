@@ -2438,6 +2438,28 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
       - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
       - `PR02_READY_FOR_EMISSION_GO = false`
 
+17. **Diseño e Implementación de la Frontera de Atestación Independiente PR02-P0 (07/11/2026)**:
+    - **Contrato Formal de `IndependentAttestationAuthority`**:
+      - Se define la frontera técnica entre el runtime fiscal (`scripts/fiscal/`) y una autoridad externa e independiente de atestación (`IndependentAttestationAuthority`).
+      - El runtime fiscal únicamente puede generar y validar solicitudes de atestación (`createAttestationRequest`, `validateAttestationRequest`, `computeAttestationRequestDigest`, `serializeCanonicalAttestationRequest`), verificar atestaciones con clave pública (`verifyIndependentAttestation`) y comprobar el aislamiento del directorio de runtime (`verifyRuntimeSigningIsolation`).
+      - El runtime fiscal tiene terminantemente prohibido poseer claves privadas o ejecutar firmas de producción (`signProductionAttestation`, `accessProductionPrivateKey`, `generateTrustedIndependentAttestation` arrojan `PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME` / `PRODUCTION_PRIVATE_KEY_FORBIDDEN_IN_RUNTIME`).
+    - **Paquete Canónico de Solicitud de Atestación (`AttestationRequestPackage`)**:
+      - Estructura determinística serializada canónicamente con digest SHA-256 (`requestSha256`) que vincula `schemaVersion` (`'1.0'`), `requestId`, `processId`, `executionScope` (`PR02_P0_OFFICIAL_EVIDENCE_COLLECTION`), `commitSha`, `environment` (`'HOMOLOGACION'`), `authorizationId`, `goAuthorizationDocumentSha256`, `manifestSha256`, `rawSoapArtifacts` (2 XML SOAP originales con sus hashes SHA-256), `normalizedArtifacts` (2 archivos normalizados con sus hashes SHA-256), `consultadoEn`, `requestedAt` y `collectorIdentity`.
+      - Rechaza en modo fail-closed cualquier secreto, token TA, CMS, clave privada o contraseña.
+    - **Distinción Estricta entre `SELF_ATTESTED` e `INDEPENDENT_ATTESTED`**:
+      - El colector P0 local solo puede emitir constancias `SELF_ATTESTED` (`INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`).
+      - Se prohíbe cualquier autoelevación (`assertNoSelfAttestationElevation`) mediante booleanos, opciones, variables de entorno o mutación directa de JSON sin firma criptográfica Ed25519 válida (`SELF_ATTESTATION_AUTO_ELEVATION_REJECTED`).
+      - Asimismo, las atestaciones generadas en pruebas llevan vinculado criptográficamente `signerOrigin: 'TEST_SIGNER'`, siendo rechazadas en modo producción (`allowTestKeys: false`) con `ATTESTATION_TEST_SIGNER_PROHIBITED`.
+      - El estado `ATTESTATION_TRUST_MODEL = 'INDEPENDENT_ATTESTED'` y `P1_IMPORT_ALLOWED = true` solo se alcanza cuando `verifyIndependentAttestation` comprueba las 15 condiciones obligatorias (firma Ed25519 válida, clave pública confiable, separación criptográfica `GO Authority != Attestation Authority`, coincidencia exacta de hashes de manifiesto, GO, XML SOAP crudos y normalizados, scope, commit SHA, entorno `HOMOLOGACION`, vigencia temporal, ausencia de reclamo fraudulento de firma ARCA y aislamiento estático del runtime fiscal sin claves privadas ni `.sign(`).
+    - **Por Qué `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` Permanece `false`**:
+      - Las respuestas SOAP de consulta de parámetros WSFE (`FEParamGetTiposIva`, `FEParamGetCondicionIvaReceptor`) son XML planos transportados sobre TLS y no traen una firma digital de aplicación emitida por ARCA sobre el cuerpo XML. Por honestidad criptográfica, `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` es siempre `false`, e intentar declararlo como `true` provoca rechazo inmediato (`FRAUDULENT_ARCA_CRYPTOGRAPHIC_VERIFICATION_CLAIM`).
+    - **Suite de Pruebas Adversariales y Validación**:
+      - 10 nuevas pruebas (casos 75 a 84, incluyendo `ADV-21` a `ADV-29`) en `src/test/fiscalPr02P0Collector.test.ts`.
+      - 84/84 tests PASS en `fiscalPr02P0Collector.test.ts` y 101/101 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+      - Compilación TypeScript (`tsc -b`) y build Vite (`npm run build`) exitosos con código 0.
+    - **Invariantes Preservados**:
+      - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`, `REMOTE_GO = DENIED`.
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:
