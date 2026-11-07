@@ -2421,6 +2421,23 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
       - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
       - `PR02_READY_FOR_EMISSION_GO = false`
 
+16. **Separación Criptográfica Cruzada Estricta de Autoridades PR02-P0 (07/11/2026)**:
+    - **Separación Criptográfica Estricta (GO Authority != Attestation Authority)**:
+      - `validatePr02P1ImportEvidence` verifica que las representaciones binarias DER (SPKI) de la clave pública de GO (`trustedGoPublicKey`) y de la clave pública de Atestación (`trustedAttestationPublicKey`) no sean idénticas.
+      - Si ambas claves coinciden, la importación se rechaza de plano con `P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas`.
+      - Esto impide que una única entidad o firmante concentre de manera unilateral tanto la aprobación administrativa (GO) como la acreditación técnica de custodia y procedencia (Attestation).
+    - **Suite de Pruebas Adversariales**:
+      - Se añadió la prueba de seguridad adversarial caso 73 (`[ADV-20]`) en `fiscalPr02P0Collector.test.ts` verificando el rechazo taxativo ante intento de colapso de claves de autoridad.
+      - 74/74 tests PASS en `fiscalPr02P0Collector.test.ts` y 91/91 tests PR02 totales PASS.
+      - Compilación TypeScript (`tsc -b`) y build Vite (`npm run build`) limpios con exit code 0.
+    - **Invariantes Preservados**:
+      - `ARCA_CALLS_NEW = 0`
+      - `STAGING_WRITES_NEW = 0`
+      - `PRODUCTION_MUTATIONS = 0`
+      - `REAL_PV2_ENABLED = false`
+      - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+      - `PR02_READY_FOR_EMISSION_GO = false`
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

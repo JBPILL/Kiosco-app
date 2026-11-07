@@ -2349,3 +2349,24 @@ Una auditoría técnica adversarial e independiente identificó seis hallazgos c
 **Consecuencias:**
 `PR02_P0_LOCAL_HARDENING = PASS`, `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`, `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`, `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
 73/73 tests PASS en `fiscalPr02P0Collector.test.ts`, 90/90 tests PR02 PASS. Build TypeScript limpio PASS. Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).
+
+## Separación Criptográfica Cruzada Estricta de Autoridades PR02-P0 (07/11/2026)
+
+**Contexto:**
+Durante la auditoría adversarial independiente del cierre de frontera PR02-P0, se identificó el riesgo de colapso de autoridades si una entidad o atacante pretendiera utilizar el mismo par de claves Ed25519 tanto para firmar la autorización administrativa (GO Authority) como para firmar la constancia técnica de procedencia y custodia (Attestation Authority). Aunque los validadores individuales verificaban firmas válidas, se requería una guarda explícita en tiempo de ejecución que asegurase la estricta no coincidencia de claves públicas entre ambas autoridades.
+
+**Decisión:**
+1. **Verificación Programática de No Coincidencia**:
+   - En `validatePr02P1ImportEvidence` de `scripts/fiscal/plan-pr02-parameters.mjs`, se comparan las representaciones binarias DER (SPKI) de `trustedGoPublicKey` y `trustedAttestationPublicKey`.
+   - Si ambas representaciones coinciden (`goDer.equals(attestationDer)`), la validación falla cerrado arrojando:
+     `P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas`.
+2. **Validación y Pruebas**:
+   - Se incorporó la prueba adversarial caso 73 (`[ADV-20]`) en `src/test/fiscalPr02P0Collector.test.ts`.
+   - 74/74 tests unitarios y de hardening en `fiscalPr02P0Collector.test.ts` PASS.
+   - 91/91 tests fiscales de PR02 totales PASS.
+   - `npx tsc -b` y `npm run build` (tsc -b && vite build) verificados con exit code 0.
+
+**Consecuencias:**
+Se garantiza criptográficamente que la aprobación administrativa y la atestación de procedencia provienen de entidades no colapsadas.
+`PR02_P0_LOCAL_HARDENING = PASS`, `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`, `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`, `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`, `PR02_P0_REMOTE_EXECUTION_READY = false`, `P0_REMOTE_EXECUTED = false`, `OFFICIAL_PROVENANCE = UNVERIFIED`, `PR02_P1_REMOTE_EXECUTION_READY = false`, `PR02_P2_REMOTE_EXECUTION_READY = false`, `REAL_PV2_ENABLED = false`, `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`, `PR02_READY_FOR_EMISSION_GO = false`.
+Cero llamadas ARCA (`ARCA_CALLS_NEW = 0`), cero escrituras Staging (`STAGING_WRITES_NEW = 0`), cero mutaciones Producción (`PRODUCTION_MUTATIONS = 0`).

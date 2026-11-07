@@ -1438,9 +1438,15 @@ export function validatePr02P1ImportEvidence(options = {}) {
   }
 
   // 5. Validación obligatoria del documento de autorización GO provisto
+  const trustedGoPublicKeyInput =
+    options.trustedGoPublicKey ||
+    options.trustedGoAuthoritySecret ||
+    process.env[PR02_P0_GO_PUBLIC_KEY_ENV] ||
+    process.env[PR02_P0_GO_AUTHORITY_ENV]
+
   const goCheck = validatePr02P0GoAuthorization(options.goAuthorizationDoc, {
     expectedHead,
-    trustedGoPublicKey: options.trustedGoPublicKey || options.trustedGoAuthoritySecret || process.env[PR02_P0_GO_PUBLIC_KEY_ENV] || process.env[PR02_P0_GO_AUTHORITY_ENV],
+    trustedGoPublicKey: trustedGoPublicKeyInput,
     allowTestKeys: Boolean(options.allowTestKeys),
     consumedAuthorizationsDir: options.consumedAuthorizationsDir,
     now,
@@ -1471,6 +1477,15 @@ export function validatePr02P1ImportEvidence(options = {}) {
 
   if (!trustedAttestationPublicKey) {
     throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_AUTHORITY_NOT_AVAILABLE: Se requiere clave pública de autoridad de atestación custodiada para verificar procedencia')
+  }
+
+  // Separación criptográfica estricta de autoridades: GO Authority vs Attestation Authority
+  const goKeyObj = validateP0GoPublicKey(trustedGoPublicKeyInput, Boolean(options.allowTestKeys))
+  const attestationKeyObj = validateP0AttestationPublicKey(trustedAttestationPublicKey, Boolean(options.allowTestKeys))
+  const goDer = goKeyObj.export({ format: 'der', type: 'spki' })
+  const attestationDer = attestationKeyObj.export({ format: 'der', type: 'spki' })
+  if (goDer.equals(attestationDer)) {
+    throw new Error('P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas')
   }
 
   const attestationCheck = verifyP0Attestation(targetAttestation, {

@@ -2225,6 +2225,25 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `ARCA_CALLS_NEW = 0`
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
+- **Separación Criptográfica Cruzada Estricta de Autoridades PR02-P0 (07/11/2026)**:
+  - Guarda en `validatePr02P1ImportEvidence` que compara representaciones binarias DER (SPKI) de `trustedGoPublicKey` y `trustedAttestationPublicKey`.
+  - Rechazo taxativo con `P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas` ante cualquier intento de utilizar el mismo par de claves para ambas funciones de confianza.
+  - Pruebas y Build: Caso adversarial 73 (`[ADV-20]`) añadido en `src/test/fiscalPr02P0Collector.test.ts`, 74/74 tests unitarios y de hardening en `fiscalPr02P0Collector.test.ts` PASS, 91/91 tests fiscales de PR02 totales PASS, `npm run build` PASS (tsc -b && vite build con exit code 0).
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+    - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+    - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
 - **Auditoría Adversarial y Separación Criptográfica Ed25519 de Autoridades PR02-P0 (06/11/2026)**:
   - Remediación de las 6 vulnerabilidades de frontera:
     1. Reemplazo de HMAC por Ed25519 nativo (RFC 8032, 128 hex): Clave privada GO aislada externamente, verificada con `PR02_P0_GO_PUBLIC_KEY`. Clave privada de Atestación aislada externamente, verificada con `PR02_P0_ATTESTATION_PUBLIC_KEY`.
@@ -2245,6 +2264,25 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `P0_FAKE_MANIFEST_REJECTED = PASS`
     - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
     - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+    - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+    - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+    - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+- **Separación Criptográfica Cruzada Estricta de Autoridades PR02-P0 (07/11/2026)**:
+  - Guarda en `validatePr02P1ImportEvidence` que compara representaciones binarias DER (SPKI) de `trustedGoPublicKey` y `trustedAttestationPublicKey`.
+  - Rechazo taxativo con `P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas` ante cualquier intento de utilizar el mismo par de claves para ambas funciones de confianza.
+  - Pruebas y Build: Caso adversarial 73 (`[ADV-20]`) añadido en `src/test/fiscalPr02P0Collector.test.ts`, 74/74 tests unitarios y de hardening en `fiscalPr02P0Collector.test.ts` PASS, 91/91 tests fiscales de PR02 totales PASS, `npm run build` PASS (tsc -b && vite build con exit code 0).
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
     - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
     - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
     - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
@@ -2297,6 +2335,25 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `ARCA_CALLS_NEW = 0`
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
+- **Separación Criptográfica Cruzada Estricta de Autoridades PR02-P0 (07/11/2026)**:
+  - Guarda en `validatePr02P1ImportEvidence` que compara representaciones binarias DER (SPKI) de `trustedGoPublicKey` y `trustedAttestationPublicKey`.
+  - Rechazo taxativo con `P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas` ante cualquier intento de utilizar el mismo par de claves para ambas funciones de confianza.
+  - Pruebas y Build: Caso adversarial 73 (`[ADV-20]`) añadido en `src/test/fiscalPr02P0Collector.test.ts`, 74/74 tests unitarios y de hardening en `fiscalPr02P0Collector.test.ts` PASS, 91/91 tests fiscales de PR02 totales PASS, `npm run build` PASS (tsc -b && vite build con exit code 0).
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+    - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+    - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
 - **Auditoría Adversarial y Separación Criptográfica Ed25519 de Autoridades PR02-P0 (06/11/2026)**:
   - Remediación de las 6 vulnerabilidades de frontera:
     1. Reemplazo de HMAC por Ed25519 nativo (RFC 8032, 128 hex): Clave privada GO aislada externamente, verificada con `PR02_P0_GO_PUBLIC_KEY`. Clave privada de Atestación aislada externamente, verificada con `PR02_P0_ATTESTATION_PUBLIC_KEY`.
@@ -2317,6 +2374,25 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `P0_FAKE_MANIFEST_REJECTED = PASS`
     - `P0_PRIVATE_EVIDENCE_STORAGE = PASS`
     - `P0_AUDIT_COUNTS_ACCURATE = PASS`
+    - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
+    - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
+    - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P0_REMOTE_EXECUTED = false`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+- **Separación Criptográfica Cruzada Estricta de Autoridades PR02-P0 (07/11/2026)**:
+  - Guarda en `validatePr02P1ImportEvidence` que compara representaciones binarias DER (SPKI) de `trustedGoPublicKey` y `trustedAttestationPublicKey`.
+  - Rechazo taxativo con `P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas` ante cualquier intento de utilizar el mismo par de claves para ambas funciones de confianza.
+  - Pruebas y Build: Caso adversarial 73 (`[ADV-20]`) añadido en `src/test/fiscalPr02P0Collector.test.ts`, 74/74 tests unitarios y de hardening en `fiscalPr02P0Collector.test.ts` PASS, 91/91 tests fiscales de PR02 totales PASS, `npm run build` PASS (tsc -b && vite build con exit code 0).
+  - Estado:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
     - `P0_PROVENANCE_TRUST_MODEL = SELF_ATTESTED`
     - `P1_OFFICIAL_PROVENANCE_TRUST = LIMITED`
     - `ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`

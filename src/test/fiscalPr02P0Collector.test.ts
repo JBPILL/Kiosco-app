@@ -2852,8 +2852,80 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(check.errorCategory).toBe('UNTRUSTED_SELF_ATTESTATION')
   })
 
+  // ADV-20: Separación criptográfica estricta de autoridades (GO Authority != Attestation Authority)
+  it('73. [ADV-20] Intento de colapsar autoridades usando la misma clave Ed25519 para GO y Attestation es rechazado con COLLAPSED_AUTHORITIES_REJECTED', () => {
+    const { publicKey: sharedPub, privateKey: sharedPriv } = generateEphemeralGoAuthorityKeyPair()
+    const ivaParsed = parseWsfeTiposIvaResponse(SYNTHETIC_TIPOS_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+    const condParsed = parseWsfeCondicionIvaReceptorResponse(SYNTHETIC_CONDICIONES_IVA_RESPONSE, '2026-11-05T01:00:00.000Z')
+
+    const goDoc = createSignedTestPr02P0GoAuthorization({
+      commit_sha: VALID_HEAD,
+      aprobador_identidad: 'COLLAPSED_AUTHORITY_ATTACKER',
+    }, sharedPriv)
+    const goAuthSha = createHash('sha256').update(JSON.stringify(goDoc.authorization)).digest('hex')
+
+    const ivaRawSha = createHash('sha256').update(SYNTHETIC_TIPOS_IVA_RESPONSE).digest('hex')
+    const ivaNormSha = createHash('sha256').update(ivaParsed.ivaText).digest('hex')
+    const condRawSha = createHash('sha256').update(SYNTHETIC_CONDICIONES_IVA_RESPONSE).digest('hex')
+    const condNormSha = createHash('sha256').update(condParsed.conditionText).digest('hex')
+
+    const manifestDraft = {
+      identificador_proceso: 'pid-collapsed-01',
+      ejecucion_autorizada_id: 'pid-collapsed-01',
+      ejecucion_autorizada_scope: PR02_P0_SCOPE,
+      consultado_en: '2026-11-05T01:00:00.000Z',
+      entorno: 'HOMOLOGACION',
+      iva_respuesta_original_sha256: ivaRawSha,
+      iva_archivo_normalizado_sha256: ivaNormSha,
+      condition_respuesta_original_sha256: condRawSha,
+      condition_archivo_normalizado_sha256: condNormSha,
+      colector_identidad: PR02_P0_COLECTOR_IDENTIDAD,
+    }
+
+    const attestation = createSignedTestIndependentAttestation({
+      processId: 'pid-collapsed-01',
+      commitSha: VALID_HEAD,
+      consultadoEn: '2026-11-05T01:00:00.000Z',
+      ivaRawSha,
+      ivaNormSha,
+      condRawSha,
+      condNormSha,
+      goAuthorizationId: goDoc.authorization.identificador,
+      goAuthorizationSha256: goAuthSha,
+      executorIdentity: PR02_P0_COLECTOR_IDENTIDAD,
+    }, sharedPriv)
+
+    const manifest = {
+      ...manifestDraft,
+      origen_verificado: WSFE_HOMO_URL,
+      operaciones: ['FEParamGetTiposIva', 'FEParamGetCondicionIvaReceptor'],
+      transporte_validado: true,
+      accredited: true,
+      transport_type: 'OFFICIAL',
+      go_authorization_id: goDoc.authorization.identificador,
+      go_authorization_sha256: goAuthSha,
+      attestation,
+      manifest_sha256: computeP0ManifestDigest({ ...manifestDraft, attestation }),
+    }
+
+    expect(() =>
+      validatePr02P1ImportEvidence({
+        manifest,
+        ivaText: ivaParsed.ivaText,
+        conditionText: condParsed.conditionText,
+        rawIvaSoapText: SYNTHETIC_TIPOS_IVA_RESPONSE,
+        rawConditionSoapText: SYNTHETIC_CONDICIONES_IVA_RESPONSE,
+        goAuthorizationDoc: goDoc,
+        trustedAttestationPublicKey: sharedPub,
+        trustedGoPublicKey: sharedPub,
+        expectedHead: VALID_HEAD,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+  })
+
   // ADV-19: Cero conexiones de red reales en todas las pruebas
-  it('73. [ADV-19] Auditoría de llamadas remotas: exactamente cero llamadas a ARCA/WSAA/WSFE y cero escrituras en staging', () => {
+  it('74. [ADV-19] Auditoría de llamadas remotas: exactamente cero llamadas a ARCA/WSAA/WSFE y cero escrituras en staging', () => {
     // Verificación estricta de variables y estados de entorno
     expect(process.env.ARCA_CALLS_NEW || '0').toBe('0')
     expect(process.env.STAGING_WRITES_NEW || '0').toBe('0')
