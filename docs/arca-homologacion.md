@@ -2593,6 +2593,60 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
         - 155. [EXT-REAL-12]: Adaptador técnico implementado pero sin aprovisionamiento real de autoridad externa independiente en producción: `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `P1_REMOTE_EXECUTION_READY = false`, `PR02_READY_FOR_EMISSION_GO = false`.
       - **Resultados de la Suite**: 155/155 tests PASS en `src/test/fiscalPr02P0Collector.test.ts` y 172/172 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
 
+23. **Preparación de Arquitectura e Implementación del Servicio de Autoridad de Atestación Externa Independiente (PR02-P0-PROV, 08/11/2026)**:
+    - **1. Arquitectura de Tres Dominios de Confianza Separados**:
+      - **A. PR02 Fiscal Runtime / Verifier**: Responsable de construir solicitudes (`createAttestationRequest`), validarlas (`validateAttestationRequest`), enviarlas (`submitAttestationRequest`), verificar criptográficamente respuestas (`verifyAttestationResponse`), consumirlas de forma durable (`consumeAttestationResponseDurable`) y validar evidencias para P1 (`validatePr02P1ImportEvidence`). Custodia únicamente clave pública, endpoint e identidad de la autoridad. Prohibido poseer claves privadas ni capacidades de firma de producción.
+      - **B. Independent Attestation Authority**: Servicio de atestación independiente externo (`POST /attestations`) que recibe solicitudes canónicas, comprueba la ausencia de secretos fiscales, valida exhaustivamente los hashes de los artefactos y del documento GO, construye respuestas canónicas determinísticas y firma con Ed25519 con su propia clave privada custodiada fuera del repositorio (`ExternalAuthoritySigner`).
+      - **C. GO Authority**: Autoridad externa de aprobación GO criptográfica y semánticamente segregada (`GO_AUTHORITY_ID != ATTESTATION_AUTHORITY_ID`, `GO_KEY_ID != ATTESTATION_KEY_ID`, `GO_PUBLIC_KEY != ATTESTATION_PUBLIC_KEY`). Cualquier colapso falla cerrado con `COLLAPSED_AUTHORITIES_REJECTED`.
+    - **2. Contrato de Servicio Externo (`POST /attestations`)**:
+      - `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION = '1.0'`.
+      - Prohibición estricta de secretos en payload: cualquier presencia de `token`, `sign`, `cms`, `password`, `secret`, `private key` o credenciales es rechazada inmediatamente con error 400 (`PROHIBITED_SECRET_DETECTED`).
+      - Validación canónica exhaustiva de solicitud: recomputación determinística de `requestSha256`, validación de estructura y artefactos, y rechazo de campos de elevación de confianza inyectados arbitrariamente por el cliente.
+      - Respuesta canónica determinística vinculada a `requestSha256`, `manifestSha256`, `commitSha`, `authorityId`, `keyId`, `attestationId` y payload firmado.
+    - **3. Gestión Segura de Clave Privada y Proveedor de Firma**:
+      - Abstracción explícita `ExternalAuthoritySigner`:
+        - `TEST_SIGNER`: Para tests y desarrollo local (`trustScope: 'TEST_ONLY'`, `isProductionReady: () => false`, `signerOrigin: 'TEST_SIGNER'`).
+        - `PRODUCTION_EXTERNAL_SIGNER`: Para producción, exige custodia externa real fuera del repositorio (KMS/HSM). Si no existe infraestructura externa aprovisionada, falla cerrado con `EXTERNAL_PRODUCTION_SIGNER_UNAVAILABLE`.
+      - Runtime fiscal en `scripts/fiscal/` libre de primitivas de firma de clave privada (`crypto.sign`, `crypto.createPrivateKey`), claves PEM privadas ni imports de helpers de firma (`verifyRuntimeSigningIsolation = PASS`).
+    - **4. Transporte HTTPS y Validación Fail-Closed (`executeHttpsAttestationTransport`)**:
+      - Endpoint HTTPS validado estrictamente con `validateAttestationEndpointUrl`.
+      - Timeout explícito configurable (por defecto 5000ms, aborta con `ATTESTATION_TRANSPORT_TIMEOUT`).
+      - Tamaño máximo de payload de respuesta configurable (por defecto 512 KB, aborta con `ATTESTATION_RESPONSE_OVERSIZED`).
+      - Validación de `Content-Type: application/json` y rechazo de HTTP != 200/201 (`ATTESTATION_TRANSPORT_HTTP_ERROR`).
+      - Cero reintentos automáticos que puedan duplicar consumos.
+    - **5. Batería de Pruebas Adversariales (`EXT-PROV-01` a `EXT-PROV-16`)**:
+      - 16 nuevas pruebas unitarias y adversariales añadidas (casos 156 a 171) en `src/test/fiscalPr02P0Collector.test.ts`:
+        - 156. [EXT-PROV-01]: Sin endpoint: `P1_IMPORT_ALLOWED = false`, `isEndpointConfigured() = false`, `submit` sin transporte falla cerrado.
+        - 157. [EXT-PROV-02]: Endpoint configurado sin clave pública autorizada -> falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`.
+        - 158. [EXT-PROV-03]: Clave pública sin `authorityId` autorizado -> falla cerrado con `ATTESTATION_AUTHORITY_MISMATCH`.
+        - 159. [EXT-PROV-04]: Respuesta con firma Ed25519 alterada -> rechazada con `ATTESTATION_SIGNATURE_INVALID`.
+        - 160. [EXT-PROV-05]: Respuesta firmada por clave no fijada -> falla cerrado con `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+        - 161. [EXT-PROV-06]: Sustitución de clave pública en configuración o verificación -> `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+        - 162. [EXT-PROV-07]: Colapso de Autoridad GO con Autoridad de Atestación -> `COLLAPSED_AUTHORITIES_REJECTED`.
+        - 163. [EXT-PROV-08]: Inyección de clave privada en adaptador o variables de runtime -> `RUNTIME_PRIVATE_KEY_DETECTED`.
+        - 164. [EXT-PROV-09]: Timeout de transporte HTTPS hacia autoridad externa -> falla cerrado con `ATTESTATION_TRANSPORT_TIMEOUT`, sin reintentos, `P1_IMPORT_ALLOWED = false`.
+        - 165. [EXT-PROV-10]: Respuestas HTTP inválidas (status 500, Content-Type no JSON, JSON inválido o sobredimensionado) fallan cerrado.
+        - 166. [EXT-PROV-11]: Respuesta con `requestSha256` alterado es rechazada con `ATTESTATION_REQUEST_MISMATCH` / `ATTESTATION_REQUEST_SHA256_MISMATCH`.
+        - 167. [EXT-PROV-12]: Respuesta con `manifestSha256` alterado es rechazada con `ATTESTATION_MANIFEST_MISMATCH` / `ATTESTATION_MANIFEST_SHA256_MISMATCH`.
+        - 168. [EXT-PROV-13]: Replay de respuesta tras consumo durable es bloqueado con `ATTESTATION_RESPONSE_REPLAY_DETECTED`.
+        - 169. [EXT-PROV-14]: Respuesta válida requiere VERIFY antes de CONSUME: verify es puro e idempotente, consume muta durablemente.
+        - 170. [EXT-PROV-15]: Test signer produce `trustScope = TEST_ONLY`, `PRODUCTION_ATTESTED = false` y `P1_IMPORT_ALLOWED = false`.
+        - 171. [EXT-PROV-16]: Ningún campo recibido desde transporte puede autoelevar directamente `P1_IMPORT_ALLOWED = true`.
+      - **Resultados de la Suite**: 171/171 tests PASS en `src/test/fiscalPr02P0Collector.test.ts` y 188/188 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+    - **6. Disponibilidad Honesta Acreditada**:
+      - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+      - `EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED = true`
+      - `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = false` (o `true` si se define URL en runtime)
+      - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+      - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+      - `P1_IMPORT_ALLOWED = false`
+      - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+      - `OFFICIAL_PROVENANCE = UNVERIFIED`
+      - `P0_REMOTE_EXECUTED = false`
+      - `P1_REMOTE_EXECUTION_READY = false`
+      - `PR02_READY_FOR_EMISSION_GO = false`
+      - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`.
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

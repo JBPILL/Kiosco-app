@@ -1693,3 +1693,52 @@ Remediación criptográfica y adversarial de las 6 vulnerabilidades de frontera 
   - `STAGING_WRITES_NEW = 0`
   - `PRODUCTION_MUTATIONS = 0`
   - `CAE_EMISSIONS_NEW = 0`
+
+
+### FASE: PR02-P0-PROV — Preparación del Servicio de Autoridad de Atestación Externa Independiente y Transporte HTTPS (08/11/2026)
+
+- **Objetivo**: Implementar formalmente la preparación del servicio externo canónico de atestación (`POST /attestations`, versión de contrato `1.0`), el cliente de transporte HTTPS (`executeHttpsAttestationTransport`) con validación de URL WHATWG, límite de tamaño (512 KiB), Content-Type estricto, timeout explícito (5s) y fail-closed sin reintentos automáticos, la abstracción del proveedor de firma (`ExternalAuthoritySigner`), y la batería adversarial exhaustiva `EXT-PROV-01` a `EXT-PROV-16` (casos 156 a 171 en `src/test/fiscalPr02P0Collector.test.ts`), manteniendo un total de 188/188 pruebas PR02 en PASS y garantizando `AUTHORITY_REAL_WORLD_AVAILABLE = false` y `INDEPENDENT_ATTESTATION_AVAILABLE = false`.
+- **Componentes Implementados**:
+  - `EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED = true` y función de inspección `isAttestationEndpointConfigured(options)`.
+  - Abstracción de firma `createExternalAuthoritySigner(config)`: `TEST_SIGNER` con `trustScope = 'TEST_ONLY'`, rechazo estricto de claves privadas para entornos de producción en memoria del host (`PRODUCTION_EXTERNAL_SIGNER` exige custodia/KMS/HSM externo).
+  - Servicio Canónico `createExternalAttestationAuthorityService(options)`: implementa `POST /attestations`, valida `manifestSha256` y `requestSha256`, rechaza credenciales/secretos en paquetes entrantes, genera respuestas inmutables canónicas firmadas determinísticamente en Ed25519.
+  - Cliente de Transporte HTTPS `executeHttpsAttestationTransport(endpointUrl, requestPkg, options)`: validación estricta de protocolo HTTPS, abort por timeout con `ATTESTATION_TRANSPORT_TIMEOUT`, validación de `content-type: application/json`, límite de carga útil (512 KiB) con `ATTESTATION_PAYLOAD_TOO_LARGE`, cero reintentos automáticos.
+  - Integración en `submitAttestationRequest(requestPkg, adapterOrConfig)`: invocación transparente de transporte HTTPS cuando hay endpoint configurado y no se inyecta transporte alternativo en tests.
+- **Suite de Pruebas Adversariales (`EXT-PROV-01` a `EXT-PROV-16`, casos 156 a 171)**:
+  - 156. [EXT-PROV-01]: Sin endpoint: `P1_IMPORT_ALLOWED = false`, `isEndpointConfigured() = false`, `submit` sin transporte falla cerrado.
+  - 157. [EXT-PROV-02]: Endpoint configurado sin clave pública autorizada -> falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`.
+  - 158. [EXT-PROV-03]: Clave pública sin `authorityId` autorizado -> falla cerrado con `ATTESTATION_AUTHORITY_MISMATCH`.
+  - 159. [EXT-PROV-04]: Respuesta con firma Ed25519 alterada -> rechazada con `ATTESTATION_SIGNATURE_INVALID`.
+  - 160. [EXT-PROV-05]: Respuesta firmada por clave no fijada -> falla cerrado con `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+  - 161. [EXT-PROV-06]: Sustitución de clave pública en configuración o verificación -> `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+  - 162. [EXT-PROV-07]: Colapso de Autoridad GO con Autoridad de Atestación -> `COLLAPSED_AUTHORITIES_REJECTED`.
+  - 163. [EXT-PROV-08]: Inyección de clave privada en adaptador o variables de runtime -> `RUNTIME_PRIVATE_KEY_DETECTED`.
+  - 164. [EXT-PROV-09]: Timeout de transporte HTTPS hacia autoridad externa -> falla cerrado con `ATTESTATION_TRANSPORT_TIMEOUT`, sin reintentos, `P1_IMPORT_ALLOWED = false`.
+  - 165. [EXT-PROV-10]: Respuestas HTTP inválidas (status 500, Content-Type no JSON, JSON inválido o sobredimensionado) fallan cerrado.
+  - 166. [EXT-PROV-11]: Respuesta con `requestSha256` alterado es rechazada con `ATTESTATION_REQUEST_MISMATCH` / `ATTESTATION_REQUEST_SHA256_MISMATCH`.
+  - 167. [EXT-PROV-12]: Respuesta con `manifestSha256` alterado es rechazada con `ATTESTATION_MANIFEST_MISMATCH` / `ATTESTATION_MANIFEST_SHA256_MISMATCH`.
+  - 168. [EXT-PROV-13]: Replay de respuesta tras consumo durable es bloqueado con `ATTESTATION_RESPONSE_REPLAY_DETECTED`.
+  - 169. [EXT-PROV-14]: Respuesta válida requiere VERIFY antes de CONSUME: verify es puro e idempotente, consume muta durablemente.
+  - 170. [EXT-PROV-15]: Test signer produce `trustScope = TEST_ONLY`, `PRODUCTION_ATTESTED = false` y `P1_IMPORT_ALLOWED = false`.
+  - 171. [EXT-PROV-16]: Ningún campo recibido desde transporte puede autoelevar directamente `P1_IMPORT_ALLOWED = true`.
+- **Resultados de Validación**:
+  - 171/171 tests PASS en `src/test/fiscalPr02P0Collector.test.ts`.
+  - 188/188 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+  - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+  - `verifyRuntimeSigningIsolation()` PASS (`RUNTIME_SIGNING_ISOLATED`, `privateKeysDetected = 0`).
+- **Estado Técnico Confirmado**:
+  - `EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED = true`
+  - `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = false`
+  - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+  - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+  - `P1_IMPORT_ALLOWED = false`
+  - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+  - `P0_REMOTE_EXECUTED = false`
+  - `P1_REMOTE_EXECUTION_READY = false`
+  - `P2_REMOTE_EXECUTION_READY = false`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - `REAL_PV2_ENABLED = false`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`
+  - `CAE_EMISSIONS_NEW = 0`

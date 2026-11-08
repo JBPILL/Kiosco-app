@@ -12,6 +12,8 @@ import {
   computePublicKeyId,
   serializeCanonicalAttestationResponsePayload,
   computeAttestationResponsePayloadDigest,
+  createExternalAuthoritySigner,
+  createExternalAttestationAuthorityService,
   type AttestationRequestPackage,
   type AttestationResponse,
   type AttestationAuthorityType,
@@ -390,6 +392,45 @@ export function createTestIndependentAttestationAuthority(options?: {
         issuedAt: options?.issuedAt,
         ...overrides,
       }),
+  })
+}
+
+/**
+ * Crea un `ExternalAuthoritySigner` de pruebas (`TEST_SIGNER`) respaldado por un par efímero Ed25519.
+ */
+export function createTestAuthoritySigner(options?: {
+  authorityId?: string
+  keyPair?: KeyPairPem
+  keyId?: string
+}) {
+  const keyPair = options?.keyPair || generateEphemeralAttestationKeyPair()
+  const authorityId = options?.authorityId || 'test-independent-attestation-authority-v1'
+  const keyId = options?.keyId || computePublicKeyId(keyPair.publicKey)
+
+  return createExternalAuthoritySigner({
+    signerType: 'TEST_SIGNER',
+    allowTestKeys: true,
+    authorityId,
+    keyId,
+    publicKeySpki: keyPair.publicKey,
+    sign: (canonicalPayload: string) => signEd25519(canonicalPayload, keyPair.privateKey),
+  })
+}
+
+/**
+ * Crea una instancia de servicio de atestación externa de prueba (`POST /attestations`).
+ */
+export function createTestExternalAttestationService(options?: {
+  authorityId?: string
+  keyPair?: KeyPairPem
+  keyId?: string
+}) {
+  const signer = createTestAuthoritySigner(options)
+  return createExternalAttestationAuthorityService({
+    signer,
+    authorityId: signer.authorityId || 'test-independent-attestation-authority-v1',
+    keyId: signer.keyId || undefined,
+    publicKeySpki: signer.publicKeySpki || undefined,
   })
 }
 

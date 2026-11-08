@@ -2565,3 +2565,44 @@ Tras formalizar la arquitectura y el contrato de transporte de `IndependentAttes
 - `P1_REMOTE_EXECUTION_READY = false`
 - `PR02_READY_FOR_EMISSION_GO = false`
 - `STOP = AWAITING EXPLICIT DECISION ON EXTERNAL AUTHORITY PROVISIONING ENVIRONMENT`
+
+## Preparación e Implementación del Servicio de Autoridad de Atestación Externa Independiente (PR02-P0-PROV, 08/11/2026)
+
+**Contexto:**
+Tras establecer el aprovisionamiento de frontera en PR02-P0-EXT, correspondía diseñar e implementar el servicio externo canónico (`POST /attestations`), el cliente de transporte HTTPS con timeouts y fallas cerradas, la abstracción del proveedor de firma (`ExternalAuthoritySigner`) y la batería adversarial exhaustiva (`EXT-PROV-01` a `EXT-PROV-16`).
+
+**Alternativas consideradas:**
+1. *Permitir que el runtime fiscal firme respuestas o guarde claves privadas de producción*: Descartado tajantemente por violar el aislamiento de autoridad y la regla de separación de dominios.
+2. *Realizar llamadas de red implícitas con reintentos automáticos*: Descartado porque podría duplicar solicitudes de atestación y violar las garantías de idempotencia y un solo uso.
+3. *Implementar un servicio canónico formal con contrato POST /attestations (`createExternalAttestationAuthorityService`), un cliente HTTPS con validación estricta de TLS, timeout de 5s, tamaño máximo de 512KB y Content-Type application/json (`executeHttpsAttestationTransport`), una abstracción de firma segregada (`createExternalAuthoritySigner`), y 16 pruebas adversariales exhaustivas (`EXT-PROV-01` a `EXT-PROV-16`)*: Seleccionada por garantizar estricta separación de los tres dominios de confianza, fail-closed y honestidad de disponibilidad.
+
+**Decisión:**
+1. **Arquitectura de Tres Dominios de Confianza**:
+   - A. *PR02 Fiscal Runtime / Verifier*: Solo verifica, consume en almacenamiento durable y nunca firma producción.
+   - B. *Independent Attestation Authority*: Servicio canónico `POST /attestations` con validación estricta de solicitud y firma Ed25519 segregada.
+   - C. *GO Authority*: Segregada criptográfica y semánticamente de la Attestation Authority.
+2. **Servicio Externo y Transporte HTTPS**:
+   - `EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED = true`.
+   - `createExternalAttestationAuthorityService`: verifica hashes canónicos y prohíbe secretos fiscales en solicitudes.
+   - `executeHttpsAttestationTransport`: timeout de 5000ms, límite de 512KB, Content-Type `application/json`, cero reintentos.
+3. **Proveedor de Firma `ExternalAuthoritySigner`**:
+   - Distinción entre `TEST_SIGNER` (`trustScope: 'TEST_ONLY'`) y `PRODUCTION_EXTERNAL_SIGNER` (exige custodia externa fuera del repo; falla cerrado si no existe).
+4. **Batería de Pruebas `EXT-PROV-01` a `EXT-PROV-16` (casos 156 a 171)**:
+   - 16 nuevas pruebas unitarias y adversariales en `src/test/fiscalPr02P0Collector.test.ts`.
+   - 171/171 tests PASS en `fiscalPr02P0Collector.test.ts` y 188/188 tests PR02 totales PASS.
+5. **Estado y Disponibilidad Honesta**:
+   - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+   - `EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED = true`
+   - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+   - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+   - `P1_IMPORT_ALLOWED = false`
+
+**Consecuencias:**
+- `EXTERNAL_AUTHORITY_PROVISIONING_PREPARATION = PASS`
+- `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+- `EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED = true`
+- `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = false`
+- `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+- `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+- `P1_IMPORT_ALLOWED = false`
+- `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`

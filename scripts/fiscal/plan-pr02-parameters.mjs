@@ -56,6 +56,7 @@ export function isTestAuthorityKey(secret) {
 export const ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 
 export const AUTHORITY_ADAPTER_IMPLEMENTED = true
+export const EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED = true
 export const AUTHORITY_REAL_WORLD_AVAILABLE = false
 
 /**
@@ -2898,6 +2899,7 @@ export function verifyAttestationResponse(response, options = {}) {
       return Object.freeze({
         ...deniedBase,
         reason: 'ATTESTATION_REQUEST_MISMATCH',
+        errorCategory: 'ATTESTATION_REQUEST_SHA256_MISMATCH',
         detail: 'requestSha256 o requestId de la respuesta no coincide con el AttestationRequestPackage',
       })
     }
@@ -2906,6 +2908,7 @@ export function verifyAttestationResponse(response, options = {}) {
       return Object.freeze({
         ...deniedBase,
         reason: 'ATTESTATION_MANIFEST_MISMATCH',
+        errorCategory: 'ATTESTATION_MANIFEST_SHA256_MISMATCH',
         detail: 'manifestSha256 de la respuesta no coincide con el manifestSha256 de la solicitud',
       })
     }
@@ -3660,6 +3663,264 @@ export const IndependentAttestationAuthorityTransportContract = Object.freeze({
 })
 
 /**
+ * Consulta si un endpoint de autoridad de atestación está configurado en opciones o entorno.
+ */
+export function isAttestationEndpointConfigured(options = {}) {
+  const env = options.env || process.env
+  const ep = options.endpoint || options.endpointUrl || (env && env[PR02_P0_ATTESTATION_ENDPOINT_ENV])
+  return Boolean(ep && typeof ep === 'string' && ep.trim().length > 0)
+}
+
+/**
+ * Proveedor y abstracción de firma para la Autoridad de Atestación Independiente externa.
+ * Mantiene estricto aislamiento: el runtime fiscal no contiene claves privadas ni capacidades de firma de producción.
+ */
+export function createExternalAuthoritySigner(config = {}) {
+  if (!config || typeof config !== 'object') {
+    throw new Error('EXTERNAL_AUTHORITY_SIGNER_CONFIG_INVALID: Configuración inválida para proveedor de firma')
+  }
+
+  const signerType = config.signerType || (config.allowTestKeys || config.isTestSigner ? 'TEST_SIGNER' : 'PRODUCTION_EXTERNAL_SIGNER')
+  const authorityId = config.authorityId || (signerType === 'TEST_SIGNER' ? 'test-independent-attestation-authority-v1' : null)
+
+  if (signerType === 'TEST_SIGNER') {
+    const keyId = config.keyId || null
+    const publicKeySpki = config.publicKeySpki || null
+    const signFn = config.sign || config.signPayload
+
+    return Object.freeze({
+      signerType: 'TEST_SIGNER',
+      trustScope: 'TEST_ONLY',
+      signerOrigin: 'TEST_SIGNER',
+      authorityId,
+      keyId,
+      publicKeySpki,
+      algorithm: 'Ed25519',
+      isProductionReady: () => false,
+      sign: (canonicalPayload) => {
+        if (typeof signFn !== 'function') {
+          throw new Error('TEST_SIGNER_SIGN_FUNCTION_REQUIRED: Se requiere función de firma externa para test signer')
+        }
+        return signFn(canonicalPayload)
+      },
+    })
+  }
+
+  // PRODUCTION_EXTERNAL_SIGNER: requiere custodio externo fuera del repositorio
+  const externalSignProvider = config.externalSignProvider || null
+  const isCustodyAvailable = Boolean(externalSignProvider && typeof externalSignProvider.sign === 'function')
+
+  return Object.freeze({
+    signerType: 'PRODUCTION_EXTERNAL_SIGNER',
+    trustScope: 'PRODUCTION',
+    signerOrigin: 'PRODUCTION_ATTESTATION_AUTHORITY',
+    authorityId: config.authorityId || null,
+    keyId: config.keyId || null,
+    publicKeySpki: config.publicKeySpki || null,
+    algorithm: 'Ed25519',
+    isProductionReady: () => isCustodyAvailable,
+    sign: (canonicalPayload) => {
+      if (!isCustodyAvailable) {
+        throw new Error('EXTERNAL_PRODUCTION_SIGNER_UNAVAILABLE: No existe infraestructura de custodia externa para clave privada de producción')
+      }
+      return externalSignProvider.sign(canonicalPayload)
+    },
+  })
+}
+
+/**
+ * Implementa el servicio externo canónico de Autoridad de Atestación Independiente (POST /attestations).
+ * Recibe únicamente datos necesarios, rechaza secretos fiscales, valida exhaustivamente la solicitud
+ * canónica y construye una respuesta determinística firmada con Ed25519.
+ */
+export function createExternalAttestationAuthorityService(options = {}) {
+  if (!options || typeof options !== 'object') {
+    throw new Error('EXTERNAL_AUTHORITY_SERVICE_CONFIG_INVALID')
+  }
+
+  const signer = options.signer
+  if (!signer || typeof signer !== 'object' || typeof signer.sign !== 'function') {
+    throw new Error('EXTERNAL_AUTHORITY_SIGNER_REQUIRED: Se requiere un proveedor ExternalAuthoritySigner para el servicio')
+  }
+
+  const authorityId = options.authorityId || signer.authorityId
+  if (!authorityId || typeof authorityId !== 'string' || authorityId.trim().length === 0) {
+    throw new Error('EXTERNAL_AUTHORITY_ID_REQUIRED: Se requiere authorityId no vacío')
+  }
+
+  const keyId = options.keyId || signer.keyId
+  const publicKeySpki = options.publicKeySpki || signer.publicKeySpki
+
+  return Object.freeze({
+    serviceVersion: '1.0',
+    transportContract: IndependentAttestationAuthorityTransportContract,
+    authorityId,
+    keyId,
+    publicKeySpki,
+    signerType: signer.signerType,
+    trustScope: signer.trustScope,
+    isProductionReady: () => Boolean(signer.isProductionReady && signer.isProductionReady()),
+    handleRequest: async (rawBodyOrPkg) => {
+      let pkg = rawBodyOrPkg
+      if (typeof pkg === 'string') {
+        const lower = pkg.toLowerCase()
+        for (const forbidden of IndependentAttestationAuthorityTransportContract.prohibitedPayloadFields) {
+          if (lower.includes(forbidden)) {
+            throw new Error(`PROHIBITED_SECRET_DETECTED: La solicitud de atestación contiene secretos o credenciales prohibidas ('${forbidden}')`)
+          }
+        }
+        try {
+          pkg = JSON.parse(pkg)
+        } catch (err) {
+          throw new Error(`ATTESTATION_REQUEST_INVALID_JSON: ${err.message}`)
+        }
+      }
+
+      if (!pkg || typeof pkg !== 'object' || Array.isArray(pkg)) {
+        throw new Error('ATTESTATION_REQUEST_INVALID_FORMAT: Se requiere objeto JSON estructurado')
+      }
+
+      const serializedLower = JSON.stringify(pkg).toLowerCase()
+      for (const forbidden of IndependentAttestationAuthorityTransportContract.prohibitedPayloadFields) {
+        if (serializedLower.includes(forbidden)) {
+          throw new Error(`PROHIBITED_SECRET_DETECTED: La solicitud de atestación contiene secretos o credenciales prohibidas ('${forbidden}')`)
+        }
+      }
+
+      validateAttestationRequest(pkg)
+
+      const computedReqSha = computeAttestationRequestDigest(pkg)
+      if (pkg.requestSha256 !== computedReqSha) {
+        throw new Error(`ATTESTATION_REQUEST_SHA256_MISMATCH: requestSha256 provisto ('${pkg.requestSha256}') no coincide con el digest canónico ('${computedReqSha}')`)
+      }
+
+      if (pkg.P1_IMPORT_ALLOWED !== undefined || pkg.accredited !== undefined || pkg.PRODUCTION_ATTESTED !== undefined) {
+        throw new Error('UNEXPECTED_REQUEST_FIELD: La solicitud intenta inyectar campos de confianza no permitidos')
+      }
+
+      const responseId = `att-res-${randomUUID()}`
+      const effectiveAuthorityType =
+        signer.signerType === 'PRODUCTION_EXTERNAL_SIGNER'
+          ? ATTESTATION_AUTHORITY_TYPES.INDEPENDENT_EXTERNAL_AUTHORITY
+          : ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY
+
+      const draft = {
+        schemaVersion: '1.0',
+        responseId,
+        attestationId: responseId,
+        authorityType: effectiveAuthorityType,
+        authorityId,
+        keyId,
+        algorithm: 'Ed25519',
+        requestId: pkg.requestId,
+        requestSha256: pkg.requestSha256,
+        manifestSha256: pkg.manifestSha256,
+        processId: pkg.processId,
+        executionScope: pkg.executionScope,
+        commitSha: String(pkg.commitSha).toLowerCase(),
+        environment: pkg.environment,
+        authorizationId: pkg.authorizationId,
+        goAuthorizationDocumentSha256: pkg.goAuthorizationDocumentSha256,
+        rawSoapArtifacts: pkg.rawSoapArtifacts,
+        normalizedArtifacts: pkg.normalizedArtifacts,
+        consultadoEn: pkg.consultadoEn,
+        issuedAt: new Date().toISOString(),
+        signerOrigin: signer.signerOrigin || (signer.signerType === 'PRODUCTION_EXTERNAL_SIGNER' ? 'PRODUCTION_ATTESTATION_AUTHORITY' : 'TEST_SIGNER'),
+      }
+
+      const canonicalPayload = serializeCanonicalAttestationResponsePayload(draft)
+      const attestationPayloadSha256 = computeAttestationResponsePayloadDigest(draft)
+      const signature = signer.sign(canonicalPayload)
+
+      return Object.freeze({
+        ...draft,
+        attestationPayloadSha256,
+        signature,
+      })
+    },
+  })
+}
+
+/**
+ * Cliente de transporte HTTPS del runtime fiscal para comunicarse con la Autoridad de Atestación Independiente externa.
+ * Valida endpoint HTTPS, timeout explícito, tamaño máximo, Content-Type, y rechaza HTTP inesperado o JSON inválido con cero reintentos.
+ */
+export async function executeHttpsAttestationTransport(endpointUrl, requestPkg, options = {}) {
+  const validatedUrl = validateAttestationEndpointUrl(endpointUrl, {
+    allowHttp: Boolean(options.allowHttp),
+  })
+
+  validateAttestationRequest(requestPkg)
+
+  const timeoutMs = typeof options.timeoutMs === 'number' && options.timeoutMs > 0 ? options.timeoutMs : 5000
+  const maxResponseSizeBytes = typeof options.maxResponseSizeBytes === 'number' && options.maxResponseSizeBytes > 0 ? options.maxResponseSizeBytes : 524288
+
+  const fetchFn = options.fetchImpl || globalThis.fetch
+  if (typeof fetchFn !== 'function') {
+    throw new Error('ATTESTATION_TRANSPORT_ERROR: Función fetch no disponible en el entorno')
+  }
+
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => {
+    controller.abort(new Error(`Timeout de transporte hacia la autoridad de atestación externa (${timeoutMs}ms)`))
+  }, timeoutMs)
+
+  let res
+  try {
+    res = await fetchFn(validatedUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(requestPkg),
+      signal: controller.signal,
+    })
+  } catch (err) {
+    clearTimeout(timeoutId)
+    if (err?.name === 'AbortError' || controller.signal.aborted || (err?.message && err.message.includes('Timeout'))) {
+      throw new Error(`ATTESTATION_TRANSPORT_TIMEOUT: Timeout de transporte hacia la autoridad de atestación externa (${timeoutMs}ms)`)
+    }
+    throw new Error(`ATTESTATION_TRANSPORT_NETWORK_ERROR: Error de conexión hacia '${validatedUrl}': ${err?.message || String(err)}`)
+  } finally {
+    clearTimeout(timeoutId)
+  }
+
+  if (res.status !== 200 && res.status !== 201) {
+    throw new Error(`ATTESTATION_TRANSPORT_HTTP_ERROR: Error HTTP ${res.status} recibido desde la autoridad de atestación externa`)
+  }
+
+  const contentType = (res.headers && typeof res.headers.get === 'function' ? res.headers.get('content-type') : '') || ''
+  if (!contentType.toLowerCase().includes('application/json')) {
+    throw new Error(`ATTESTATION_TRANSPORT_CONTENT_TYPE_INVALID: Content-Type '${contentType}' no es application/json`)
+  }
+
+  let text
+  try {
+    text = await res.text()
+  } catch (err) {
+    throw new Error(`ATTESTATION_TRANSPORT_READ_ERROR: Error al leer cuerpo de respuesta: ${err?.message || String(err)}`)
+  }
+
+  if (Buffer.byteLength(text, 'utf8') > maxResponseSizeBytes) {
+    throw new Error(`ATTESTATION_RESPONSE_OVERSIZED: Tamaño de respuesta (${Buffer.byteLength(text, 'utf8')} bytes) excede el máximo permitido (${maxResponseSizeBytes} bytes)`)
+  }
+
+  let parsed
+  try {
+    parsed = JSON.parse(text)
+  } catch (err) {
+    throw new Error(`ATTESTATION_TRANSPORT_INVALID_JSON: Respuesta de la autoridad externa no es JSON válido: ${err?.message || String(err)}`)
+  }
+
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('ATTESTATION_TRANSPORT_INVALID_FORMAT: El payload devuelto por la autoridad externa debe ser un objeto JSON')
+  }
+
+  return parsed
+}
+
+/**
  * Envía un AttestationRequestPackage a través de una frontera de transporte explícita
  * hacia una Autoridad de Atestación Independiente externa, verifica criptográficamente
  * su respuesta fail-closed y la CONSUME atómicamente en el registro durable del host local.
@@ -3694,13 +3955,24 @@ export async function submitAttestationRequest(requestPkg, adapterOrConfig = {})
     throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
   }
 
+  let effectiveTransport = transportCandidate
+  if (!effectiveTransport && endpoint) {
+    effectiveTransport = (req) =>
+      executeHttpsAttestationTransport(endpoint, req, {
+        timeoutMs: adapterOrConfig.timeoutMs,
+        maxResponseSizeBytes: adapterOrConfig.maxResponseSizeBytes,
+        allowHttp: Boolean(adapterOrConfig.allowHttp),
+        fetchImpl: adapterOrConfig.fetchImpl,
+      })
+  }
+
   const authorityId =
     adapterOrConfig.authorityId ||
     adapterOrConfig.expectedAuthorityId ||
     (env && env[PR02_P0_ATTESTATION_AUTHORITY_ID_ENV]) ||
     null
 
-  if (!transportCandidate || !rawPubKey || !authorityId || typeof authorityId !== 'string' || authorityId.trim().length > 0 === false) {
+  if (!effectiveTransport || !rawPubKey || !authorityId || typeof authorityId !== 'string' || authorityId.trim().length === 0) {
     throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: No existe una Autoridad de Atestación Independiente externa configurada (se requiere transporte explícito, authorityId y clave pública autorizada)')
   }
 
@@ -3764,7 +4036,7 @@ export async function submitAttestationRequest(requestPkg, adapterOrConfig = {})
 
   let rawResponse
   try {
-    rawResponse = await transportCandidate(Object.freeze({ ...requestPkg }))
+    rawResponse = await effectiveTransport(Object.freeze({ ...requestPkg }))
   } catch (err) {
     throw new Error(`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Fallo en transporte externo de autoridad de atestación (prohibido fallback local): ${err && err.message ? err.message : String(err)}`)
   }
@@ -3931,12 +4203,15 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
     transportContract: IndependentAttestationAuthorityTransportContract,
     // Separación estricta entre adaptador técnico implementado y autoridad real externa
     AUTHORITY_ADAPTER_IMPLEMENTED: true,
+    EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
+    EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: Boolean(endpoint),
     AUTHORITY_REAL_WORLD_AVAILABLE: false,
     ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED',
     INDEPENDENT_ATTESTATION_AVAILABLE: false,
     P1_IMPORT_ALLOWED: false,
     antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
     isConfigured: () => isConfigured,
+    isEndpointConfigured: () => Boolean(endpoint),
     isAuthorityAvailable: () => false,
     createAttestationRequest: (params) => createAttestationRequest(params),
     validateAttestationRequest: (pkg) => validateAttestationRequest(pkg),
@@ -4055,6 +4330,7 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
 
 export const IndependentAttestationAuthorityAdapter = Object.freeze({
   AUTHORITY_ADAPTER_IMPLEMENTED: true,
+  EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
   AUTHORITY_REAL_WORLD_AVAILABLE: false,
   INDEPENDENT_ATTESTATION_AVAILABLE: false,
   transportContract: IndependentAttestationAuthorityTransportContract,
@@ -4064,6 +4340,10 @@ export const IndependentAttestationAuthorityAdapter = Object.freeze({
   AUTHORITY_ID_ENV: PR02_P0_ATTESTATION_AUTHORITY_ID_ENV,
   KEY_ID_ENV: PR02_P0_ATTESTATION_KEY_ID_ENV,
   validateAttestationEndpointUrl,
+  isEndpointConfigured: isAttestationEndpointConfigured,
+  executeHttpsTransport: executeHttpsAttestationTransport,
+  createExternalAuthoritySigner,
+  createExternalService: createExternalAttestationAuthorityService,
   createAdapter: createIndependentAttestationAuthorityAdapter,
   createAttestationRequest,
   validateAttestationRequest,
@@ -4093,6 +4373,7 @@ export const IndependentAttestationAuthorityAdapter = Object.freeze({
  */
 export const IndependentAttestationAuthority = Object.freeze({
   AUTHORITY_ADAPTER_IMPLEMENTED: true,
+  EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
   AUTHORITY_REAL_WORLD_AVAILABLE: false,
   INDEPENDENT_ATTESTATION_AVAILABLE: false,
   P1_IMPORT_ALLOWED: false,
@@ -4103,6 +4384,10 @@ export const IndependentAttestationAuthority = Object.freeze({
   AUTHORITY_ID_ENV: PR02_P0_ATTESTATION_AUTHORITY_ID_ENV,
   KEY_ID_ENV: PR02_P0_ATTESTATION_KEY_ID_ENV,
   validateAttestationEndpointUrl,
+  isEndpointConfigured: isAttestationEndpointConfigured,
+  executeHttpsTransport: executeHttpsAttestationTransport,
+  createExternalAuthoritySigner,
+  createExternalService: createExternalAttestationAuthorityService,
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   REPLAY_DIR_ENV: PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
   SIGNER_ORIGINS: ATTESTATION_SIGNER_ORIGINS,
@@ -4205,6 +4490,7 @@ export const IndependentAttestationAuthority = Object.freeze({
  * Entidad de Autoridad de Custodia y Atestación de Evidencia P0.
  */
 export const AttestationAuthority = Object.freeze({
+  EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
   validatePublicKey: validateP0AttestationPublicKey,
   validateSecret: validateP0AttestationPublicKey,
   createAttestation: createP0Attestation,
@@ -4222,6 +4508,10 @@ export const AttestationAuthority = Object.freeze({
   createAdapter: createIndependentAttestationAuthorityAdapter,
   submitAttestationRequest,
   isAuthorityAvailable: IndependentAttestationAuthority.isAuthorityAvailable,
+  isEndpointConfigured: isAttestationEndpointConfigured,
+  executeHttpsTransport: executeHttpsAttestationTransport,
+  createExternalAuthoritySigner,
+  createExternalService: createExternalAttestationAuthorityService,
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   REPLAY_DIR_ENV: PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
   AUTHORITY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,

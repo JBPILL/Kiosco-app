@@ -109,6 +109,7 @@ export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
 export const PR02_P0_COMPROMISED_KEYS: readonly string[]
 export const ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 export const AUTHORITY_ADAPTER_IMPLEMENTED: true
+export const EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true
 export const AUTHORITY_REAL_WORLD_AVAILABLE: false
 
 export function validateAttestationEndpointUrl(
@@ -666,6 +667,9 @@ export interface IndependentAttestationAuthorityAdapterConfig {
   readonly secretKey?: unknown
   readonly autoDiscoverRemoteAuthority?: boolean
   readonly implicitNetworkAccess?: boolean
+  readonly timeoutMs?: number
+  readonly maxResponseSizeBytes?: number
+  readonly fetchImpl?: typeof fetch
 }
 
 export interface SubmitAttestationRequestResult {
@@ -691,12 +695,15 @@ export interface IndependentAttestationAuthorityAdapterInstance {
   readonly algorithm: 'Ed25519'
   readonly transportContract: IndependentAttestationAuthorityTransportContract
   readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
+  readonly EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true
+  readonly EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: boolean
   readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
   readonly ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED'
   readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
   readonly P1_IMPORT_ALLOWED: false
   readonly antiReplayGuarantee: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
   readonly isConfigured: () => boolean
+  readonly isEndpointConfigured: () => boolean
   readonly isAuthorityAvailable: () => false
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
@@ -776,8 +783,69 @@ export interface IndependentAttestationAuthorityTransportContract {
 
 export const IndependentAttestationAuthorityTransportContract: IndependentAttestationAuthorityTransportContract
 
+export function isAttestationEndpointConfigured(options?: {
+  readonly endpoint?: string
+  readonly endpointUrl?: string
+  readonly env?: Record<string, string | undefined>
+}): boolean
+
+export interface ExternalAuthoritySigner {
+  readonly signerType: 'TEST_SIGNER' | 'PRODUCTION_EXTERNAL_SIGNER'
+  readonly trustScope: 'TEST_ONLY' | 'PRODUCTION'
+  readonly signerOrigin: string
+  readonly authorityId: string | null
+  readonly keyId: string | null
+  readonly publicKeySpki: string | null
+  readonly algorithm: 'Ed25519'
+  readonly isProductionReady: () => boolean
+  readonly sign: (canonicalPayload: string) => string
+}
+
+export function createExternalAuthoritySigner(config?: {
+  readonly signerType?: 'TEST_SIGNER' | 'PRODUCTION_EXTERNAL_SIGNER'
+  readonly authorityId?: string
+  readonly keyId?: string
+  readonly publicKeySpki?: string
+  readonly allowTestKeys?: boolean
+  readonly isTestSigner?: boolean
+  readonly sign?: (payload: string) => string
+  readonly signPayload?: (payload: string) => string
+  readonly externalSignProvider?: { readonly sign: (payload: string) => string }
+}): ExternalAuthoritySigner
+
+export interface ExternalAttestationAuthorityServiceInstance {
+  readonly serviceVersion: '1.0'
+  readonly transportContract: IndependentAttestationAuthorityTransportContract
+  readonly authorityId: string
+  readonly keyId: string | null
+  readonly publicKeySpki: string | null
+  readonly signerType: string
+  readonly trustScope: string
+  readonly isProductionReady: () => boolean
+  readonly handleRequest: (rawBodyOrPkg: string | AttestationRequestPackage | unknown) => Promise<AttestationResponse>
+}
+
+export function createExternalAttestationAuthorityService(options: {
+  readonly signer: ExternalAuthoritySigner
+  readonly authorityId?: string
+  readonly keyId?: string
+  readonly publicKeySpki?: string
+}): ExternalAttestationAuthorityServiceInstance
+
+export function executeHttpsAttestationTransport(
+  endpointUrl: string,
+  requestPkg: AttestationRequestPackage,
+  options?: {
+    readonly allowHttp?: boolean
+    readonly timeoutMs?: number
+    readonly maxResponseSizeBytes?: number
+    readonly fetchImpl?: typeof fetch
+  }
+): Promise<AttestationResponse>
+
 export interface IndependentAttestationAuthorityAdapterNamespace {
   readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
+  readonly EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true
   readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
   readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
   readonly transportContract: IndependentAttestationAuthorityTransportContract
@@ -787,6 +855,10 @@ export interface IndependentAttestationAuthorityAdapterNamespace {
   readonly AUTHORITY_ID_ENV: string
   readonly KEY_ID_ENV: string
   readonly validateAttestationEndpointUrl: typeof validateAttestationEndpointUrl
+  readonly isEndpointConfigured: typeof isAttestationEndpointConfigured
+  readonly executeHttpsTransport: typeof executeHttpsAttestationTransport
+  readonly createExternalAuthoritySigner: typeof createExternalAuthoritySigner
+  readonly createExternalService: typeof createExternalAttestationAuthorityService
   readonly createAdapter: typeof createIndependentAttestationAuthorityAdapter
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
@@ -812,6 +884,7 @@ export const IndependentAttestationAuthorityAdapter: IndependentAttestationAutho
 
 export interface IndependentAttestationAuthorityInterface {
   readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
+  readonly EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true
   readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
   readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
   readonly P1_IMPORT_ALLOWED: false
@@ -822,6 +895,10 @@ export interface IndependentAttestationAuthorityInterface {
   readonly AUTHORITY_ID_ENV: string
   readonly KEY_ID_ENV: string
   readonly validateAttestationEndpointUrl: typeof validateAttestationEndpointUrl
+  readonly isEndpointConfigured: typeof isAttestationEndpointConfigured
+  readonly executeHttpsTransport: typeof executeHttpsAttestationTransport
+  readonly createExternalAuthoritySigner: typeof createExternalAuthoritySigner
+  readonly createExternalService: typeof createExternalAttestationAuthorityService
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
   readonly computeAttestationRequestDigest: typeof computeAttestationRequestDigest
