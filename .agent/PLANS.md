@@ -1649,3 +1649,47 @@ Remediación criptográfica y adversarial de las 6 vulnerabilidades de frontera 
   - `PRODUCTION_MUTATIONS = 0`
   - `CAE_EMISSIONS_NEW = 0`
   - `STOP = AWAITING EXPLICIT DECISION ON 1. COMMIT OF LOCAL HARDENING 2. REAL EXTERNAL AUTHORITY PROVISIONING`
+
+
+### FASE: PR02-P0-EXT Real External Independent Attestation Authority Provisioning (08/11/2026)
+
+- **Objetivo**: Evaluar de forma rigurosa y adversarial el aprovisionamiento real de una Autoridad de Atestación Independiente externa fuera del repositorio, definir formalmente las variables de entorno de aprovisionamiento, validar fail-closed endpoints y configuraciones, implementar la suite de tests `EXT-REAL-01` a `EXT-REAL-12` (casos 144 a 155), y reportar con honestidad técnica que el aprovisionamiento permanece bloqueado por no existir dicho entorno de producción (`BLOCK_REASON = NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT`).
+- **Variables Formales de Entorno**:
+  - `PR02_P0_ATTESTATION_ENDPOINT_ENV` (`'PR02_P0_ATTESTATION_ENDPOINT'`).
+  - `PR02_P0_ATTESTATION_AUTHORITY_ID_ENV` (`'PR02_P0_ATTESTATION_AUTHORITY_ID'`).
+  - `PR02_P0_ATTESTATION_KEY_ID_ENV` (`'PR02_P0_ATTESTATION_KEY_ID'`).
+- **Validador Fail-Closed de Endpoint URL**:
+  - `validateAttestationEndpointUrl(endpoint, options)`: validación de formato URL, rechazo estricto de protocolos inseguros (exige HTTPS), rechazo de hostnames vacíos y rechazo de endpoints sin clave pública autorizada en `assertAdapterConfigSecurity` y `createIndependentAttestationAuthorityAdapter`.
+- **Suite de Pruebas `EXT-REAL-01` a `EXT-REAL-12` (casos 144 a 155)**:
+  - 144. [EXT-REAL-01]: Sin endpoint configurado -> `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`.
+  - 145. [EXT-REAL-02]: Endpoint configurado sin clave pública autorizada o formato inválido falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE` o `ATTESTATION_ENDPOINT_INVALID`.
+  - 146. [EXT-REAL-03]: Endpoint y clave pública configurados pero `authorityId` no coincide -> falla cerrado con `ATTESTATION_AUTHORITY_MISMATCH`.
+  - 147. [EXT-REAL-04]: Intento de configurar clave privada en adapter config o env -> falla cerrado con `RUNTIME_PRIVATE_KEY_DETECTED`.
+  - 148. [EXT-REAL-05]: Autoridad externa intentando colapsar o compartir clave/identidad con GO Authority -> falla cerrado con `COLLAPSED_AUTHORITIES_REJECTED`.
+  - 149. [EXT-REAL-06]: Respuesta externa firmada con clave pública anclada verificada con éxito retorna `valid: true` como operación de solo lectura (no consumida).
+  - 150. [EXT-REAL-07]: Payload alterado tras la firma externa -> falla cerrado con `ATTESTATION_SIGNATURE_INVALID`.
+  - 151. [EXT-REAL-08]: Sustitución de `keyId` en la respuesta externa -> falla cerrado con `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+  - 152. [EXT-REAL-09]: Replay de respuesta externa tras consumo durable -> falla cerrado con `ATTESTATION_RESPONSE_REPLAY_DETECTED`.
+  - 153. [EXT-REAL-10]: Payload de respuesta externa que incluye `P1_IMPORT_ALLOWED: true` es rechazado como campo inesperado.
+  - 154. [EXT-REAL-11]: Atestación externa válida sobre evidencia sintética NO puede alterar `OFFICIAL_PROVENANCE` (permanece `UNVERIFIED`).
+  - 155. [EXT-REAL-12]: Adaptador técnico implementado pero sin aprovisionamiento real de autoridad externa independiente en producción: `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `P1_REMOTE_EXECUTION_READY = false`, `PR02_READY_FOR_EMISSION_GO = false`.
+- **Resultados de Validación**:
+  - 155/155 tests PASS en `src/test/fiscalPr02P0Collector.test.ts`.
+  - 172/172 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+  - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+- **Estado Honesto y Bloqueo de Aprovisionamiento**:
+  - `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = BLOCKED`
+  - `BLOCK_REASON = NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT`
+  - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+  - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+  - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+  - `P1_IMPORT_ALLOWED = false`
+  - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+  - `OFFICIAL_PROVENANCE = UNVERIFIED`
+  - `P0_REMOTE_EXECUTED = false`
+  - `P1_REMOTE_EXECUTION_READY = false`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`
+  - `CAE_EMISSIONS_NEW = 0`

@@ -102,11 +102,19 @@ export const PR02_P0_GO_PUBLIC_KEY_ENV: string
 export const PR02_P0_ATTESTATION_PUBLIC_KEY_ENV: string
 export const PR02_P0_ATTESTATION_REPLAY_DIR_ENV: string
 export const PR02_P0_GO_AUTHORITY_ENV: string
+export const PR02_P0_ATTESTATION_ENDPOINT_ENV: string
+export const PR02_P0_ATTESTATION_AUTHORITY_ID_ENV: string
+export const PR02_P0_ATTESTATION_KEY_ID_ENV: string
 export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
 export const PR02_P0_COMPROMISED_KEYS: readonly string[]
 export const ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 export const AUTHORITY_ADAPTER_IMPLEMENTED: true
 export const AUTHORITY_REAL_WORLD_AVAILABLE: false
+
+export function validateAttestationEndpointUrl(
+  endpoint: string,
+  options?: { readonly allowHttp?: boolean }
+): string
 
 export function assertAuthoritiesSeparated(params?: {
   goAuthorityId?: string
@@ -595,6 +603,7 @@ export interface IndependentAttestationAuthorityAdapterConfig {
   readonly pinnedKeyId?: string
   readonly endpoint?: string | null
   readonly endpointUrl?: string | null
+  readonly allowHttp?: boolean
   readonly allowedAuthorityIds?: readonly string[] | Set<string>
   readonly trustedAttestationPublicKey?: unknown
   readonly authorityPublicKey?: unknown
@@ -774,6 +783,10 @@ export interface IndependentAttestationAuthorityAdapterNamespace {
   readonly transportContract: IndependentAttestationAuthorityTransportContract
   readonly TRANSPORT_CONTRACT_VERSION: '1.0'
   readonly ENDPOINT_SPEC: typeof EXTERNAL_AUTHORITY_ENDPOINT_SPEC
+  readonly ENDPOINT_ENV: string
+  readonly AUTHORITY_ID_ENV: string
+  readonly KEY_ID_ENV: string
+  readonly validateAttestationEndpointUrl: typeof validateAttestationEndpointUrl
   readonly createAdapter: typeof createIndependentAttestationAuthorityAdapter
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
@@ -805,6 +818,10 @@ export interface IndependentAttestationAuthorityInterface {
   readonly transportContract: IndependentAttestationAuthorityTransportContract
   readonly TRANSPORT_CONTRACT_VERSION: '1.0'
   readonly ENDPOINT_SPEC: typeof EXTERNAL_AUTHORITY_ENDPOINT_SPEC
+  readonly ENDPOINT_ENV: string
+  readonly AUTHORITY_ID_ENV: string
+  readonly KEY_ID_ENV: string
+  readonly validateAttestationEndpointUrl: typeof validateAttestationEndpointUrl
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
   readonly computeAttestationRequestDigest: typeof computeAttestationRequestDigest

@@ -79,6 +79,10 @@ import {
   PR02_P0_GO_PUBLIC_KEY_ENV,
   PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
+  PR02_P0_ATTESTATION_ENDPOINT_ENV,
+  PR02_P0_ATTESTATION_AUTHORITY_ID_ENV,
+  PR02_P0_ATTESTATION_KEY_ID_ENV,
+  validateAttestationEndpointUrl,
   parseWsfeTiposIvaResponse,
   parseWsfeCondicionIvaReceptorResponse,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
@@ -6135,6 +6139,382 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(verification.trustScope).toBe('TEST_ONLY')
     expect(verification.PRODUCTION_ATTESTED).toBe(false)
     expect(verification.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 144. [EXT-REAL-01] Sin endpoint configurado -> AUTHORITY_REAL_WORLD_AVAILABLE = false, P1_IMPORT_ALLOWED = false
+  it('144. [EXT-REAL-01]: Sin endpoint configurado -> AUTHORITY_REAL_WORLD_AVAILABLE = false, P1_IMPORT_ALLOWED = false', () => {
+    cleanupTestDir()
+    expect(PR02_P0_ATTESTATION_ENDPOINT_ENV).toBe('PR02_P0_ATTESTATION_ENDPOINT')
+    expect(PR02_P0_ATTESTATION_AUTHORITY_ID_ENV).toBe('PR02_P0_ATTESTATION_AUTHORITY_ID')
+    expect(PR02_P0_ATTESTATION_KEY_ID_ENV).toBe('PR02_P0_ATTESTATION_KEY_ID')
+
+    const { goPub } = buildTestRequestFixture('EXT-REAL-01')
+    const keyPair = generateEphemeralAttestationKeyPair()
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_REAL_01',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    expect(adapter.endpoint).toBeNull()
+    expect(adapter.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    expect(adapter.isAuthorityAvailable()).toBe(false)
+    expect(IndependentAttestationAuthority.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(IndependentAttestationAuthority.P1_IMPORT_ALLOWED).toBe(false)
+    expect(AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 145. [EXT-REAL-02] Endpoint configurado sin clave pública autorizada o con formato inválido falla cerrado
+  it('145. [EXT-REAL-02]: Endpoint configurado sin clave pública autorizada o con formato inválido falla cerrado', () => {
+    cleanupTestDir()
+    // Caso A: Endpoint en config sin clave pública autorizada
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation.authority.example/api/v1',
+      })
+    ).toThrow(/INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada/)
+
+    // Caso B: Endpoint en variable de entorno sin clave pública autorizada
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        env: { [PR02_P0_ATTESTATION_ENDPOINT_ENV]: 'https://attestation.authority.example/api/v1' },
+      })
+    ).toThrow(/INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada/)
+
+    // Caso C: Validador de endpoint URL rechaza strings vacíos, protocolos inseguros o URLs malformadas
+    expect(() => validateAttestationEndpointUrl('')).toThrow(/ATTESTATION_ENDPOINT_INVALID: Endpoint debe ser una URL en formato string no vacía/)
+    expect(() => validateAttestationEndpointUrl('   ')).toThrow(/ATTESTATION_ENDPOINT_INVALID: Endpoint debe ser una URL en formato string no vacía/)
+    expect(() => validateAttestationEndpointUrl('not-a-valid-url')).toThrow(/ATTESTATION_ENDPOINT_INVALID: URL 'not-a-valid-url' no es válida/)
+    expect(() => validateAttestationEndpointUrl('http://insecure.authority.example/api')).toThrow(/ATTESTATION_ENDPOINT_INVALID: Protocolo 'http:' no permitido\. Se exige HTTPS/)
+    expect(() => validateAttestationEndpointUrl('ftp://insecure.authority.example/api')).toThrow(/ATTESTATION_ENDPOINT_INVALID: Protocolo 'ftp:' no permitido\. Se exige HTTPS/)
+    expect(validateAttestationEndpointUrl('https://attestation.authority.example/api/v1')).toBe('https://attestation.authority.example/api/v1')
+    cleanupTestDir()
+  })
+
+  // 146. [EXT-REAL-03] Endpoint y clave pública configurados pero authorityId no coincide -> falla cerrado con ATTESTATION_AUTHORITY_MISMATCH
+  it('146. [EXT-REAL-03]: Endpoint y clave pública configurados pero authorityId no coincide -> falla cerrado con ATTESTATION_AUTHORITY_MISMATCH', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-REAL-03')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_CONFIGURED_03',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_CONFIGURED_03',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    // La respuesta fue emitida por una autoridad diferente (con la misma clave para aislar estrictamente el authorityId mismatch)
+    const rogueRes = testAuthority.issueResponse(requestPkg, {
+      authorityId: 'ATT_AUTH_ROGUE_99',
+    })
+
+    const verification = adapter.verifyAttestationResponse(rogueRes, { attestationRequest: requestPkg })
+    expect(verification.valid).toBe(false)
+    expect(verification.reason).toBe('ATTESTATION_AUTHORITY_MISMATCH')
+    expect(verification.P1_IMPORT_ALLOWED).toBe(false)
+
+    expect(() =>
+      adapter.validateAttestationResponse(rogueRes, { attestationRequest: requestPkg })
+    ).toThrow(/ATTESTATION_AUTHORITY_MISMATCH/)
+    cleanupTestDir()
+  })
+
+  // 147. [EXT-REAL-04] Intento de configurar clave privada en adapter config o env -> falla cerrado con RUNTIME_PRIVATE_KEY_DETECTED
+  it('147. [EXT-REAL-04]: Intento de configurar clave privada en adapter config o variables de entorno falla cerrado con RUNTIME_PRIVATE_KEY_DETECTED', () => {
+    cleanupTestDir()
+    const { goPub } = buildTestRequestFixture('EXT-REAL-04')
+    const keyPair = generateEphemeralAttestationKeyPair()
+
+    // Config con privateKey
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation.authority.example/v1',
+        authorityId: 'ATT_AUTH_REAL_04',
+        publicKeySpki: keyPair.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        privateKey: '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----',
+      })
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    // Config con authorityPrivateKey
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation.authority.example/v1',
+        authorityId: 'ATT_AUTH_REAL_04',
+        publicKeySpki: keyPair.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        authorityPrivateKey: 'dummy-priv-key',
+      })
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    // Config con env que incluye clave privada fiscal
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation.authority.example/v1',
+        authorityId: 'ATT_AUTH_REAL_04',
+        publicKeySpki: keyPair.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        env: {
+          PR02_P0_ATTESTATION_PRIVATE_KEY: '-----BEGIN PRIVATE KEY-----\nMIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQg\n-----END PRIVATE KEY-----',
+        },
+      })
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 148. [EXT-REAL-05] Autoridad externa intentando colapsar o compartir clave/identidad con GO Authority -> falla cerrado con COLLAPSED_AUTHORITIES_REJECTED
+  it('148. [EXT-REAL-05]: Autoridad externa intentando colapsar o compartir clave/identidad con GO Authority falla cerrado con COLLAPSED_AUTHORITIES_REJECTED', () => {
+    cleanupTestDir()
+    const { goPub } = buildTestRequestFixture('EXT-REAL-05')
+    const keyPair = generateEphemeralAttestationKeyPair()
+
+    // Intento 1: Mismo authorityId
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation.authority.example/v1',
+        goAuthorityId: 'SHARED_COLLAPSED_ID',
+        authorityId: 'SHARED_COLLAPSED_ID',
+        publicKeySpki: keyPair.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    // Intento 2: Misma clave pública
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation.authority.example/v1',
+        goAuthorityId: 'GO_AUTH_05',
+        authorityId: 'ATT_AUTH_05',
+        publicKeySpki: goPub,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+    cleanupTestDir()
+  })
+
+  // 149. [EXT-REAL-06] Respuesta externa firmada con clave pública anclada verificada con éxito -> verifyAttestationResponse retorna valid: true como operación de solo lectura (no consumida)
+  it('149. [EXT-REAL-06]: Respuesta externa firmada con clave pública anclada verificada con éxito retorna valid: true de solo lectura (no consumida)', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-real-06')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-REAL-06')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_REAL_06',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_REAL_06',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+    })
+
+    const verification = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(verification.valid).toBe(true)
+    expect(verification.consumed).toBe(false)
+    expect(verification.ATTESTATION_RESPONSE_CONSUMPTION).toBe('NOT_CONSUMED')
+    expect(adapter.isAttestationResponseConsumed(validRes)).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 150. [EXT-REAL-07] Payload alterado tras la firma externa -> falla cerrado con ATTESTATION_SIGNATURE_INVALID
+  it('150. [EXT-REAL-07]: Payload alterado tras la firma externa falla cerrado con ATTESTATION_SIGNATURE_INVALID', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-REAL-07')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_REAL_07',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_REAL_07',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const tamperedRes = {
+      ...validRes,
+      consultadoEn: '2026-11-05T02:00:00.000Z',
+    }
+
+    const check = adapter.verifyAttestationResponse(tamperedRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toMatch(/ATTESTATION_SIGNATURE_INVALID|ATTESTATION_PAYLOAD_MISMATCH/)
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 151. [EXT-REAL-08] Sustitución de keyId en la respuesta externa -> falla cerrado con PUBLIC_KEY_SUBSTITUTION_REJECTED
+  it('151. [EXT-REAL-08]: Sustitución de keyId en la respuesta externa falla cerrado con PUBLIC_KEY_SUBSTITUTION_REJECTED', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-REAL-08')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_REAL_08',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_REAL_08',
+      publicKeySpki: testAuthority.publicKey,
+      pinnedKeyId: testAuthority.keyId,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const tamperedKeyRes = {
+      ...validRes,
+      keyId: 'ed25519-spki-substituted001',
+    }
+
+    const check = adapter.verifyAttestationResponse(tamperedKeyRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('PUBLIC_KEY_SUBSTITUTION_REJECTED')
+    expect(check.errorCategory).toBe('PUBLIC_KEY_SUBSTITUTION_REJECTED')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 152. [EXT-REAL-09] Replay de respuesta externa tras consumo durable -> falla cerrado con ATTESTATION_RESPONSE_REPLAY_DETECTED
+  it('152. [EXT-REAL-09]: Replay de respuesta externa tras consumo durable falla cerrado con ATTESTATION_RESPONSE_REPLAY_DETECTED', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-real-09')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-REAL-09')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_REAL_09',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_REAL_09',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      now: '2026-11-05T01:10:00.000Z',
+    })
+
+    // Primer consumo: éxito
+    const firstConsume = adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(firstConsume.valid).toBe(true)
+    expect(firstConsume.consumed).toBe(true)
+    expect(adapter.isAttestationResponseConsumed(validRes)).toBe(true)
+
+    // Segundo consumo: bloqueado por replay durable
+    expect(() =>
+      adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    ).toThrow(/ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 153. [EXT-REAL-10] Payload de respuesta externa que incluye P1_IMPORT_ALLOWED: true es rechazado
+  it('153. [EXT-REAL-10]: Payload de respuesta externa que incluye P1_IMPORT_ALLOWED: true es rechazado como campo inesperado', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-REAL-10')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_REAL_10',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const tamperedRes = {
+      ...validRes,
+      P1_IMPORT_ALLOWED: true,
+    }
+
+    expect(() => validateAttestationResponse(tamperedRes)).toThrow(/Campo inesperado|UNEXPECTED_RESPONSE_FIELD|ATTESTATION_RESPONSE_INVALID/)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_REAL_10',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 154. [EXT-REAL-11] Atestación externa válida sobre evidencia sintética NO puede alterar OFFICIAL_PROVENANCE (debe permanecer UNVERIFIED / no acreditado)
+  it('154. [EXT-REAL-11]: Atestación externa válida sobre evidencia sintética NO puede alterar OFFICIAL_PROVENANCE (debe permanecer UNVERIFIED / no acreditado)', () => {
+    cleanupTestDir()
+    const { requestPkg, manifestDraft, goPub } = buildTestRequestFixture('EXT-REAL-11')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_REAL_11',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_REAL_11',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const verification = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(verification.valid).toBe(true)
+    expect(verification.trustScope).toBe('TEST_ONLY')
+    expect(verification.PRODUCTION_ATTESTED).toBe(false)
+    expect(verification.OFFICIAL_PROVENANCE_VERIFIED).toBe(false)
+    expect(verification.P1_IMPORT_ALLOWED).toBe(false)
+    expect(manifestDraft.accredited).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 155. [EXT-REAL-12] Adaptador técnico implementado pero sin aprovisionamiento real de autoridad externa independiente en producción: AUTHORITY_REAL_WORLD_AVAILABLE = false, INDEPENDENT_ATTESTATION_AVAILABLE = false, P1_IMPORT_ALLOWED = false, P1_REMOTE_EXECUTION_READY = false, PR02_READY_FOR_EMISSION_GO = false
+  it('155. [EXT-REAL-12]: Adaptador técnico implementado pero sin aprovisionamiento real de autoridad externa independiente en producción: AUTHORITY_REAL_WORLD_AVAILABLE = false, INDEPENDENT_ATTESTATION_AVAILABLE = false, P1_IMPORT_ALLOWED = false, P1_REMOTE_EXECUTION_READY = false, PR02_READY_FOR_EMISSION_GO = false', () => {
+    cleanupTestDir()
+    expect(AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(IndependentAttestationAuthority.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(IndependentAttestationAuthority.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(IndependentAttestationAuthority.P1_IMPORT_ALLOWED).toBe(false)
+    expect(IndependentAttestationAuthority.isRealWorldAuthorityAvailable()).toBe(false)
+    expect(IndependentAttestationAuthority.isAuthorityAvailable()).toBe(false)
+
+    const { goPub } = buildTestRequestFixture('EXT-REAL-12')
+    const keyPair = generateEphemeralAttestationKeyPair()
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation.authority.example/v1',
+      authorityId: 'ATT_AUTH_EXTERNAL_PRODUCTION',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    expect(adapter.AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(adapter.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    expect(adapter.isAuthorityAvailable()).toBe(false)
     cleanupTestDir()
   })
 })

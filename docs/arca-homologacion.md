@@ -2547,6 +2547,52 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
       - 12 nuevas pruebas adversariales añadidas (casos 132 a 143) en `src/test/fiscalPr02P0Collector.test.ts`, cubriendo adapters sin endpoint, endpoints sin clave pública, discrepancias de authorityId, sustitución de keyId, inyección de clave privada, respuestas sin firma válida, elevación espuria de SELF_ATTESTED, colapso de autoridades, secuencia obligatoria VERIFY -> CONSUME, replay post-verificación, mutación de P1_IMPORT_ALLOWED y aislamiento del modo test.
       - 143/143 tests PASS en `fiscalPr02P0Collector.test.ts` y 160/160 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
 
+22. **Aprovisionamiento y Validación de Frontera de Autoridad de Atestación Externa PR02-P0-EXT (`PR02_P0_EXT_PROVISIONING`, 08/11/2026)**:
+    - **1. Variables Formales de Entorno de Aprovisionamiento**:
+      - `PR02_P0_ATTESTATION_ENDPOINT_ENV` (`'PR02_P0_ATTESTATION_ENDPOINT'`): URL remota HTTPS obligatoria hacia el endpoint de la autoridad de atestación independiente externa.
+      - `PR02_P0_ATTESTATION_AUTHORITY_ID_ENV` (`'PR02_P0_ATTESTATION_AUTHORITY_ID'`): Identificador canónico de la autoridad de atestación independiente.
+      - `PR02_P0_ATTESTATION_KEY_ID_ENV` (`'PR02_P0_ATTESTATION_KEY_ID'`): Identificador / huella SPKI (`ed25519-spki-<sha256[:16]>`) de la clave pública anclada de la autoridad.
+    - **2. Validador Fail-Closed de Endpoint URL (`validateAttestationEndpointUrl`)**:
+      - Exige string no vacío y sintaxis de URL válida (RFC 3986 / WHATWG URL).
+      - Exige estrictamente protocolo HTTPS (`ATTESTATION_ENDPOINT_INVALID: Protocolo '...' no permitido. Se exige HTTPS`), rechazando HTTP plano o esquemas inseguros salvo en entornos de test explícitos con `allowHttp: true`.
+      - Exige hostname no vacío (`ATTESTATION_ENDPOINT_INVALID: Hostname no válido`).
+      - Integrado en `assertAdapterConfigSecurity` y `createIndependentAttestationAuthorityAdapter`: rechaza fail-closed la configuración de endpoint sin clave pública autorizada (`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada`).
+    - **3. Evaluación Real de Aprovisionamiento y Honest State Reporting**:
+      - Se evaluó rigurosamente la disponibilidad real de una Autoridad de Atestación Independiente externa de producción.
+      - Estado honesto acreditado:
+        - `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = BLOCKED`
+        - `BLOCK_REASON = NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT`
+        - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+        - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+        - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+        - `P1_IMPORT_ALLOWED = false`
+        - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+        - `OFFICIAL_PROVENANCE = UNVERIFIED`
+        - `P0_REMOTE_EXECUTED = false`
+        - `P1_REMOTE_EXECUTION_READY = false`
+        - `PR02_READY_FOR_EMISSION_GO = false`
+        - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`
+    - **4. Invariantes de Aislamiento Criptográfico y Anti-Replay**:
+      - Aislamiento de clave privada en runtime fiscal verificado (`RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, prohibidas claves privadas en código, configuración o variables de entorno).
+      - Separación estricta entre GO Authority y Attestation Authority verificada (`GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`, `COLLAPSED_AUTHORITIES_BLOCKED = PASS`).
+      - Pinning de clave pública y protección anti-sustitución verificada (`PUBLIC_KEY_PINNING = PASS`, `PUBLIC_KEY_SUBSTITUTION_BLOCKED = PASS`).
+      - Protección anti-replay durable host-local de un solo uso atómica verificada (`HOST_LOCAL_DURABLE_ONE_TIME_USE`).
+    - **5. Suite de Pruebas de Aprovisionamiento Real (`EXT-REAL-01` a `EXT-REAL-12`)**:
+      - 12 nuevas pruebas añadidas (casos 144 a 155, `EXT-REAL-01` a `EXT-REAL-12`) en `src/test/fiscalPr02P0Collector.test.ts`:
+        - 144. [EXT-REAL-01]: Sin endpoint configurado -> `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`.
+        - 145. [EXT-REAL-02]: Endpoint configurado sin clave pública autorizada o con formato inválido falla cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE` o `ATTESTATION_ENDPOINT_INVALID`.
+        - 146. [EXT-REAL-03]: Endpoint y clave pública configurados pero `authorityId` no coincide -> falla cerrado con `ATTESTATION_AUTHORITY_MISMATCH`.
+        - 147. [EXT-REAL-04]: Intento de configurar clave privada en adapter config o env -> falla cerrado con `RUNTIME_PRIVATE_KEY_DETECTED`.
+        - 148. [EXT-REAL-05]: Autoridad externa intentando colapsar o compartir clave/identidad con GO Authority -> falla cerrado con `COLLAPSED_AUTHORITIES_REJECTED`.
+        - 149. [EXT-REAL-06]: Respuesta externa firmada con clave pública anclada verificada con éxito retorna `valid: true` como operación de solo lectura (no consumida).
+        - 150. [EXT-REAL-07]: Payload alterado tras la firma externa -> falla cerrado con `ATTESTATION_SIGNATURE_INVALID`.
+        - 151. [EXT-REAL-08]: Sustitución de `keyId` en la respuesta externa -> falla cerrado con `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+        - 152. [EXT-REAL-09]: Replay de respuesta externa tras consumo durable -> falla cerrado con `ATTESTATION_RESPONSE_REPLAY_DETECTED`.
+        - 153. [EXT-REAL-10]: Payload de respuesta externa que incluye `P1_IMPORT_ALLOWED: true` es rechazado como campo inesperado.
+        - 154. [EXT-REAL-11]: Atestación externa válida sobre evidencia sintética NO puede alterar `OFFICIAL_PROVENANCE` (permanece `UNVERIFIED`).
+        - 155. [EXT-REAL-12]: Adaptador técnico implementado pero sin aprovisionamiento real de autoridad externa independiente en producción: `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `P1_REMOTE_EXECUTION_READY = false`, `PR02_READY_FOR_EMISSION_GO = false`.
+      - **Resultados de la Suite**: 155/155 tests PASS en `src/test/fiscalPr02P0Collector.test.ts` y 172/172 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

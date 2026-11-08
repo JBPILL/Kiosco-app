@@ -2678,3 +2678,29 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `PRODUCTION_MUTATIONS = 0`
     - `CAE_EMISSIONS_NEW = 0`
     - `STOP = AWAITING EXPLICIT DECISION ON 1. COMMIT OF LOCAL HARDENING 2. REAL EXTERNAL AUTHORITY PROVISIONING`
+
+
+- **Aprovisionamiento y Validación de Frontera de Autoridad de Atestación Externa PR02-P0-EXT (08/11/2026)**:
+  - **Variables Formales de Entorno**: Definidas `PR02_P0_ATTESTATION_ENDPOINT_ENV` (`'PR02_P0_ATTESTATION_ENDPOINT'`), `PR02_P0_ATTESTATION_AUTHORITY_ID_ENV` (`'PR02_P0_ATTESTATION_AUTHORITY_ID'`) y `PR02_P0_ATTESTATION_KEY_ID_ENV` (`'PR02_P0_ATTESTATION_KEY_ID'`).
+  - **Validador Fail-Closed de Endpoint URL**: Implementado `validateAttestationEndpointUrl` con exigencia estricta de formato URL, protocolo HTTPS y rechazo de endpoints sin clave pública autorizada en `assertAdapterConfigSecurity` y `createIndependentAttestationAuthorityAdapter`.
+  - **Evaluación Real de Aprovisionamiento**:
+    - `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = BLOCKED`
+    - `BLOCK_REASON = NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT`
+    - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+    - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+    - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+    - `P1_IMPORT_ALLOWED = false`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P0_REMOTE_EXECUTED = false`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+  - **Suite de Pruebas `EXT-REAL-01` a `EXT-REAL-12`**: 12 nuevos tests (casos 144 a 155) en `src/test/fiscalPr02P0Collector.test.ts`, cubriendo falta de endpoint, endpoints sin clave o con formato inválido, discrepancia de authorityId, detección de clave privada en runtime/env, colapso de autoridades, no consumo en verify, adulteración de payload, sustitución de keyId, replay durable, rechazo de P1_IMPORT_ALLOWED espurio, no elevación de evidencia sintética y estado honesto no aprovisionado.
+  - **Métricas de la Suite**:
+    - 155/155 tests PASS en `src/test/fiscalPr02P0Collector.test.ts`.
+    - 172/172 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+    - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`

@@ -2516,3 +2516,52 @@ Con la frontera local de `IndependentAttestationAuthority` endurecida y validada
 - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
 - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`
 - `STOP = AWAITING EXPLICIT DECISION ON 1. COMMIT OF LOCAL HARDENING 2. REAL EXTERNAL AUTHORITY PROVISIONING`
+
+## Aprovisionamiento y Validación de Frontera de Autoridad de Atestación Externa PR02-P0-EXT (08/11/2026)
+
+**Contexto:**
+Tras formalizar la arquitectura y el contrato de transporte de `IndependentAttestationAuthority`, correspondía ejecutar la fase PR02-P0-EXT para definir formalmente las variables de entorno de aprovisionamiento, validar fail-closed los endpoints y evaluar de manera honesta y rigurosa la disponibilidad real de una Autoridad de Atestación Independiente de producción fuera del repositorio, sin simular infraestructura inexistente ni relajar las fronteras de confianza.
+
+**Alternativas consideradas:**
+1. *Fingir la existencia de una autoridad externa o marcar `AUTHORITY_REAL_WORLD_AVAILABLE = true` para forzar el avance a P1*: Terminantemente descartado por violar los principios de auditoría adversarial, seguridad fiscal y veracidad técnica.
+2. *Admitir endpoints HTTP no cifrados o configuración sin clave pública autorizada*: Descartado porque expondría paquetes de atestación a intercepción y manipulación sin garantía criptográfica de integridad.
+3. *Definir variables de entorno formales (`PR02_P0_ATTESTATION_ENDPOINT`, `PR02_P0_ATTESTATION_AUTHORITY_ID`, `PR02_P0_ATTESTATION_KEY_ID`), implementar el validador fail-closed `validateAttestationEndpointUrl` exigiendo estrictamente HTTPS y clave pública autorizada, desarrollar la suite de pruebas `EXT-REAL-01` a `EXT-REAL-12` (casos 144 a 155), y reportar con honestidad técnica que el aprovisionamiento de producción permanece bloqueado por ausencia de un entorno de autoridad independiente genuinamente aprovisionado (`BLOCK_REASON = NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT`)*: Seleccionada por garantizar el máximo rigor criptográfico, fail-closed por diseño y transparencia absoluta.
+
+**Decisión:**
+1. **Variables Formales de Entorno**:
+   - `PR02_P0_ATTESTATION_ENDPOINT_ENV` (`'PR02_P0_ATTESTATION_ENDPOINT'`).
+   - `PR02_P0_ATTESTATION_AUTHORITY_ID_ENV` (`'PR02_P0_ATTESTATION_AUTHORITY_ID'`).
+   - `PR02_P0_ATTESTATION_KEY_ID_ENV` (`'PR02_P0_ATTESTATION_KEY_ID'`).
+2. **Validador Fail-Closed de Endpoint URL**:
+   - `validateAttestationEndpointUrl`: exige string no vacío, formato de URL válido, protocolo HTTPS estricto y hostname no vacío.
+   - Si se configura un endpoint sin clave pública autorizada, `assertAdapterConfigSecurity` y `createIndependentAttestationAuthorityAdapter` fallan cerrado con `INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada`.
+3. **Evaluación de Disponibilidad Real y Reporte Honesto**:
+   - Se concluye con rigor que ninguna autoridad externa de producción se encuentra desplegada o accesible en este momento.
+   - `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = BLOCKED`
+   - `BLOCK_REASON = NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT`
+   - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+   - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+   - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+   - `P1_IMPORT_ALLOWED = false`
+   - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+   - `OFFICIAL_PROVENANCE = UNVERIFIED`
+   - `P0_REMOTE_EXECUTED = false`
+   - `P1_REMOTE_EXECUTION_READY = false`
+   - `PR02_READY_FOR_EMISSION_GO = false`
+   - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`
+4. **Suite de Pruebas `EXT-REAL-01` a `EXT-REAL-12` (casos 144 a 155)**:
+   - 12 nuevas pruebas añadidas a `src/test/fiscalPr02P0Collector.test.ts`.
+   - Totalizando 155/155 tests PASS en `fiscalPr02P0Collector.test.ts` y 172/172 tests PR02 totales PASS.
+
+**Consecuencias:**
+- `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = BLOCKED`
+- `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+- `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+- `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+- `P1_IMPORT_ALLOWED = false`
+- `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+- `OFFICIAL_PROVENANCE = UNVERIFIED`
+- `P0_REMOTE_EXECUTED = false`
+- `P1_REMOTE_EXECUTION_READY = false`
+- `PR02_READY_FOR_EMISSION_GO = false`
+- `STOP = AWAITING EXPLICIT DECISION ON EXTERNAL AUTHORITY PROVISIONING ENVIRONMENT`

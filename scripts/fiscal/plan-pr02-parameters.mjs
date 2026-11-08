@@ -27,6 +27,9 @@ export const PR02_P0_GO_PUBLIC_KEY_ENV = 'PR02_P0_GO_PUBLIC_KEY'
 export const PR02_P0_ATTESTATION_PUBLIC_KEY_ENV = 'PR02_P0_ATTESTATION_PUBLIC_KEY'
 export const PR02_P0_AUTHORITY_ENV = 'PR02_P0_ATTESTATION_PUBLIC_KEY'
 export const PR02_P0_GO_AUTHORITY_ENV = 'PR02_P0_GO_PUBLIC_KEY'
+export const PR02_P0_ATTESTATION_ENDPOINT_ENV = 'PR02_P0_ATTESTATION_ENDPOINT'
+export const PR02_P0_ATTESTATION_AUTHORITY_ID_ENV = 'PR02_P0_ATTESTATION_AUTHORITY_ID'
+export const PR02_P0_ATTESTATION_KEY_ID_ENV = 'PR02_P0_ATTESTATION_KEY_ID'
 
 export const PR02_P0_COMPROMISED_SECRETS = Object.freeze([
   'kioskopos-pr02-p0-official-custody-secret-2026',
@@ -3452,6 +3455,42 @@ export function reserveAttestationResponseDurable(response, options = {}) {
   return consumeAttestationResponseDurable(response, options)
 }
 
+/**
+ * Valida fail-closed la URL del endpoint de la Autoridad de Atestación Independiente externa.
+ * - Debe ser un string no vacío ni compuesto solo de espacios.
+ * - Debe ser una URL sintácticamente válida (RFC 3986 / WHATWG URL).
+ * - El protocolo debe ser estrictamente HTTPS (salvo que allowHttp sea true en entornos de test explícitos).
+ * - El hostname no puede estar vacío.
+ */
+export function validateAttestationEndpointUrl(endpoint, options = {}) {
+  if (typeof endpoint !== 'string' || endpoint.trim().length === 0) {
+    throw new Error('ATTESTATION_ENDPOINT_INVALID: Endpoint debe ser una URL en formato string no vacía')
+  }
+
+  const trimmed = endpoint.trim()
+  let parsed
+  try {
+    parsed = new URL(trimmed)
+  } catch (err) {
+    throw new Error(`ATTESTATION_ENDPOINT_INVALID: URL '${trimmed}' no es válida: ${err.message}`)
+  }
+
+  const allowHttp = Boolean(options && options.allowHttp)
+  if (!allowHttp && parsed.protocol !== 'https:') {
+    throw new Error(`ATTESTATION_ENDPOINT_INVALID: Protocolo '${parsed.protocol}' no permitido. Se exige HTTPS`)
+  }
+
+  if (allowHttp && parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(`ATTESTATION_ENDPOINT_INVALID: Protocolo '${parsed.protocol}' no permitido. Se exige HTTPS`)
+  }
+
+  if (!parsed.hostname || parsed.hostname.trim().length === 0) {
+    throw new Error(`ATTESTATION_ENDPOINT_INVALID: Hostname no válido en '${trimmed}'`)
+  }
+
+  return trimmed
+}
+
 export function assertAdapterConfigSecurity(config = {}) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('INDEPENDENT_ATTESTATION_ADAPTER_CONFIG_INVALID')
@@ -3521,15 +3560,22 @@ export function assertAdapterConfigSecurity(config = {}) {
     })
   }
 
-  const endpoint = config.endpoint || config.endpointUrl || null
+  const endpoint =
+    config.endpoint ??
+    config.endpointUrl ??
+    (env && env[PR02_P0_ATTESTATION_ENDPOINT_ENV]) ??
+    null
   const rawKeyForEndpoint =
     config.trustedAttestationPublicKey ||
     config.authorityPublicKey ||
     config.publicKeySpki ||
-    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
-    process.env[PR02_P0_AUTHORITY_ENV]
-  if (endpoint && !rawKeyForEndpoint) {
-    throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
+    (env && env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]) ||
+    (env && env[PR02_P0_AUTHORITY_ENV])
+  if (endpoint !== null && endpoint !== undefined && endpoint !== '') {
+    validateAttestationEndpointUrl(endpoint, { allowHttp: Boolean(config.allowHttp) })
+    if (!rawKeyForEndpoint) {
+      throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
+    }
   }
 }
 
@@ -3631,19 +3677,28 @@ export async function submitAttestationRequest(requestPkg, adapterOrConfig = {})
         ? (req) => adapterOrConfig.transport.sendAttestationRequest(req)
         : null
 
+  const env = adapterOrConfig.env || process.env
   const rawPubKey =
     adapterOrConfig.trustedAttestationPublicKey ||
     adapterOrConfig.authorityPublicKey ||
     adapterOrConfig.publicKeySpki ||
-    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
-    process.env[PR02_P0_AUTHORITY_ENV]
+    (env && env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]) ||
+    (env && env[PR02_P0_AUTHORITY_ENV])
 
-  const endpoint = adapterOrConfig.endpoint || adapterOrConfig.endpointUrl || null
+  const endpoint =
+    adapterOrConfig.endpoint ??
+    adapterOrConfig.endpointUrl ??
+    (env && env[PR02_P0_ATTESTATION_ENDPOINT_ENV]) ??
+    null
   if (endpoint && !rawPubKey) {
     throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
   }
 
-  const authorityId = adapterOrConfig.authorityId || adapterOrConfig.expectedAuthorityId
+  const authorityId =
+    adapterOrConfig.authorityId ||
+    adapterOrConfig.expectedAuthorityId ||
+    (env && env[PR02_P0_ATTESTATION_AUTHORITY_ID_ENV]) ||
+    null
 
   if (!transportCandidate || !rawPubKey || !authorityId || typeof authorityId !== 'string' || authorityId.trim().length > 0 === false) {
     throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: No existe una Autoridad de Atestación Independiente externa configurada (se requiere transporte explícito, authorityId y clave pública autorizada)')
@@ -3753,13 +3808,23 @@ export async function submitAttestationRequest(requestPkg, adapterOrConfig = {})
 export function createIndependentAttestationAuthorityAdapter(config = {}) {
   assertAdapterConfigSecurity(config)
 
+  const env = config.env || process.env
   const rawPubKey =
     config.trustedAttestationPublicKey ||
     config.authorityPublicKey ||
     config.publicKeySpki ||
-    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
-    process.env[PR02_P0_AUTHORITY_ENV]
-  const authorityId = config.authorityId || config.expectedAuthorityId || null
+    (env && env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV]) ||
+    (env && env[PR02_P0_AUTHORITY_ENV])
+  const authorityId =
+    config.authorityId ||
+    config.expectedAuthorityId ||
+    (env && env[PR02_P0_ATTESTATION_AUTHORITY_ID_ENV]) ||
+    null
+  const configuredKeyId =
+    config.keyId ||
+    config.expectedKeyId ||
+    (env && env[PR02_P0_ATTESTATION_KEY_ID_ENV]) ||
+    null
   const hasTransport =
     typeof config.transport === 'function' ||
     Boolean(config.transport && typeof config.transport.sendAttestationRequest === 'function')
@@ -3782,12 +3847,12 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
         )
       }
       if (
-        config.keyId !== undefined &&
-        config.keyId !== null &&
-        config.keyId !== validatedKeyId
+        configuredKeyId !== undefined &&
+        configuredKeyId !== null &&
+        configuredKeyId !== validatedKeyId
       ) {
         throw new Error(
-          `ATTESTATION_KEY_ID_MISMATCH: keyId configurado ('${config.keyId}') no coincide con la huella SPKI de publicKeySpki ('${validatedKeyId}')`
+          `ATTESTATION_KEY_ID_MISMATCH: keyId configurado ('${configuredKeyId}') no coincide con la huella SPKI de publicKeySpki ('${validatedKeyId}')`
         )
       }
       hasValidKey = true
@@ -3828,7 +3893,11 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
     allowTestKeys: Boolean(config.allowTestKeys),
   })
 
-  const endpoint = config.endpoint || config.endpointUrl || null
+  const endpoint =
+    config.endpoint ??
+    config.endpointUrl ??
+    (env && env[PR02_P0_ATTESTATION_ENDPOINT_ENV]) ??
+    null
   if (endpoint && !hasValidKey) {
     throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
   }
@@ -3857,7 +3926,7 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
     publicKeySpki: validatedPublicKeySpki,
     allowedAuthorityIds,
     allowedKeyIds,
-    endpoint,
+    endpoint: endpoint ? validateAttestationEndpointUrl(endpoint, { allowHttp: Boolean(config.allowHttp) }) : null,
     algorithm: 'Ed25519',
     transportContract: IndependentAttestationAuthorityTransportContract,
     // Separación estricta entre adaptador técnico implementado y autoridad real externa
@@ -3909,7 +3978,7 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
           ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
           reason: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
           errorCategory: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
-          detail: `keyId suministrado ('${verifyOptions.keyId}') no coincide con el keyId anclado ('${validatedKeyId}')`,
+          detail: `keyId suministrado ('${verifyOptions.keyId || (response && response.keyId)}') no coincide con el keyId anclado ('${effectivePinned || validatedKeyId}')`,
         })
       }
       return verifyAttestationResponse(response, {
@@ -3921,7 +3990,7 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
           verifyOptions.publicKeySpki ||
           rawPubKey,
         pinnedPublicKeySpki: verifyOptions.pinnedPublicKeySpki || validatedPublicKeySpki || rawPubKey,
-        pinnedKeyId: verifyOptions.pinnedKeyId || config.pinnedKeyId || undefined,
+        pinnedKeyId: effectivePinned || undefined,
         allowedAuthorityIds: verifyOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
         allowedKeyIds: verifyOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
       })
@@ -3936,6 +4005,7 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
           verifyOptions.publicKeySpki ||
           rawPubKey,
         pinnedPublicKeySpki: verifyOptions.pinnedPublicKeySpki || validatedPublicKeySpki || rawPubKey,
+        pinnedKeyId: verifyOptions.pinnedKeyId || config.pinnedKeyId || undefined,
         allowedAuthorityIds: verifyOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
         allowedKeyIds: verifyOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
       }),
@@ -3949,6 +4019,7 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
           consumeOptions.publicKeySpki ||
           rawPubKey,
         pinnedPublicKeySpki: consumeOptions.pinnedPublicKeySpki || validatedPublicKeySpki || rawPubKey,
+        pinnedKeyId: consumeOptions.pinnedKeyId || config.pinnedKeyId || undefined,
         allowedAuthorityIds: consumeOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
         allowedKeyIds: consumeOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
       }),
@@ -3989,6 +4060,10 @@ export const IndependentAttestationAuthorityAdapter = Object.freeze({
   transportContract: IndependentAttestationAuthorityTransportContract,
   TRANSPORT_CONTRACT_VERSION: EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
   ENDPOINT_SPEC: EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
+  ENDPOINT_ENV: PR02_P0_ATTESTATION_ENDPOINT_ENV,
+  AUTHORITY_ID_ENV: PR02_P0_ATTESTATION_AUTHORITY_ID_ENV,
+  KEY_ID_ENV: PR02_P0_ATTESTATION_KEY_ID_ENV,
+  validateAttestationEndpointUrl,
   createAdapter: createIndependentAttestationAuthorityAdapter,
   createAttestationRequest,
   validateAttestationRequest,
@@ -4024,6 +4099,10 @@ export const IndependentAttestationAuthority = Object.freeze({
   transportContract: IndependentAttestationAuthorityTransportContract,
   TRANSPORT_CONTRACT_VERSION: EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
   ENDPOINT_SPEC: EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
+  ENDPOINT_ENV: PR02_P0_ATTESTATION_ENDPOINT_ENV,
+  AUTHORITY_ID_ENV: PR02_P0_ATTESTATION_AUTHORITY_ID_ENV,
+  KEY_ID_ENV: PR02_P0_ATTESTATION_KEY_ID_ENV,
+  validateAttestationEndpointUrl,
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   REPLAY_DIR_ENV: PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
   SIGNER_ORIGINS: ATTESTATION_SIGNER_ORIGINS,
@@ -4146,6 +4225,10 @@ export const AttestationAuthority = Object.freeze({
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
   REPLAY_DIR_ENV: PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
   AUTHORITY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  ENDPOINT_ENV: PR02_P0_ATTESTATION_ENDPOINT_ENV,
+  AUTHORITY_ID_ENV: PR02_P0_ATTESTATION_AUTHORITY_ID_ENV,
+  KEY_ID_ENV: PR02_P0_ATTESTATION_KEY_ID_ENV,
+  validateAttestationEndpointUrl,
 })
 
 /**
