@@ -2429,6 +2429,41 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `PRODUCTION_MUTATIONS = 0`
     - `CAE_EMISSIONS_NEW = 0`
 
+- **Revisión Arquitectónica y Contrato de Transporte de Autoridad de Atestación Independiente Externa PR02-P0 (08/11/2026)**:
+  - **Especificación de Transporte**: Definido `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION = '1.0'` y `EXTERNAL_AUTHORITY_ENDPOINT_SPEC` (`POST /attestations`, `application/json`), encapsulados en `IndependentAttestationAuthorityTransportContract`.
+  - **Frontera de Seguridad y Pinning de Claves Públicas**:
+    - `createIndependentAttestationAuthorityAdapter` y `verifyAttestationResponse` implementan pinning de `pinnedKeyId` y rechazo estricto de claves sustituidas (`PUBLIC_KEY_SUBSTITUTION_REJECTED`).
+    - Bloqueo fail-closed de endpoints sin clave pública autorizada (`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`).
+    - Aislamiento absoluto de claves privadas en el runtime fiscal (`RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, `RUNTIME_PRIVATE_KEY_DETECTED`).
+    - Separación criptográfica estricta entre GO Authority y Attestation Authority (`COLLAPSED_AUTHORITIES_BLOCKED = PASS`).
+    - Flujo obligatorio `RECEIVE -> VERIFY -> CONSUME DURABLE -> VALIDATE FOR P1`.
+  - **Disponibilidad y Cobertura de Pruebas**:
+    - 12 nuevas pruebas adversariales (`EXT-ARCH-01` a `EXT-ARCH-12`, casos 132 a 143 en `src/test/fiscalPr02P0Collector.test.ts`).
+    - 160/160 tests PR02 totales PASS (143 collector + 17 parameters plan).
+    - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+    - `git diff --check` PASS con código 0.
+    - `verifyRuntimeSigningIsolation()` PASS.
+    - `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - **Métricas de Seguridad Confirmadas**:
+    - `EXTERNAL_AUTHORITY_ARCHITECTURE_PREPARATION = PASS`
+    - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+    - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+    - `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT = PASS`
+    - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+    - `PUBLIC_KEY_PINNING = PASS`
+    - `GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`
+    - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+    - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+    - `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`
+    - `ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P1_IMPORT_ALLOWED = false`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`
+    - `STOP = AWAITING EXPLICIT DECISION ON 1. COMMIT OF LOCAL HARDENING 2. REAL EXTERNAL AUTHORITY PROVISIONING`
+
 
 - **Integración Fail-Closed con Autoridad de Atestación Independiente PR02-P0 (07/11/2026)**:
   - **Qué garantiza el sistema ahora**:
@@ -2462,3 +2497,184 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
     - `CAE_EMISSIONS_NEW = 0`
+
+- **Revisión Arquitectónica y Contrato de Transporte de Autoridad de Atestación Independiente Externa PR02-P0 (08/11/2026)**:
+  - **Especificación de Transporte**: Definido `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION = '1.0'` y `EXTERNAL_AUTHORITY_ENDPOINT_SPEC` (`POST /attestations`, `application/json`), encapsulados en `IndependentAttestationAuthorityTransportContract`.
+  - **Frontera de Seguridad y Pinning de Claves Públicas**:
+    - `createIndependentAttestationAuthorityAdapter` y `verifyAttestationResponse` implementan pinning de `pinnedKeyId` y rechazo estricto de claves sustituidas (`PUBLIC_KEY_SUBSTITUTION_REJECTED`).
+    - Bloqueo fail-closed de endpoints sin clave pública autorizada (`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`).
+    - Aislamiento absoluto de claves privadas en el runtime fiscal (`RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, `RUNTIME_PRIVATE_KEY_DETECTED`).
+    - Separación criptográfica estricta entre GO Authority y Attestation Authority (`COLLAPSED_AUTHORITIES_BLOCKED = PASS`).
+    - Flujo obligatorio `RECEIVE -> VERIFY -> CONSUME DURABLE -> VALIDATE FOR P1`.
+  - **Disponibilidad y Cobertura de Pruebas**:
+    - 12 nuevas pruebas adversariales (`EXT-ARCH-01` a `EXT-ARCH-12`, casos 132 a 143 en `src/test/fiscalPr02P0Collector.test.ts`).
+    - 160/160 tests PR02 totales PASS (143 collector + 17 parameters plan).
+    - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+    - `git diff --check` PASS con código 0.
+    - `verifyRuntimeSigningIsolation()` PASS.
+    - `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - **Métricas de Seguridad Confirmadas**:
+    - `EXTERNAL_AUTHORITY_ARCHITECTURE_PREPARATION = PASS`
+    - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+    - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+    - `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT = PASS`
+    - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+    - `PUBLIC_KEY_PINNING = PASS`
+    - `GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`
+    - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+    - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+    - `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`
+    - `ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P1_IMPORT_ALLOWED = false`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`
+    - `STOP = AWAITING EXPLICIT DECISION ON 1. COMMIT OF LOCAL HARDENING 2. REAL EXTERNAL AUTHORITY PROVISIONING`
+
+
+- **Endurecimiento de Anti-Replay Durable Host-Local para `AttestationResponse` PR02-P0 (`HOST_LOCAL_DURABLE_ONE_TIME_USE`, 07/11/2026)**:
+  - **Qué garantiza el sistema ahora**:
+    1. Separación estricta entre `VERIFY` (`verifyAttestationResponse` / `validateAttestationResponse`, solo lectura, `consumed: false`) y `CONSUME / RESERVE` (`consumeAttestationResponseDurable` / `reserveAttestationResponseDurable`, `consumed: true`), con revalidación criptográfica y contractual completa dentro de `CONSUME` (`ADV-REPLAY-12`) para eliminar cualquier ventana TOCTOU.
+    2. Identificador canónico de replay (`computeAttestationResponseReplayId`) y reserva atómica exclusiva (`flag: 'wx'`, `O_CREAT | O_EXCL`, modo `0o600`) tanto del digest compuesto como de las llaves semánticas (`attestationId`, `requestSha256`, `signature`), bloqueando replay en el mismo proceso (`ADV-REPLAY-01`), tras reinicio o en otro proceso del sistema operativo (`ADV-REPLAY-02`), en ejecución concurrente (`ADV-REPLAY-03`) y ante sustitución semántica (`ADV-REPLAY-10`).
+    3. Validación fail-closed del almacenamiento durable (`validateAttestationReplayDirectory`): sin fallback a memoria (`ATTESTATION_REPLAY_STORAGE_NOT_CONFIGURED`, `ANTI_REPLAY_DOWNGRADE_FORBIDDEN`, `ADV-REPLAY-04`), rechazo de symlinks en destino (`ADV-REPLAY-05`) o ancestros (`ADV-REPLAY-06`), rechazo de path traversal `..` (`ADV-REPLAY-07`) y rechazo de directorios versionables del repositorio (`ADV-REPLAY-08`).
+  - **Qué NO garantiza todavía**:
+    1. El alcance es `HOST_LOCAL_DURABLE_ONE_TIME_USE` (atómico en el filesystem del host local); no constituye anti-replay distribuido multi-host.
+    2. No existe aún una autoridad externa de producción conectada (`ATTESTATION_TRUST_MODEL = SELF_ATTESTED`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`).
+    3. `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` permanece `false`.
+    4. No se ha ejecutado P0, P1 ni P2 de forma remota (`P0_REMOTE_EXECUTED = false`, `P1_REMOTE_EXECUTION_READY = false`, `P2_REMOTE_EXECUTION_READY = false`, `REMOTE_GO = DENIED`).
+  - **Pruebas y Build**: Casos adversariales `ADV-REPLAY-01` a `ADV-REPLAY-12`, regresiones de auditoría `FINDING-REPLAY-01` a `FINDING-REPLAY-04` y concurrencia de 3 procesos `ADV-CONCURRENCY-3PROC` (tests 100 a 116) añadidos en `src/test/fiscalPr02P0Collector.test.ts`; clasificaciones `CRASH_BEHAVIOR = FAIL_CLOSED` y `SYMLINK_RACE_RISK = MITIGATED`; 116/116 tests PASS en P0 y 133/133 tests PR02 totales PASS; `npm run build` y `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - **Estado**:
+    - `ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `ATTESTATION_RESPONSE_DURABLE_REPLAY_GUARD = PASS`
+    - `ATTESTATION_RESPONSE_REPLAY_AFTER_RESTART = BLOCKED`
+    - `ATTESTATION_RESPONSE_CONCURRENT_REPLAY = BLOCKED`
+    - `ATTESTATION_RESPONSE_VERIFY_IS_NON_CONSUMING = PASS`
+    - `ATTESTATION_RESPONSE_CONSUMPTION_IS_ATOMIC = PASS`
+    - `ATTESTATION_REPLAY_STORAGE_FAIL_CLOSED = PASS`
+    - `ATTESTATION_REPLAY_PATH_GUARD = PASS`
+    - `ATTESTATION_REPLAY_SYMLINK_GUARD = PASS`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+    - `P1_IMPORT_ALLOWED = false`
+    - `REMOTE_GO = DENIED`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`
+
+- **Revisión Arquitectónica y Contrato de Transporte de Autoridad de Atestación Independiente Externa PR02-P0 (08/11/2026)**:
+  - **Especificación de Transporte**: Definido `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION = '1.0'` y `EXTERNAL_AUTHORITY_ENDPOINT_SPEC` (`POST /attestations`, `application/json`), encapsulados en `IndependentAttestationAuthorityTransportContract`.
+  - **Frontera de Seguridad y Pinning de Claves Públicas**:
+    - `createIndependentAttestationAuthorityAdapter` y `verifyAttestationResponse` implementan pinning de `pinnedKeyId` y rechazo estricto de claves sustituidas (`PUBLIC_KEY_SUBSTITUTION_REJECTED`).
+    - Bloqueo fail-closed de endpoints sin clave pública autorizada (`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`).
+    - Aislamiento absoluto de claves privadas en el runtime fiscal (`RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, `RUNTIME_PRIVATE_KEY_DETECTED`).
+    - Separación criptográfica estricta entre GO Authority y Attestation Authority (`COLLAPSED_AUTHORITIES_BLOCKED = PASS`).
+    - Flujo obligatorio `RECEIVE -> VERIFY -> CONSUME DURABLE -> VALIDATE FOR P1`.
+  - **Disponibilidad y Cobertura de Pruebas**:
+    - 12 nuevas pruebas adversariales (`EXT-ARCH-01` a `EXT-ARCH-12`, casos 132 a 143 en `src/test/fiscalPr02P0Collector.test.ts`).
+    - 160/160 tests PR02 totales PASS (143 collector + 17 parameters plan).
+    - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+    - `git diff --check` PASS con código 0.
+    - `verifyRuntimeSigningIsolation()` PASS.
+    - `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - **Métricas de Seguridad Confirmadas**:
+    - `EXTERNAL_AUTHORITY_ARCHITECTURE_PREPARATION = PASS`
+    - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+    - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+    - `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT = PASS`
+    - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+    - `PUBLIC_KEY_PINNING = PASS`
+    - `GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`
+    - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+    - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+    - `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`
+    - `ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P1_IMPORT_ALLOWED = false`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`
+    - `STOP = AWAITING EXPLICIT DECISION ON 1. COMMIT OF LOCAL HARDENING 2. REAL EXTERNAL AUTHORITY PROVISIONING`
+
+
+- **Endurecimiento de Arquitectura de Autoridad de Atestación Independiente Externa PR02-P0 (`Independent Attestation Authority Architecture Hardening`, 07/11/2026)**:
+  - **Qué garantiza el sistema ahora**:
+    1. **Arquitectura de Autoridad Externa y Honestidad del Modelo de Confianza**: La frontera arquitectónica y el adaptador de verificación `IndependentAttestationAuthorityAdapter` están implementados localmente (`AUTHORITY_ADAPTER_IMPLEMENTED = true`), declarando con honestidad técnica que ninguna autoridad externa de producción está provisionada en este entorno (`AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`).
+    2. **Frontera de Clave Pública y Aislamiento de Claves Privadas (`RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, `PUBLIC_KEY_VERIFICATION_BOUNDARY = PASS`)**: `parseEd25519PublicKey`, `validateP0AttestationPublicKey` y `validateP0GoPublicKey` rechazan objetos con `privateKey`/`secretKey`, `KeyObject`s de tipo `'private'` y cadenas/archivos PEM con `PRIVATE KEY` (`RUNTIME_PRIVATE_KEY_DETECTED`). `createIndependentAttestationAuthorityAdapter` fija (`pinnedPublicKeySpki`, `keyId`) la clave pública SPKI DER configurada y rechaza cualquier intento de sustitución en `verifyAttestationResponse` o `submitAttestationRequest` con `PUBLIC_KEY_SUBSTITUTION_REJECTED` (`PUBLIC_KEY_SUBSTITUTION_BLOCKED = PASS`).
+    3. **Separación Estricta `GO Authority != Attestation Authority` (`GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`, `COLLAPSED_AUTHORITIES_BLOCKED = PASS`)**: `assertAuthoritiesSeparated` verifica en `createIndependentAttestationAuthorityAdapter`, `submitAttestationRequest`, `verifyAttestationResponse`, `verifyIndependentAttestation` y `validatePr02P1ImportEvidence` que `GO_AUTHORITY_ID != ATTESTATION_AUTHORITY_ID`, `goKeyId != attestationKeyId` y que sus claves públicas SPKI DER sean distintas (`COLLAPSED_AUTHORITIES_REJECTED`).
+    4. **Rechazo de Autoridades Desconocidas, Auto-Elevación y Firmantes de Test en Producción**: Se bloquean autoridades no autorizadas (`UNAUTHORIZED_ATTESTATION_AUTHORITY`, `UNAUTHORIZED_AUTHORITY_BLOCKED = PASS`), auto-elevación de `SELF_ATTESTED` (`SELF_ATTESTATION_AUTO_ELEVATION_REJECTED`, `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`) y elevación de firmantes de test a producción (`ATTESTATION_TEST_SIGNER_PROHIBITED`, `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`).
+    5. **Separación `VERIFY` vs `CONSUME` y Protección Anti-Replay Durable (`HOST_LOCAL_DURABLE_ONE_TIME_USE`)**: `verifyAttestationResponse` no consume la respuesta (`ATTESTATION_RESPONSE_VERIFY_IS_NON_CONSUMING = PASS`) y `consumeAttestationResponseDurable` revalida la firma y reserva atómicamente en disco (`ATTESTATION_RESPONSE_CONSUMPTION_IS_ATOMIC = PASS`, `ATTESTATION_RESPONSE_REPLAY_AFTER_RESTART = BLOCKED`, `ATTESTATION_RESPONSE_CONCURRENT_REPLAY = BLOCKED`).
+  - **Qué NO garantiza todavía**:
+    1. No existe aún una autoridad externa real provisionada (`AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`, `P1_IMPORT_ALLOWED = false`).
+    2. `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` permanece `false` dado que ARCA WSFE devuelve SOAP XML sin firma digital de aplicación sobre el cuerpo.
+    3. No se ha ejecutado P0, P1 ni P2 de forma remota (`P0_REMOTE_EXECUTED = false`, `P1_REMOTE_EXECUTION_READY = false`, `P2_REMOTE_EXECUTION_READY = false`, `PR02_READY_FOR_EMISSION_GO = false`).
+  - **Pruebas y Build**: 15 casos adversariales nuevos (`AUTH-EXT-01` a `AUTH-EXT-15`, tests 117 a 131) en `src/test/fiscalPr02P0Collector.test.ts`; 131/131 tests PASS en P0 y 148/148 tests PR02 totales PASS; `npm run build` y `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - **Estado**:
+    - `PR02_P0_LOCAL_HARDENING = PASS`
+    - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+    - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+    - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+    - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+    - `PUBLIC_KEY_VERIFICATION_BOUNDARY = PASS`
+    - `GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`
+    - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+    - `UNAUTHORIZED_AUTHORITY_BLOCKED = PASS`
+    - `PUBLIC_KEY_SUBSTITUTION_BLOCKED = PASS`
+    - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+    - `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`
+    - `ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `ATTESTATION_RESPONSE_VERIFY_IS_NON_CONSUMING = PASS`
+    - `ATTESTATION_RESPONSE_CONSUMPTION_IS_ATOMIC = PASS`
+    - `ATTESTATION_RESPONSE_REPLAY_AFTER_RESTART = BLOCKED`
+    - `ATTESTATION_RESPONSE_CONCURRENT_REPLAY = BLOCKED`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED = false`
+    - `P1_IMPORT_ALLOWED = false`
+    - `P0_REMOTE_EXECUTED = false`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `REAL_PV2_ENABLED = false`
+    - `HISTORICAL_042_IDENTIFICATION = UNRESOLVED`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`
+
+- **Revisión Arquitectónica y Contrato de Transporte de Autoridad de Atestación Independiente Externa PR02-P0 (08/11/2026)**:
+  - **Especificación de Transporte**: Definido `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION = '1.0'` y `EXTERNAL_AUTHORITY_ENDPOINT_SPEC` (`POST /attestations`, `application/json`), encapsulados en `IndependentAttestationAuthorityTransportContract`.
+  - **Frontera de Seguridad y Pinning de Claves Públicas**:
+    - `createIndependentAttestationAuthorityAdapter` y `verifyAttestationResponse` implementan pinning de `pinnedKeyId` y rechazo estricto de claves sustituidas (`PUBLIC_KEY_SUBSTITUTION_REJECTED`).
+    - Bloqueo fail-closed de endpoints sin clave pública autorizada (`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`).
+    - Aislamiento absoluto de claves privadas en el runtime fiscal (`RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, `RUNTIME_PRIVATE_KEY_DETECTED`).
+    - Separación criptográfica estricta entre GO Authority y Attestation Authority (`COLLAPSED_AUTHORITIES_BLOCKED = PASS`).
+    - Flujo obligatorio `RECEIVE -> VERIFY -> CONSUME DURABLE -> VALIDATE FOR P1`.
+  - **Disponibilidad y Cobertura de Pruebas**:
+    - 12 nuevas pruebas adversariales (`EXT-ARCH-01` a `EXT-ARCH-12`, casos 132 a 143 en `src/test/fiscalPr02P0Collector.test.ts`).
+    - 160/160 tests PR02 totales PASS (143 collector + 17 parameters plan).
+    - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+    - `git diff --check` PASS con código 0.
+    - `verifyRuntimeSigningIsolation()` PASS.
+    - `run-pr02-p0-staging-private.ps1 -DryRun` PASS.
+  - **Métricas de Seguridad Confirmadas**:
+    - `EXTERNAL_AUTHORITY_ARCHITECTURE_PREPARATION = PASS`
+    - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+    - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+    - `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT = PASS`
+    - `RUNTIME_PRIVATE_KEY_ISOLATION = PASS`
+    - `PUBLIC_KEY_PINNING = PASS`
+    - `GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`
+    - `COLLAPSED_AUTHORITIES_BLOCKED = PASS`
+    - `SELF_ATTESTATION_ELEVATION_BLOCKED = PASS`
+    - `TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED = PASS`
+    - `ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`
+    - `P1_IMPORT_ALLOWED = false`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`
+    - `STOP = AWAITING EXPLICIT DECISION ON 1. COMMIT OF LOCAL HARDENING 2. REAL EXTERNAL AUTHORITY PROVISIONING`

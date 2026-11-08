@@ -2483,6 +2483,70 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
     - **Invariantes Preservados**:
       - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`, `REMOTE_GO = DENIED`.
 
+19. **Endurecimiento de Anti-Replay Durable Host-Local para `AttestationResponse` PR02-P0 (`HOST_LOCAL_DURABLE_ONE_TIME_USE`, 07/11/2026)**:
+    - **Qué garantiza el sistema ahora**:
+      1. **Separación Estricta `VERIFY` vs `CONSUME / RESERVE`**: `verifyAttestationResponse` y `validateAttestationResponse` son operaciones de solo lectura (`consumed: false`, `ATTESTATION_RESPONSE_CONSUMPTION = 'NOT_CONSUMED'`, `ATTESTATION_RESPONSE_VERIFY_IS_NON_CONSUMING = PASS`) que pueden invocarse repetidamente para inspección o diagnóstico sin quemar la respuesta. El consumo durable ocurre únicamente en la frontera explícita `consumeAttestationResponseDurable` / `reserveAttestationResponseDurable` (y en `submitAttestationRequest` / `validatePr02P1ImportEvidence` cuando recibe `attestationResponse`), la cual reejecuta internamente toda la verificación criptográfica y contractual (`ADV-REPLAY-12`) antes de reservar atómicamente en disco (`ATTESTATION_RESPONSE_CONSUMPTION_IS_ATOMIC = PASS`).
+      2. **Identificador Canónico de Replay (`computeAttestationResponseReplayId`) y Bloqueo de Sustitución Semántica (`ADV-REPLAY-10`)**: Calcula el digest SHA-256 canónico sobre `{ schemaVersion, attestationId, requestSha256, manifestSha256, attestationPayloadSha256, signature, authorityId, keyId }` y crea de forma exclusiva (`flag: 'wx'`, `O_CREAT | O_EXCL`, modo `0o600`) cuatro archivos de bloqueo en el directorio durable (`consumed-response-<replayId>.json`, `consumed-id-<sha256(attestationId)>.json`, `consumed-req-<sha256(requestSha256)>.json`, `consumed-sig-<sha256(signature)>.json`), con rollback automático si alguna escritura falla.
+      3. **Persistencia entre Procesos y Concurrencia en el Mismo Host (`HOST_LOCAL_DURABLE_ONE_TIME_USE`)**: Bloquea la reutilización de una `AttestationResponse` dentro del mismo proceso (`ADV-REPLAY-01`), tras reinicio o en otro proceso del sistema operativo (`ADV-REPLAY-02`, `ATTESTATION_RESPONSE_REPLAY_AFTER_RESTART = BLOCKED`) y bajo ejecución concurrente (`ADV-REPLAY-03`, `ATTESTATION_RESPONSE_CONCURRENT_REPLAY = BLOCKED`).
+      4. **Validación Fail-Closed del Almacenamiento Anti-Replay (`validateAttestationReplayDirectory`)**: Rechaza directorios no configurados (`ATTESTATION_REPLAY_STORAGE_NOT_CONFIGURED`) sin degradar jamás a `PROCESS_LOCAL_ONE_TIME_USE` (`ANTI_REPLAY_DOWNGRADE_FORBIDDEN`, `ADV-REPLAY-04`), rechaza symlinks en el destino (`ADV-REPLAY-05`) o en cualquier ancestro (`ADV-REPLAY-06`, `SYMLINK_FORBIDDEN`), rechaza path traversal `..` (`ADV-REPLAY-07`, `PATH_TRAVERSAL_FORBIDDEN`) y rechaza directorios versionables del repositorio como `src/`, `scripts/`, `.git/`, `docs/`, `supabase/` o `.agent/` (`ADV-REPLAY-08`, `UNAUTHORIZED_REPLAY_STORAGE_DIR`). Cero secretos almacenados en los registros de consumo.
+    - **Qué NO garantiza todavía**:
+      1. **Sin Anti-Replay Distribuido / Multi-Host**: El nivel de garantía es explícitamente `HOST_LOCAL_DURABLE_ONE_TIME_USE` (atómico y durable en el filesystem del host local que comparte el directorio privado); no constituye un registro distribuido entre múltiples hosts independientes.
+      2. **Sin Autoridad Externa de Producción Conectada**: `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`, `INDEPENDENT_ATTESTATION_AVAILABLE = false` y `P1_IMPORT_ALLOWED = false`.
+      3. **Sin Firma Criptográfica Directa de ARCA sobre WSFE**: `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED = false`.
+      4. **Sin Ejecución Remota**: `P0_REMOTE_EXECUTED = false`, `P1_REMOTE_EXECUTION_READY = false`, `P2_REMOTE_EXECUTION_READY = false`, `REMOTE_GO = DENIED`.
+    - **Auditoría Adversarial Independiente y Hallazgos Corregidos (07/11/2026)**:
+      - `FINDING-REPLAY-01` (MEDIUM): Ampliada la lista de rechazo de flags de degradación anti-replay (`processLocal`, `fallback`, `allowMemoryReplay`, `disableDurableReplay`, `skipReplayStorage`, `inMemoryReplay`, `consumeOnVerify: false`, `antiReplayGuarantee != 'HOST_LOCAL_DURABLE_ONE_TIME_USE'`) con `ANTI_REPLAY_DOWNGRADE_FORBIDDEN`.
+      - `FINDING-REPLAY-02` (MEDIUM): Endurecida `validateAttestationReplayDirectory` para rechazar rutas Windows UNC (`\\server\share`), dispositivos (`\\?\`, `\\.\`), flujos alternativos NTFS (`:stream`), segmentos con puntos o espacios finales y symlinks rotos/colgantes mediante `lstatIfExists`.
+      - `FINDING-REPLAY-03` (MEDIUM): Endurecida `inspectExistingReplayLockFile` para validar todos los campos obligatorios, coherencia entre digest interno y nombre de archivo, tamaño no vacío y ausencia de directorios/symlinks en rutas de bloqueo; verificado que el rollback multi-lock solo elimina archivos creados en la invocación actual y jamás bloqueos preexistentes (`CRASH_BEHAVIOR = FAIL_CLOSED`, `SYMLINK_RACE_RISK = MITIGATED`).
+      - `FINDING-REPLAY-04` (LOW): Exigencia estricta de formato hexadecimal en minúsculas (`commitSha`, digests y firma) sin normalización silenciosa `.toLowerCase()` y rechazo de espacios extremos en identificadores.
+    - **Suite de Pruebas Adversariales y Validación**:
+      - 17 pruebas adversariales de anti-replay (`ADV-REPLAY-01` a `ADV-REPLAY-12` y regresiones `FINDING-REPLAY-01` a `FINDING-REPLAY-04` más concurrencia real de 3 procesos `ADV-CONCURRENCY-3PROC`, casos 100 a 116) en `src/test/fiscalPr02P0Collector.test.ts`.
+      - 116/116 tests PASS en `fiscalPr02P0Collector.test.ts` y 133/133 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+      - Compilación TypeScript (`tsc -b`), build Vite (`npm run build`) y dry-run de wrapper PowerShell exitosos con código 0.
+
+20. **Endurecimiento de Arquitectura de Autoridad de Atestación Independiente Externa PR02-P0 (`IndependentAttestationAuthority`, 07/11/2026)**:
+    - **1. Qué es `IndependentAttestationAuthority`**:
+      - Es una autoridad criptográfica externa e independiente del runtime fiscal cuya función es custodiar fuera del repositorio su clave privada Ed25519 y emitir respuestas firmadas (`AttestationResponse`) sobre paquetes de solicitud canónicos (`AttestationRequestPackage`) para acreditar la custodia e integridad de la evidencia P0 recolectada.
+    - **2. Por qué el runtime fiscal no puede firmar atestaciones de producción**:
+      - El runtime fiscal (`scripts/fiscal/`) opera exclusivamente con metadatos públicos (`authorityId`, `keyId`, `publicKeySpki`). Tiene terminantemente prohibido almacenar, cargar, generar o aceptar una clave privada como configuración de verificación (`parseEd25519PublicKey`, `validateP0AttestationPublicKey` y `validateP0GoPublicKey` rechazan objetos `KeyObject` privados y PEMs/archivos con `PRIVATE KEY` mediante `RUNTIME_PRIVATE_KEY_DETECTED`). Si el runtime pudiera firmar sus propias atestaciones, colapsaría en auto-atestación (`SELF_ATTESTED`).
+    - **3. Separación estricta entre `GO Authority`, `Attestation Authority`, `Fiscal Runtime` y `ARCA`**:
+      - `GO Authority != Attestation Authority != Fiscal Runtime != ARCA`.
+      - `assertAuthoritiesSeparated` exige fail-closed que `GO_AUTHORITY_ID != ATTESTATION_AUTHORITY_ID`, `goKeyId != attestationKeyId` y que las claves públicas SPKI DER de GO y Atestación sean criptográficamente distintas (`GO_AND_ATTESTATION_AUTHORITIES_SEPARATED = PASS`, `COLLAPSED_AUTHORITIES_BLOCKED = PASS`).
+      - El adaptador `createIndependentAttestationAuthorityAdapter` ancla `publicKeySpki` y `keyId`, bloqueando cualquier intento posterior de sustitución de clave pública (`PUBLIC_KEY_SUBSTITUTION_REJECTED`, `PUBLIC_KEY_SUBSTITUTION_BLOCKED = PASS`).
+    - **4. Por qué una clave pública configurada no prueba la existencia de una autoridad real**:
+      - Configurar localmente un adaptador o una clave pública (`AUTHORITY_ADAPTER_IMPLEMENTED = true`, `isConfigured() = true`) valida únicamente el contrato técnico local; no demuestra que exista una autoridad externa real operando en producción (`AUTHORITY_REAL_WORLD_AVAILABLE = false`, `isRealWorldAuthorityAvailable() = false`).
+    - **5. Por qué `INDEPENDENT_ATTESTATION_AVAILABLE` permanece `false`**:
+      - Mientras no exista e intervenga una autoridad externa real de producción fuera del repositorio, `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false` y `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`. Cualquier intento de elevar `SELF_ATTESTED` mediante flags, opciones o variables de entorno es rechazado con `SELF_ATTESTATION_AUTO_ELEVATION_REJECTED`.
+    - **6. Por qué `P1_IMPORT_ALLOWED` permanece `false`**:
+      - La importación oficial P1 exige evidencia oficial acreditada por una autoridad independiente real verificada y consumida atómicamente una sola vez (`HOST_LOCAL_DURABLE_ONE_TIME_USE`); por tanto, `P1_IMPORT_ALLOWED = false` y `P1_REMOTE_EXECUTION_READY = false`.
+    - **7. Por qué `ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED` permanece `false`**:
+      - ARCA WSFE devuelve respuestas SOAP XML planas sobre TLS sin firma digital de aplicación sobre el payload XML; el sistema jamás afirma verificación criptográfica directa de origen ARCA (`ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED = false`).
+    - **Suite de Pruebas Adversariales (`AUTH-EXT-01` a `AUTH-EXT-15`)**:
+      - 15 nuevas pruebas adversariales (casos 117 a 131, `AUTH-EXT-01` a `AUTH-EXT-15`) en `src/test/fiscalPr02P0Collector.test.ts`.
+      - 131/131 tests PASS en `fiscalPr02P0Collector.test.ts` y 148/148 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+
+21. **Revisión Arquitectónica y Contrato de Transporte de Autoridad de Atestación Independiente Externa PR02-P0 (`EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT`, 08/11/2026)**:
+    - **1. Contrato de Transporte Desacoplado**:
+      - Definida la especificación formal del transporte externo `EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION = '1.0'` y `EXTERNAL_AUTHORITY_ENDPOINT_SPEC` (`POST /attestations`, `application/json`), encapsulada en `IndependentAttestationAuthorityTransportContract`.
+      - Responsabilidad única del transporte: enviar `AttestationRequestPackage` y recibir `AttestationResponse`. El transporte no verifica por sí mismo, no consume replay ni confiere confianza (`RECEIVE -> VERIFY -> CONSUME DURABLE -> VALIDATE FOR P1`).
+    - **2. Frontera Estricta de Claves y Configuración**:
+      - El runtime fiscal conoce exclusivamente claves públicas y metadatos (`PR02_P0_ATTESTATION_PUBLIC_KEY`, `PR02_P0_ATTESTATION_AUTHORITY_ID`, `PR02_P0_ATTESTATION_KEY_ID`, `PR02_P0_ATTESTATION_REPLAY_DIR`, `endpoint`).
+      - La clave privada Ed25519 de atestación de producción permanece fuera del repositorio y del entorno fiscal (`RUNTIME_PRIVATE_KEY_ISOLATION = PASS`, `RUNTIME_PRIVATE_KEY_DETECTED` bloquea cualquier inyección de `privateKey`, `secretKey` o PEMs privados).
+    - **3. Pinning de Claves Públicas y Separación Criptográfica de Autoridades**:
+      - El adaptador y el verificador soportan anclaje explícito `pinnedKeyId` y `pinnedPublicKeySpki`, rechazando sustituciones arbitrarias de claves con `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+      - Se mantiene invariante la separación `GO_AUTHORITY_ID != ATTESTATION_AUTHORITY_ID`, `GO_KEY_ID != ATTESTATION_KEY_ID` y `GO_PUBLIC_KEY != ATTESTATION_PUBLIC_KEY` (`COLLAPSED_AUTHORITIES_BLOCKED = PASS`).
+    - **4. Disponibilidad Honesta y Bloqueo de Importación P1**:
+      - La implementación local de la interfaz de transporte no constituye un servicio externo aprovisionado:
+        - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+        - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+        - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+        - `P1_IMPORT_ALLOWED = false`
+        - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+        - `REMOTE_GO = DENIED`
+    - **5. Suite de Pruebas Adversariales (`EXT-ARCH-01` a `EXT-ARCH-12`)**:
+      - 12 nuevas pruebas adversariales añadidas (casos 132 a 143) en `src/test/fiscalPr02P0Collector.test.ts`, cubriendo adapters sin endpoint, endpoints sin clave pública, discrepancias de authorityId, sustitución de keyId, inyección de clave privada, respuestas sin firma válida, elevación espuria de SELF_ATTESTED, colapso de autoridades, secuencia obligatoria VERIFY -> CONSUME, replay post-verificación, mutación de P1_IMPORT_ALLOWED y aislamiento del modo test.
+      - 143/143 tests PASS en `fiscalPr02P0Collector.test.ts` y 160/160 tests PR02 totales PASS (`fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

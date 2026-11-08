@@ -100,10 +100,34 @@ export function validateCondicionIvaReceptorEvidence(text: string, expectedCheck
 export const PR02_P0_AUTHORITY_ENV: string
 export const PR02_P0_GO_PUBLIC_KEY_ENV: string
 export const PR02_P0_ATTESTATION_PUBLIC_KEY_ENV: string
+export const PR02_P0_ATTESTATION_REPLAY_DIR_ENV: string
 export const PR02_P0_GO_AUTHORITY_ENV: string
 export const PR02_P0_COMPROMISED_SECRETS: readonly string[]
 export const PR02_P0_COMPROMISED_KEYS: readonly string[]
 export const ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
+export const AUTHORITY_ADAPTER_IMPLEMENTED: true
+export const AUTHORITY_REAL_WORLD_AVAILABLE: false
+
+export function assertAuthoritiesSeparated(params?: {
+  goAuthorityId?: string
+  trustedGoAuthorityId?: string
+  goApproverId?: string
+  attestationAuthorityId?: string
+  authorityId?: string
+  expectedAuthorityId?: string
+  goKeyId?: string
+  trustedGoKeyId?: string
+  attestationKeyId?: string
+  keyId?: string
+  expectedKeyId?: string
+  trustedGoPublicKey?: unknown
+  goPublicKey?: unknown
+  trustedAttestationPublicKey?: unknown
+  authorityPublicKey?: unknown
+  publicKeySpki?: unknown
+  goAuthorizationDoc?: unknown
+  allowTestKeys?: boolean
+}): true
 
 export const ATTESTATION_SIGNER_ORIGINS: {
   readonly TEST_SIGNER: 'TEST_SIGNER'
@@ -117,10 +141,16 @@ export const ATTESTATION_AUTHORITY_TYPES: {
 
 export const ATTESTATION_ALLOWED_ALGORITHMS: readonly ['Ed25519']
 
-export const ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL: 'PROCESS_LOCAL_ONE_TIME_USE'
+export const ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 
 export function isAttestationResponseConsumedProcessLocal(responseKey: string): boolean
 export function consumeAttestationResponseProcessLocal(responseKey: string): boolean
+export function serializeCanonicalAttestationResponseReplayIdentity(response: unknown): string
+export function computeAttestationResponseReplayId(response: unknown): string
+export function validateAttestationReplayDirectory(
+  dirPath: unknown,
+  options?: { repoRoot?: string; createIfMissing?: boolean }
+): string
 export function computePublicKeyId(pubKeyInput: unknown): string
 
 export const ATTESTATION_TRUST_MODELS: {
@@ -141,10 +171,17 @@ export const TRUSTED_EXECUTION_BOUNDARY_STATES: {
   readonly UNVERIFIED: 'UNVERIFIED'
 }
 
-export function verifyRuntimeSigningIsolation(options?: { fiscalScriptsDir?: string }): {
+export function verifyRuntimeSigningIsolation(options?: {
+  fiscalScriptsDir?: string
+  env?: Record<string, string | undefined>
+  forceRescan?: boolean
+}): {
   readonly valid: boolean
   readonly reason?: string
   readonly file?: string
+  readonly detail?: string
+  readonly productionSigningInRuntime?: boolean
+  readonly privateKeysDetected?: number
 }
 export function assertRuntimeSigningIsolation(options?: { fiscalScriptsDir?: string }): void
 
@@ -394,6 +431,7 @@ export type AttestationRejectionReason =
   | 'ATTESTATION_TEST_SIGNER_PROHIBITED'
   | 'ATTESTATION_RESPONSE_REPLAY_DETECTED'
   | 'COLLAPSED_AUTHORITIES_REJECTED'
+  | 'PUBLIC_KEY_SUBSTITUTION_REJECTED'
   | 'INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE'
   | 'SELF_ATTESTATION_AUTO_ELEVATION_REJECTED'
   | 'RUNTIME_PRIVATE_KEY_DETECTED'
@@ -402,6 +440,7 @@ export type AttestationRejectionReason =
 export interface AttestationResponse {
   readonly schemaVersion: '1.0'
   readonly responseId: string
+  readonly attestationId?: string
   readonly authorityType: AttestationAuthorityType
   readonly authorityId: string
   readonly keyId: string
@@ -432,19 +471,51 @@ export interface AttestationResponseVerificationOptions {
   readonly expectedHead?: string
   readonly trustedAttestationPublicKey?: unknown
   readonly authorityPublicKey?: unknown
+  readonly publicKeySpki?: unknown
+  readonly pinnedPublicKeySpki?: unknown
+  readonly expectedPublicKeySpki?: unknown
   readonly authoritySecret?: unknown
   readonly trustedGoPublicKey?: unknown
+  readonly goAuthorityId?: string
+  readonly trustedGoAuthorityId?: string
+  readonly goApproverId?: string
+  readonly goKeyId?: string
+  readonly trustedGoKeyId?: string
+  readonly goAuthorizationDoc?: unknown
   readonly allowedAuthorityIds?: readonly string[] | Set<string>
+  readonly authorityId?: string
   readonly expectedAuthorityId?: string
   readonly allowedKeyIds?: readonly string[] | Set<string>
+  readonly keyId?: string
   readonly expectedKeyId?: string
+  readonly pinnedKeyId?: string
   readonly allowTestKeys?: boolean
   readonly isTestAuthority?: boolean
   readonly fiscalScriptsDir?: string
   readonly env?: Record<string, string | undefined>
   readonly now?: string | number | Date
+  readonly checkReplay?: boolean
+  readonly consumedResponsesDir?: string
+  readonly attestationReplayDir?: string
+  readonly replayRegistryDir?: string
+  readonly repoRoot?: string
+  readonly fsWriteExclusive?: (targetPath: string, content: string) => void
   readonly enforceAntiReplay?: boolean
   readonly consumeOnVerify?: boolean
+  readonly allowProcessLocalFallback?: boolean
+  readonly degradeToProcessLocal?: boolean
+  readonly fallbackToMemory?: boolean
+  readonly processLocal?: unknown
+  readonly fallback?: unknown
+  readonly allowMemoryReplay?: boolean
+  readonly disableDurableReplay?: boolean
+  readonly skipReplayStorage?: boolean
+  readonly inMemoryReplay?: boolean
+  readonly antiReplayGuarantee?: string
+  readonly skipVerification?: boolean
+  readonly preVerified?: boolean
+  readonly trustPreviousVerify?: boolean
+  readonly verified?: boolean
   readonly independentAuthorityAvailable?: boolean
   readonly elevateToIndependent?: boolean
   readonly forceIndependentAttestation?: boolean
@@ -455,7 +526,13 @@ export interface AttestationResponseVerificationOptions {
 
 export interface AttestationResponseVerificationResult {
   readonly valid: boolean
-  readonly reason: 'VERIFIED' | 'VERIFIED_TEST_ONLY' | AttestationRejectionReason
+  readonly consumed: boolean
+  readonly ATTESTATION_RESPONSE_CONSUMPTION: 'NOT_CONSUMED' | 'CONSUMED'
+  readonly replayId?: string
+  readonly responseId?: string
+  readonly attestationId?: string
+  readonly consumedAt?: string
+  readonly reason: 'VERIFIED' | 'VERIFIED_TEST_ONLY' | AttestationRejectionReason | 'ATTESTATION_REPLAY_STORAGE_INVALID'
   readonly errorCategory?: string
   readonly detail?: string
   readonly authorityType?: AttestationAuthorityType
@@ -476,7 +553,7 @@ export interface AttestationResponseVerificationResult {
   readonly TRUSTED_EXECUTION_BOUNDARY: 'VERIFIED' | 'UNVERIFIED'
   readonly INDEPENDENT_ATTESTATION_AVAILABLE: boolean
   readonly P1_IMPORT_ALLOWED: boolean
-  readonly antiReplayGuarantee: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly antiReplayGuarantee: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 }
 
 export function serializeCanonicalAttestationResponsePayload(res: unknown): string
@@ -486,6 +563,18 @@ export function verifyAttestationResponse(
   options?: AttestationResponseVerificationOptions
 ): AttestationResponseVerificationResult
 export function validateAttestationResponse(
+  response: unknown,
+  options?: AttestationResponseVerificationOptions
+): AttestationResponseVerificationResult
+export function isAttestationResponseConsumedDurable(
+  response: unknown,
+  options?: AttestationResponseVerificationOptions
+): boolean
+export function consumeAttestationResponseDurable(
+  response: unknown,
+  options?: AttestationResponseVerificationOptions
+): AttestationResponseVerificationResult
+export function reserveAttestationResponseDurable(
   response: unknown,
   options?: AttestationResponseVerificationOptions
 ): AttestationResponseVerificationResult
@@ -501,10 +590,24 @@ export interface AttestationAuthorityTransportObject {
 export interface IndependentAttestationAuthorityAdapterConfig {
   readonly authorityId?: string
   readonly expectedAuthorityId?: string
+  readonly keyId?: string
+  readonly expectedKeyId?: string
+  readonly pinnedKeyId?: string
+  readonly endpoint?: string | null
+  readonly endpointUrl?: string | null
   readonly allowedAuthorityIds?: readonly string[] | Set<string>
   readonly trustedAttestationPublicKey?: unknown
   readonly authorityPublicKey?: unknown
+  readonly publicKeySpki?: unknown
+  readonly pinnedPublicKeySpki?: unknown
+  readonly expectedPublicKeySpki?: unknown
   readonly trustedGoPublicKey?: unknown
+  readonly goAuthorityId?: string
+  readonly trustedGoAuthorityId?: string
+  readonly goApproverId?: string
+  readonly goKeyId?: string
+  readonly trustedGoKeyId?: string
+  readonly goAuthorizationDoc?: unknown
   readonly allowedKeyIds?: readonly string[] | Set<string>
   readonly transport?: AttestationAuthorityTransportFn | AttestationAuthorityTransportObject
   readonly allowTestKeys?: boolean
@@ -514,9 +617,27 @@ export interface IndependentAttestationAuthorityAdapterConfig {
   readonly fiscalScriptsDir?: string
   readonly env?: Record<string, string | undefined>
   readonly now?: string | number | Date
+  readonly consumedResponsesDir?: string
+  readonly attestationReplayDir?: string
+  readonly replayRegistryDir?: string
+  readonly repoRoot?: string
+  readonly fsWriteExclusive?: (targetPath: string, content: string) => void
   readonly enforceAntiReplay?: boolean
   readonly consumeOnVerify?: boolean
+  readonly allowProcessLocalFallback?: boolean
+  readonly degradeToProcessLocal?: boolean
+  readonly fallbackToMemory?: boolean
+  readonly processLocal?: unknown
+  readonly fallback?: unknown
+  readonly allowMemoryReplay?: boolean
+  readonly disableDurableReplay?: boolean
+  readonly skipReplayStorage?: boolean
+  readonly inMemoryReplay?: boolean
+  readonly antiReplayGuarantee?: string
   readonly independentAuthorityAvailable?: boolean
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE?: boolean
+  readonly authorityRealWorldAvailable?: boolean
+  readonly AUTHORITY_REAL_WORLD_AVAILABLE?: boolean
   readonly elevateToIndependent?: boolean
   readonly forceIndependentAttestation?: boolean
   readonly allowSelfAttestedAsIndependent?: boolean
@@ -532,6 +653,8 @@ export interface IndependentAttestationAuthorityAdapterConfig {
   readonly enableLocalSigningFallback?: unknown
   readonly localPrivateKey?: unknown
   readonly privateKey?: unknown
+  readonly authorityPrivateKey?: unknown
+  readonly secretKey?: unknown
   readonly autoDiscoverRemoteAuthority?: boolean
   readonly implicitNetworkAccess?: boolean
 }
@@ -552,13 +675,18 @@ export interface IndependentAttestationAuthorityAdapterInstance {
   readonly adapterVersion: '1.0'
   readonly authorityId: string | null
   readonly keyId: string | null
+  readonly publicKeySpki: string | null
   readonly allowedAuthorityIds: readonly string[]
   readonly allowedKeyIds: readonly string[]
+  readonly endpoint: string | null
   readonly algorithm: 'Ed25519'
+  readonly transportContract: IndependentAttestationAuthorityTransportContract
+  readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
+  readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
   readonly ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED'
   readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
   readonly P1_IMPORT_ALLOWED: false
-  readonly antiReplayGuarantee: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly antiReplayGuarantee: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
   readonly isConfigured: () => boolean
   readonly isAuthorityAvailable: () => false
   readonly createAttestationRequest: typeof createAttestationRequest
@@ -575,25 +703,93 @@ export interface IndependentAttestationAuthorityAdapterInstance {
     response: unknown,
     verifyOptions?: AttestationResponseVerificationOptions
   ) => AttestationResponseVerificationResult
+  readonly consumeAttestationResponse: (
+    response: unknown,
+    consumeOptions?: AttestationResponseVerificationOptions
+  ) => AttestationResponseVerificationResult
+  readonly reserveAttestationResponse: (
+    response: unknown,
+    consumeOptions?: AttestationResponseVerificationOptions
+  ) => AttestationResponseVerificationResult
+  readonly isAttestationResponseConsumed: (
+    response: unknown,
+    checkOptions?: AttestationResponseVerificationOptions
+  ) => boolean
   readonly signProductionAttestation: () => never
   readonly accessProductionPrivateKey: () => never
   readonly fallbackToLocalSigner: () => never
 }
 
+export function assertAdapterConfigSecurity(config?: Record<string, unknown>): void
+
 export function createIndependentAttestationAuthorityAdapter(
   config?: IndependentAttestationAuthorityAdapterConfig
 ): IndependentAttestationAuthorityAdapterInstance
 
+export const EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION: '1.0'
+export const EXTERNAL_AUTHORITY_ENDPOINT_SPEC: {
+  readonly method: 'POST'
+  readonly defaultPath: '/attestations'
+  readonly contentType: 'application/json'
+}
+
+export interface IndependentAttestationAuthorityTransport {
+  readonly sendAttestationRequest: (
+    requestPkg: AttestationRequestPackage
+  ) => Promise<AttestationResponse>
+}
+
+export interface IndependentAttestationAuthorityTransportContract {
+  readonly contractVersion: '1.0'
+  readonly endpointSpec: {
+    readonly method: 'POST'
+    readonly defaultPath: '/attestations'
+    readonly contentType: 'application/json'
+  }
+  readonly requestSchemaVersion: '1.0'
+  readonly responseSchemaVersion: '1.0'
+  readonly algorithm: 'Ed25519'
+  readonly executionScope: typeof PR02_P0_SCOPE
+  readonly environment: 'HOMOLOGACION'
+  readonly prohibitedPayloadFields: readonly string[]
+  readonly requiredRequestFields: readonly string[]
+  readonly requiredResponseFields: readonly string[]
+  readonly invariants: {
+    readonly NO_PRIVATE_KEYS_IN_RUNTIME: true
+    readonly NO_SECRET_TRANSMISSION: true
+    readonly CANONICAL_SERIALIZATION_REQUIRED: true
+    readonly GO_AND_ATTESTATION_AUTHORITIES_SEPARATED: true
+    readonly VERIFY_BEFORE_CONSUME_REQUIRED: true
+    readonly HOST_LOCAL_DURABLE_ONE_TIME_USE_REPLAY_PROTECTION: true
+    readonly HONEST_AVAILABILITY_STATE: true
+  }
+}
+
+export const IndependentAttestationAuthorityTransportContract: IndependentAttestationAuthorityTransportContract
+
 export interface IndependentAttestationAuthorityAdapterNamespace {
+  readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
+  readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
+  readonly transportContract: IndependentAttestationAuthorityTransportContract
+  readonly TRANSPORT_CONTRACT_VERSION: '1.0'
+  readonly ENDPOINT_SPEC: typeof EXTERNAL_AUTHORITY_ENDPOINT_SPEC
   readonly createAdapter: typeof createIndependentAttestationAuthorityAdapter
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
   readonly submitAttestationRequest: typeof submitAttestationRequest
   readonly verifyAttestationResponse: typeof verifyAttestationResponse
   readonly validateAttestationResponse: typeof validateAttestationResponse
+  readonly consumeAttestationResponse: typeof consumeAttestationResponseDurable
+  readonly reserveAttestationResponse: typeof reserveAttestationResponseDurable
+  readonly isAttestationResponseConsumed: typeof isAttestationResponseConsumedDurable
   readonly serializeCanonicalAttestationResponsePayload: typeof serializeCanonicalAttestationResponsePayload
   readonly computeAttestationResponsePayloadDigest: typeof computeAttestationResponsePayloadDigest
+  readonly serializeCanonicalAttestationResponseReplayIdentity: typeof serializeCanonicalAttestationResponseReplayIdentity
+  readonly computeAttestationResponseReplayId: typeof computeAttestationResponseReplayId
+  readonly validateAttestationReplayDirectory: typeof validateAttestationReplayDirectory
   readonly computePublicKeyId: typeof computePublicKeyId
+  readonly assertAuthoritiesSeparated: typeof assertAuthoritiesSeparated
   readonly AUTHORITY_TYPES: typeof ATTESTATION_AUTHORITY_TYPES
   readonly ALLOWED_ALGORITHMS: typeof ATTESTATION_ALLOWED_ALGORITHMS
   readonly ANTI_REPLAY_GUARANTEE_LEVEL: typeof ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL
@@ -602,15 +798,29 @@ export interface IndependentAttestationAuthorityAdapterNamespace {
 export const IndependentAttestationAuthorityAdapter: IndependentAttestationAuthorityAdapterNamespace
 
 export interface IndependentAttestationAuthorityInterface {
+  readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
+  readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
+  readonly P1_IMPORT_ALLOWED: false
+  readonly transportContract: IndependentAttestationAuthorityTransportContract
+  readonly TRANSPORT_CONTRACT_VERSION: '1.0'
+  readonly ENDPOINT_SPEC: typeof EXTERNAL_AUTHORITY_ENDPOINT_SPEC
   readonly createAttestationRequest: typeof createAttestationRequest
   readonly validateAttestationRequest: typeof validateAttestationRequest
   readonly computeAttestationRequestDigest: typeof computeAttestationRequestDigest
   readonly serializeCanonicalAttestationRequest: typeof serializeCanonicalAttestationRequest
   readonly serializeCanonicalAttestationResponsePayload: typeof serializeCanonicalAttestationResponsePayload
   readonly computeAttestationResponsePayloadDigest: typeof computeAttestationResponsePayloadDigest
+  readonly serializeCanonicalAttestationResponseReplayIdentity: typeof serializeCanonicalAttestationResponseReplayIdentity
+  readonly computeAttestationResponseReplayId: typeof computeAttestationResponseReplayId
+  readonly validateAttestationReplayDirectory: typeof validateAttestationReplayDirectory
   readonly computePublicKeyId: typeof computePublicKeyId
+  readonly assertAuthoritiesSeparated: typeof assertAuthoritiesSeparated
   readonly verifyAttestationResponse: typeof verifyAttestationResponse
   readonly validateAttestationResponse: typeof validateAttestationResponse
+  readonly consumeAttestationResponse: typeof consumeAttestationResponseDurable
+  readonly reserveAttestationResponse: typeof reserveAttestationResponseDurable
+  readonly isAttestationResponseConsumed: typeof isAttestationResponseConsumedDurable
   readonly createAdapter: typeof createIndependentAttestationAuthorityAdapter
   readonly submitAttestationRequest: typeof submitAttestationRequest
   readonly verifyIndependentAttestation: typeof verifyIndependentAttestation
@@ -626,13 +836,32 @@ export interface IndependentAttestationAuthorityInterface {
   readonly accessProductionPrivateKey: () => never
   readonly generateTrustedIndependentAttestation: () => never
   readonly fallbackToLocalSigner: () => never
+  readonly isPublicKeyConfigured: (options?: {
+    trustedAttestationPublicKey?: unknown
+    publicKeySpki?: unknown
+    allowTestKeys?: boolean
+    independentAuthorityAvailable?: boolean
+  }) => boolean
+  readonly isRealWorldAuthorityAvailable: (options?: {
+    trustedAttestationPublicKey?: unknown
+    allowTestKeys?: boolean
+    independentAttestation?: unknown
+    independentAuthorityAvailable?: boolean
+    INDEPENDENT_ATTESTATION_AVAILABLE?: boolean
+    authorityRealWorldAvailable?: boolean
+    AUTHORITY_REAL_WORLD_AVAILABLE?: boolean
+  }) => false
   readonly isAuthorityAvailable: (options?: {
     trustedAttestationPublicKey?: unknown
     allowTestKeys?: boolean
     independentAttestation?: unknown
     independentAuthorityAvailable?: boolean
+    INDEPENDENT_ATTESTATION_AVAILABLE?: boolean
+    authorityRealWorldAvailable?: boolean
+    AUTHORITY_REAL_WORLD_AVAILABLE?: boolean
   }) => boolean
   readonly PUBLIC_KEY_ENV: string
+  readonly REPLAY_DIR_ENV: string
   readonly AUTHORITY_ENV: string
   readonly SIGNER_ORIGINS: typeof ATTESTATION_SIGNER_ORIGINS
   readonly AUTHORITY_TYPES: typeof ATTESTATION_AUTHORITY_TYPES

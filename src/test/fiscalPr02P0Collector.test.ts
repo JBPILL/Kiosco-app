@@ -3,6 +3,8 @@ import { describe, it, expect } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { createHash } from 'node:crypto'
+import { spawnSync, execFile } from 'node:child_process'
+import { pathToFileURL } from 'node:url'
 import {
   PR02_P0_SCOPE,
   PR02_PARAMETERS_TARGET_PROJECT_REF,
@@ -36,6 +38,16 @@ import {
   validatePr02P0Manifest,
   computeP0ManifestDigest,
   ANTI_REPLAY_GUARANTEE_LEVEL,
+  AUTHORITY_ADAPTER_IMPLEMENTED,
+  AUTHORITY_REAL_WORLD_AVAILABLE,
+  EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
+  EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
+  IndependentAttestationAuthorityTransportContract,
+  assertAdapterConfigSecurity,
+  assertAuthoritiesSeparated,
+  parseEd25519PublicKey,
+  validateP0AttestationPublicKey,
+  validateP0GoPublicKey,
   GoAuthority,
   AttestationAuthority,
   IndependentAttestationAuthority,
@@ -44,6 +56,12 @@ import {
   submitAttestationRequest,
   verifyAttestationResponse,
   validateAttestationResponse,
+  consumeAttestationResponseDurable,
+  reserveAttestationResponseDurable,
+  isAttestationResponseConsumedDurable,
+  validateAttestationReplayDirectory,
+  computeAttestationResponseReplayId,
+  serializeCanonicalAttestationResponseReplayIdentity,
   computePublicKeyId,
   serializeCanonicalAttestationResponsePayload,
   computeAttestationResponsePayloadDigest,
@@ -60,6 +78,7 @@ import {
   PR02_P0_AUTHORITY_ENV,
   PR02_P0_GO_PUBLIC_KEY_ENV,
   PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
   parseWsfeTiposIvaResponse,
   parseWsfeCondicionIvaReceptorResponse,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
@@ -3898,7 +3917,9 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
   })
 
   // 94. ADV-39 — Reutilización de respuesta dentro del mismo proceso
-  it('94. ADV-39: Reutilización de una respuesta de atestación dentro del mismo proceso es bloqueada con ATTESTATION_RESPONSE_REPLAY_DETECTED (PROCESS_LOCAL_ONE_TIME_USE)', async () => {
+  it('94. ADV-39: Reutilización de una respuesta de atestación dentro del mismo proceso es bloqueada con ATTESTATION_RESPONSE_REPLAY_DETECTED (HOST_LOCAL_DURABLE_ONE_TIME_USE)', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-039-replay-dir')
     const { requestPkg, goPub } = buildTestRequestFixture('039')
     const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
     const singleResponse = testAuthority.issueResponse(requestPkg)
@@ -3908,6 +3929,7 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
       trustedAttestationPublicKey: testAuthority.publicKey,
       trustedGoPublicKey: goPub,
       allowTestKeys: true,
+      consumedResponsesDir: replayDir,
       transport: async () => singleResponse,
     })
 
@@ -3915,18 +3937,20 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(adapter.ATTESTATION_TRUST_MODEL).toBe('SELF_ATTESTED')
     expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
     expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
-    expect(adapter.antiReplayGuarantee).toBe('PROCESS_LOCAL_ONE_TIME_USE')
-    expect(ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(adapter.antiReplayGuarantee).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
+    expect(ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
 
     // Primer uso: válido
     const firstSubmit = await adapter.submitAttestationRequest(requestPkg)
     expect(firstSubmit.valid).toBe(true)
-    expect(firstSubmit.verification.antiReplayGuarantee).toBe('PROCESS_LOCAL_ONE_TIME_USE')
+    expect(firstSubmit.verification.consumed).toBe(true)
+    expect(firstSubmit.verification.antiReplayGuarantee).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
 
-    // Segundo uso de la misma respuesta en el mismo proceso: bloqueado por anti-replay
+    // Segundo uso de la misma respuesta en el mismo proceso: bloqueado por anti-replay durable
     await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
       /ATTESTATION_RESPONSE_REPLAY_DETECTED/
     )
+    cleanupTestDir()
   })
 
   // 95. ADV-40 — Falta autoridad independiente configurada
@@ -4155,5 +4179,1962 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(serializeCanonicalAttestationResponsePayload(validRes).length).toBeGreaterThan(0)
     expect(computeAttestationResponsePayloadDigest(validRes)).toBe(validRes.attestationPayloadSha256)
     expect(IndependentAttestationAuthorityAdapter.AUTHORITY_TYPES).toEqual(ATTESTATION_AUTHORITY_TYPES)
+  })
+
+  // 100. ADV-REPLAY-01 — Replay dentro del mismo proceso
+  it('100. ADV-REPLAY-01: Replay dentro del mismo proceso sobre la misma AttestationResponse falla cerrado con ATTESTATION_RESPONSE_REPLAY_DETECTED', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-replay-01')
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-01')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    const replayId = computeAttestationResponseReplayId(validResponse)
+    expect(replayId).toMatch(/^[0-9a-f]{64}$/)
+    expect(serializeCanonicalAttestationResponseReplayIdentity(validResponse)).toContain(validResponse.responseId)
+    expect(isAttestationResponseConsumedDurable(validResponse, { consumedResponsesDir: replayDir })).toBe(false)
+
+    // Primer consumo en el proceso: éxito y persiste el bloqueo durable
+    const firstConsume = consumeAttestationResponseDurable(validResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+    })
+    expect(firstConsume.valid).toBe(true)
+    expect(firstConsume.consumed).toBe(true)
+    expect(firstConsume.ATTESTATION_RESPONSE_CONSUMPTION).toBe('CONSUMED')
+    expect(firstConsume.replayId).toBe(replayId)
+    expect(firstConsume.antiReplayGuarantee).toBe('HOST_LOCAL_DURABLE_ONE_TIME_USE')
+    expect(isAttestationResponseConsumedDurable(validResponse, { consumedResponsesDir: replayDir })).toBe(true)
+
+    // Segundo consumo en el mismo proceso: bloqueado fail-closed
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 101. ADV-REPLAY-02 — Replay tras reinicio o nuevo proceso del SO
+  it('101. ADV-REPLAY-02: Replay tras reinicio o en un nuevo proceso del sistema operativo falla cerrado con ATTESTATION_RESPONSE_REPLAY_DETECTED', () => {
+    cleanupTestDir()
+    const replayDir = path.resolve(TEST_EVIDENCE_DIR, 'adv-replay-02')
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-02')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    const planModuleUrl = pathToFileURL(
+      path.resolve(process.cwd(), 'scripts/fiscal/plan-pr02-parameters.mjs')
+    ).href
+
+    const childPayload = JSON.stringify({
+      planModuleUrl,
+      response: validResponse,
+      requestPkg,
+      pubKey: testAuthority.publicKey,
+      goPub,
+      replayDir,
+    })
+
+    // Proceso A (proceso hijo independiente del SO) consume la respuesta X y termina
+    const childScript = `
+      import { consumeAttestationResponseDurable } from ${JSON.stringify(planModuleUrl)};
+      const data = JSON.parse(process.env.CHILD_REPLAY_PAYLOAD);
+      const res = consumeAttestationResponseDurable(data.response, {
+        attestationRequest: data.requestPkg,
+        trustedAttestationPublicKey: data.pubKey,
+        trustedGoPublicKey: data.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: data.replayDir,
+      });
+      console.log(JSON.stringify({ consumed: res.consumed, replayId: res.replayId }));
+    `
+
+    const procA = spawnSync(process.execPath, ['--input-type=module', '-e', childScript], {
+      env: { ...process.env, CHILD_REPLAY_PAYLOAD: childPayload },
+      encoding: 'utf8',
+    })
+    expect(procA.status).toBe(0)
+    const procAOut = JSON.parse(procA.stdout.trim())
+    expect(procAOut.consumed).toBe(true)
+
+    // Proceso B (este proceso actual, o un segundo proceso hijo tras el cierre de A) intenta consumir X sobre el mismo directorio durable
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+
+    const procB = spawnSync(process.execPath, ['--input-type=module', '-e', childScript], {
+      env: { ...process.env, CHILD_REPLAY_PAYLOAD: childPayload },
+      encoding: 'utf8',
+    })
+    expect(procB.status).not.toBe(0)
+    expect(procB.stderr).toMatch(/ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 102. ADV-REPLAY-03 — Replay concurrente
+  it('102. ADV-REPLAY-03: Dos consumidores concurrentes intentan consumir la misma AttestationResponse sobre el mismo directorio -> exactamente uno pasa y el otro falla cerrado', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-replay-03')
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-03')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    const consumeTask = () =>
+      Promise.resolve().then(() =>
+        reserveAttestationResponseDurable(validResponse, {
+          attestationRequest: requestPkg,
+          trustedAttestationPublicKey: testAuthority.publicKey,
+          trustedGoPublicKey: goPub,
+          allowTestKeys: true,
+          consumedResponsesDir: replayDir,
+        })
+      )
+
+    const results = await Promise.allSettled([consumeTask(), consumeTask(), consumeTask()])
+    const fulfilled = results.filter((r) => r.status === 'fulfilled')
+    const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
+
+    expect(fulfilled.length).toBe(1)
+    expect(rejected.length).toBe(2)
+    for (const rej of rejected) {
+      expect(String(rej.reason?.message || rej.reason)).toMatch(/ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    }
+    cleanupTestDir()
+  })
+
+  // 103. ADV-REPLAY-04 — Directorio anti-replay ausente o intento de degradar a PROCESS_LOCAL_ONE_TIME_USE
+  it('103. ADV-REPLAY-04: Consumir una AttestationResponse sin directorio durable configurado o intentando degradar a memoria falla cerrado con ATTESTATION_REPLAY_STORAGE_NOT_CONFIGURED / ANTI_REPLAY_DOWNGRADE_FORBIDDEN', async () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-04')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    // Sin consumedResponsesDir ni PR02_P0_ATTESTATION_REPLAY_DIR_ENV -> falla cerrado (sin fallback a memoria)
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        env: {},
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_REPLAY_STORAGE_NOT_CONFIGURED/)
+
+    await expect(
+      submitAttestationRequest(requestPkg, {
+        authorityId: testAuthority.authorityId,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        env: {},
+        transport: async () => validResponse,
+      })
+    ).rejects.toThrow(/ATTESTATION_REPLAY_STORAGE_NOT_CONFIGURED/)
+
+    // Intento explícito de degradar a PROCESS_LOCAL_ONE_TIME_USE o desactivar anti-replay
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: path.join(TEST_EVIDENCE_DIR, 'adv-replay-04'),
+        allowProcessLocalFallback: true,
+      })
+    ).toThrow(/ANTI_REPLAY_DOWNGRADE_FORBIDDEN/)
+
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: path.join(TEST_EVIDENCE_DIR, 'adv-replay-04'),
+        antiReplayGuarantee: 'PROCESS_LOCAL_ONE_TIME_USE',
+      })
+    ).toThrow(/ANTI_REPLAY_DOWNGRADE_FORBIDDEN/)
+  })
+
+  // 104. ADV-REPLAY-05 — Directorio anti-replay apunta a symlink
+  it('104. ADV-REPLAY-05: Directorio de registro anti-replay que es un symlink es rechazado fail-closed con SYMLINK_FORBIDDEN', () => {
+    cleanupTestDir()
+    const realTargetDir = path.resolve(TEST_EVIDENCE_DIR, 'real-target-05')
+    const symlinkDir = path.resolve(TEST_EVIDENCE_DIR, 'symlink-replay-05')
+    fs.mkdirSync(realTargetDir, { recursive: true })
+
+    try {
+      fs.symlinkSync(realTargetDir, symlinkDir, 'dir')
+    } catch {
+      fs.symlinkSync(realTargetDir, symlinkDir, 'junction')
+    }
+
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-05')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    expect(() => validateAttestationReplayDirectory(symlinkDir)).toThrow(/SYMLINK_FORBIDDEN/)
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: symlinkDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN/)
+    cleanupTestDir()
+  })
+
+  // 105. ADV-REPLAY-06 — Ancestro con symlink
+  it('105. ADV-REPLAY-06: Un directorio padre/ancestro de la ruta anti-replay es un symlink -> falla cerrado con SYMLINK_FORBIDDEN', () => {
+    cleanupTestDir()
+    const realParentDir = path.resolve(TEST_EVIDENCE_DIR, 'real-parent-06')
+    const symlinkParentDir = path.resolve(TEST_EVIDENCE_DIR, 'symlink-parent-06')
+    fs.mkdirSync(realParentDir, { recursive: true })
+
+    try {
+      fs.symlinkSync(realParentDir, symlinkParentDir, 'dir')
+    } catch {
+      fs.symlinkSync(realParentDir, symlinkParentDir, 'junction')
+    }
+
+    const nestedReplayDir = path.join(symlinkParentDir, 'nested', 'replay-registry')
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-06')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    expect(() => validateAttestationReplayDirectory(nestedReplayDir)).toThrow(/SYMLINK_FORBIDDEN/)
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: nestedReplayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN/)
+    cleanupTestDir()
+  })
+
+  // 106. ADV-REPLAY-07 — Path traversal
+  it('106. ADV-REPLAY-07: Ruta del registro anti-replay con segmentos ".." o escape de directorio falla cerrado con PATH_TRAVERSAL_FORBIDDEN', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-07')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    const traversalPaths = [
+      `${TEST_EVIDENCE_DIR}/../escape-replay`,
+      `${TEST_EVIDENCE_DIR}\\..\\escape-replay`,
+      '../outside-repo-replay',
+    ]
+
+    for (const badPath of traversalPaths) {
+      expect(() => validateAttestationReplayDirectory(badPath)).toThrow(/PATH_TRAVERSAL_FORBIDDEN/)
+      expect(() =>
+        consumeAttestationResponseDurable(validResponse, {
+          attestationRequest: requestPkg,
+          trustedAttestationPublicKey: testAuthority.publicKey,
+          trustedGoPublicKey: goPub,
+          allowTestKeys: true,
+          consumedResponsesDir: badPath,
+        })
+      ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: PATH_TRAVERSAL_FORBIDDEN/)
+    }
+  })
+
+  // 107. ADV-REPLAY-08 — Ruta dentro de código versionado
+  it('107. ADV-REPLAY-08: Registro anti-replay apuntando a src/, scripts/, .git/, docs/, supabase/ o raíz del repositorio falla cerrado con UNAUTHORIZED_REPLAY_STORAGE_DIR', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-08')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    const forbiddenRepoDirs = [
+      process.cwd(),
+      path.join(process.cwd(), 'src', 'replay-store'),
+      path.join(process.cwd(), 'scripts', 'fiscal', 'replay-store'),
+      path.join(process.cwd(), '.git', 'replay-store'),
+      path.join(process.cwd(), 'docs', 'replay-store'),
+      path.join(process.cwd(), 'supabase', 'replay-store'),
+      path.join(process.cwd(), '.agent', 'replay-store'),
+      path.join(process.cwd(), 'unignored-folder-in-repo'),
+    ]
+
+    for (const forbiddenDir of forbiddenRepoDirs) {
+      expect(() => validateAttestationReplayDirectory(forbiddenDir)).toThrow(
+        /UNAUTHORIZED_REPLAY_STORAGE_DIR/
+      )
+      expect(() =>
+        consumeAttestationResponseDurable(validResponse, {
+          attestationRequest: requestPkg,
+          trustedAttestationPublicKey: testAuthority.publicKey,
+          trustedGoPublicKey: goPub,
+          allowTestKeys: true,
+          consumedResponsesDir: forbiddenDir,
+        })
+      ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: UNAUTHORIZED_REPLAY_STORAGE_DIR/)
+    }
+  })
+
+  // 108. ADV-REPLAY-09 — Escritura exclusiva falla o estado preexistente corrupto
+  it('108. ADV-REPLAY-09: Cuando la creación exclusiva (wx) falla o el archivo de bloqueo preexiste corrupto, falla cerrado y revierte archivos parciales', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-replay-09')
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-09')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    // 1. Fallo simulado de escritura exclusiva en el segundo archivo de bloqueo -> verifica rollback de archivos parciales
+    let writeCount = 0
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+        fsWriteExclusive: (targetPath, content) => {
+          writeCount++
+          if (writeCount === 2) {
+            const ioErr = new Error('Simulated disk write failure on exclusive lock') as Error & { code?: string }
+            ioErr.code = 'EIO'
+            throw ioErr
+          }
+          fs.writeFileSync(targetPath, content, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+        },
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: EXCLUSIVE_REPLAY_WRITE_FAILED/)
+
+    // Comprobar que el primer archivo creado fue limpiado por el rollback y el directorio quedó limpio
+    const remainingAfterRollback = fs.existsSync(replayDir) ? fs.readdirSync(replayDir) : []
+    expect(remainingAfterRollback.length).toBe(0)
+
+    // 2. Archivo de bloqueo preexistente pero corrupto/truncado -> falla cerrado con REPLAY_STORAGE_STATE_INCONSISTENT
+    const replayId = computeAttestationResponseReplayId(validResponse)
+    fs.mkdirSync(replayDir, { recursive: true })
+    const corruptedLockPath = path.join(replayDir, `consumed-response-${replayId}.json`)
+    fs.writeFileSync(corruptedLockPath, '{corrupted-json-trunc', { encoding: 'utf8', mode: 0o600 })
+
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/REPLAY_STORAGE_STATE_INCONSISTENT/)
+    cleanupTestDir()
+  })
+
+  // 109. ADV-REPLAY-10 — Sustitución semántica
+  it('109. ADV-REPLAY-10: Sustitución semántica (mismo requestSha256 con otro responseId/firma, o mismo responseId con otra solicitud) falla cerrado con ATTESTATION_RESPONSE_REPLAY_DETECTED', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-replay-10')
+    const fixtureA = buildTestRequestFixture('REPLAY-10A')
+    const fixtureB = buildTestRequestFixture('REPLAY-10B')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+
+    const responseA1 = testAuthority.issueResponse(fixtureA.requestPkg, {
+      responseId: 'ATT-RES-SHARED-ID-10',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    // Consumir responseA1 legítimamente
+    const consumedA1 = consumeAttestationResponseDurable(responseA1, {
+      attestationRequest: fixtureA.requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: fixtureA.goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+    })
+    expect(consumedA1.consumed).toBe(true)
+
+    // Caso 1: Nueva respuesta firmada con distinto responseId e issuedAt (distinta firma) pero para el MISMO requestSha256
+    const responseA2SameRequest = testAuthority.issueResponse(fixtureA.requestPkg, {
+      responseId: 'ATT-RES-DIFFERENT-ID-10',
+      issuedAt: '2026-11-05T01:07:00.000Z',
+    })
+    expect(responseA2SameRequest.signature).not.toBe(responseA1.signature)
+    expect(() =>
+      consumeAttestationResponseDurable(responseA2SameRequest, {
+        attestationRequest: fixtureA.requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: fixtureA.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+
+    // Caso 2: Nueva respuesta para otra solicitud (fixtureB) pero reutilizando el MISMO responseId/attestationId ('ATT-RES-SHARED-ID-10')
+    const responseBSameId = testAuthority.issueResponse(fixtureB.requestPkg, {
+      responseId: 'ATT-RES-SHARED-ID-10',
+      issuedAt: '2026-11-05T01:08:00.000Z',
+    })
+    expect(() =>
+      consumeAttestationResponseDurable(responseBSameId, {
+        attestationRequest: fixtureB.requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: fixtureB.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 110. ADV-REPLAY-11 — Verify no consume
+  it('110. ADV-REPLAY-11: verifyAttestationResponse y validateAttestationResponse son operaciones de solo lectura (consumed: false) y no bloquean el consumo legítimo posterior', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-replay-11')
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-11')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    // Ejecutar verifyAttestationResponse y validateAttestationResponse múltiples veces antes del consumo real
+    for (let i = 0; i < 3; i++) {
+      const vCheck = verifyAttestationResponse(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+        checkReplay: true,
+      })
+      expect(vCheck.valid).toBe(true)
+      expect(vCheck.consumed).toBe(false)
+      expect(vCheck.ATTESTATION_RESPONSE_CONSUMPTION).toBe('NOT_CONSUMED')
+
+      const valCheck = validateAttestationResponse(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+        checkReplay: true,
+      })
+      expect(valCheck.valid).toBe(true)
+      expect(valCheck.consumed).toBe(false)
+    }
+
+    // Confirmar que aún no fue consumida en el directorio durable
+    expect(isAttestationResponseConsumedDurable(validResponse, { consumedResponsesDir: replayDir })).toBe(false)
+
+    // Ahora ejecutar el consumo real -> debe pasar exitosamente
+    const consumedResult = consumeAttestationResponseDurable(validResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+    })
+    expect(consumedResult.valid).toBe(true)
+    expect(consumedResult.consumed).toBe(true)
+    expect(consumedResult.ATTESTATION_RESPONSE_CONSUMPTION).toBe('CONSUMED')
+    expect(isAttestationResponseConsumedDurable(validResponse, { consumedResponsesDir: replayDir })).toBe(true)
+
+    // Si luego se consulta verifyAttestationResponse con checkReplay: true, informa ATTESTATION_RESPONSE_REPLAY_DETECTED
+    const verifyAfterConsume = verifyAttestationResponse(validResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      checkReplay: true,
+    })
+    expect(verifyAfterConsume.valid).toBe(false)
+    expect(verifyAfterConsume.reason).toBe('ATTESTATION_RESPONSE_REPLAY_DETECTED')
+    cleanupTestDir()
+  })
+
+  // 111. ADV-REPLAY-12 — Consume sin verificación previa o con respuesta inválida
+  it('111. ADV-REPLAY-12: Intentar consumir una AttestationResponse inválida o pasando flags de bypass (skipVerification / preVerified) falla cerrado sin escribir en el registro durable', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-replay-12')
+    const { requestPkg, goPub } = buildTestRequestFixture('REPLAY-12')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    // 1. Intento de bypass de verificación con skipVerification: true o preVerified: true
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+        skipVerification: true,
+      })
+    ).toThrow(/VERIFICATION_BYPASS_FORBIDDEN/)
+
+    expect(() =>
+      consumeAttestationResponseDurable(validResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+        preVerified: true,
+      })
+    ).toThrow(/VERIFICATION_BYPASS_FORBIDDEN/)
+
+    // 2. Intento de consumir una respuesta con firma adulterada -> falla cerrado y NO escribe archivos en el registro durable
+    const tamperedResponse = {
+      ...validResponse,
+      signature: '0'.repeat(128),
+    }
+    expect(() =>
+      consumeAttestationResponseDurable(tamperedResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_SIGNATURE_INVALID/)
+
+    // El registro durable sigue vacío y la respuesta válida original no fue quemada por el intento fallido
+    expect(isAttestationResponseConsumedDurable(validResponse, { consumedResponsesDir: replayDir })).toBe(false)
+
+    // El consumo posterior de la respuesta legítima funciona normalmente
+    const validConsume = consumeAttestationResponseDurable(validResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+    })
+    expect(validConsume.valid).toBe(true)
+    expect(validConsume.consumed).toBe(true)
+    expect(PR02_P0_ATTESTATION_REPLAY_DIR_ENV).toBe('PR02_P0_ATTESTATION_REPLAY_DIR')
+    expect(AttestationAuthority.REPLAY_DIR_ENV).toBe('PR02_P0_ATTESTATION_REPLAY_DIR')
+    cleanupTestDir()
+  })
+
+  // 112. FINDING-REPLAY-01 — Bloqueo exhaustivo de flags de degradación a memoria o desactivación de almacenamiento durable (Sección 11)
+  it('112. [FINDING-REPLAY-01] Rechaza todos los flags de degradación anti-replay (processLocal, fallback, allowMemoryReplay, disableDurableReplay, skipReplayStorage, consumeOnVerify: false)', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'finding-replay-01')
+    const { requestPkg, goPub } = buildTestRequestFixture('FINDING-01')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    const downgradePayloads = [
+      { processLocal: true },
+      { fallback: 'process-local' },
+      { allowMemoryReplay: true },
+      { disableDurableReplay: true },
+      { skipReplayStorage: true },
+      { inMemoryReplay: true },
+      { consumeOnVerify: false },
+      { antiReplayGuarantee: 'NONE' },
+    ]
+
+    for (const downgradeOpt of downgradePayloads) {
+      expect(() =>
+        consumeAttestationResponseDurable(validResponse, {
+          attestationRequest: requestPkg,
+          trustedAttestationPublicKey: testAuthority.publicKey,
+          trustedGoPublicKey: goPub,
+          allowTestKeys: true,
+          consumedResponsesDir: replayDir,
+          ...downgradeOpt,
+        })
+      ).toThrow(/ANTI_REPLAY_DOWNGRADE_FORBIDDEN/)
+
+      expect(() =>
+        createIndependentAttestationAuthorityAdapter({
+          authorityId: testAuthority.authorityId,
+          trustedAttestationPublicKey: testAuthority.publicKey,
+          allowTestKeys: true,
+          consumedResponsesDir: replayDir,
+          ...downgradeOpt,
+        })
+      ).toThrow(/ANTI_REPLAY_DOWNGRADE_FORBIDDEN/)
+    }
+
+    expect(isAttestationResponseConsumedDurable(validResponse, { consumedResponsesDir: replayDir })).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 113. FINDING-REPLAY-02 — Rutas Windows UNC, dispositivos, NTFS ADS, puntos/espacios finales y symlinks colgantes (Secciones 8 y 9)
+  it('113. [FINDING-REPLAY-02] Rechaza rutas Windows UNC (\\\\server\\share), dispositivos (\\\\?\\), NTFS ADS (:stream), bytes nulos y segmentos con puntos o espacios finales', () => {
+    cleanupTestDir()
+    const invalidPaths = [
+      '\\\\server\\share\\replay-dir',
+      '//server/share/replay-dir',
+      '\\\\?\\C:\\temp\\replay-dir',
+      '\\\\.\\C:\\temp\\replay-dir',
+      path.join(TEST_EVIDENCE_DIR, 'replay-ads:hiddenstream'),
+      path.join(TEST_EVIDENCE_DIR, 'null\0byte'),
+      path.join(TEST_EVIDENCE_DIR, 'trailingdot.'),
+      'a\\..\\b',
+      'a//..//b',
+    ]
+
+    for (const badPath of invalidPaths) {
+      expect(() => validateAttestationReplayDirectory(badPath)).toThrow(
+        /ATTESTATION_RESPONSE_CONSUMPTION_DENIED: (PATH_TRAVERSAL_FORBIDDEN|INVALID_REPLAY_STORAGE_DIR)/
+      )
+    }
+
+    // Probar detección de symlink roto/colgante (dangling symlink) donde fs.existsSync devuelve false pero lstatSync lo detecta
+    fs.mkdirSync(TEST_EVIDENCE_DIR, { recursive: true })
+    const nonExistentTarget = path.join(TEST_EVIDENCE_DIR, 'does-not-exist-target-dir')
+    const danglingLinkPath = path.join(TEST_EVIDENCE_DIR, 'dangling-replay-symlink')
+    let symlinkCreated = false
+    try {
+      fs.symlinkSync(nonExistentTarget, danglingLinkPath, 'dir')
+      symlinkCreated = true
+    } catch {
+      symlinkCreated = false
+    }
+
+    if (symlinkCreated) {
+      expect(fs.existsSync(danglingLinkPath)).toBe(false)
+      expect(() => validateAttestationReplayDirectory(danglingLinkPath)).toThrow(/SYMLINK_FORBIDDEN/)
+    }
+    cleanupTestDir()
+  })
+
+  // 114. FINDING-REPLAY-03 — Seguridad del rollback multi-lock, locks huérfanos por crash y validación estricta de lock existente (Secciones 6, 7 y 13)
+  it('114. [FINDING-REPLAY-03] El rollback multi-lock jamás borra bloqueos preexistentes, los locks huérfanos por crash fallan cerrado (FAIL_CLOSED) y la corrupción de campos o directorios en lock falla cerrado', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'finding-replay-03')
+    const fixtureA = buildTestRequestFixture('FINDING-03A')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const response1 = testAuthority.issueResponse(fixtureA.requestPkg, {
+      responseId: 'ATT-RES-F03-FIRST',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    // 1. Consumo inicial válido (crea los 4 locks para response1, incluyendo consumed-req-<reqDigest>.json)
+    const firstConsume = consumeAttestationResponseDurable(response1, {
+      attestationRequest: fixtureA.requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: fixtureA.goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+    })
+    expect(firstConsume.consumed).toBe(true)
+
+    const reqDigest = createHash('sha256').update(fixtureA.requestPkg.requestSha256).digest('hex')
+    const preExistingReqLockPath = path.join(replayDir, `consumed-req-${reqDigest}.json`)
+    expect(fs.existsSync(preExistingReqLockPath)).toBe(true)
+
+    // 2. Segunda respuesta distinta para el MISMO requestSha256:
+    // LOCK 1 (consumed-response-...) se crea, LOCK 2 (consumed-id-...) se crea, LOCK 3 (consumed-req-...) falla con EEXIST.
+    // El rollback debe borrar LOCK 1 y LOCK 2 de response2, pero JAMÁS borrar el LOCK 3 preexistente de response1.
+    const response2SameReq = testAuthority.issueResponse(fixtureA.requestPkg, {
+      responseId: 'ATT-RES-F03-SECOND',
+      issuedAt: '2026-11-05T01:07:00.000Z',
+    })
+    const replayId2 = computeAttestationResponseReplayId(response2SameReq)
+    const idDigest2 = createHash('sha256').update('ATT-RES-F03-SECOND').digest('hex')
+
+    expect(() =>
+      consumeAttestationResponseDurable(response2SameReq, {
+        attestationRequest: fixtureA.requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: fixtureA.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+
+    // LOCK 1 y LOCK 2 de response2 fueron revertidos, mientras que LOCK 3 preexistente permanece intacto
+    expect(fs.existsSync(path.join(replayDir, `consumed-response-${replayId2}.json`))).toBe(false)
+    expect(fs.existsSync(path.join(replayDir, `consumed-id-${idDigest2}.json`))).toBe(false)
+    expect(fs.existsSync(preExistingReqLockPath)).toBe(true)
+
+    // 3. Simulación de CRASH a mitad del consumo (LOCK 1 huérfano en disco sin LOCK 2..4) -> CRASH_BEHAVIOR = FAIL_CLOSED
+    const crashReplayDir = path.join(TEST_EVIDENCE_DIR, 'finding-replay-03-crash')
+    const fixtureCrash = buildTestRequestFixture('FINDING-03-CRASH')
+    const responseCrash = testAuthority.issueResponse(fixtureCrash.requestPkg, {
+      responseId: 'ATT-RES-F03-CRASH',
+      issuedAt: '2026-11-05T01:08:00.000Z',
+    })
+    const crashReplayId = computeAttestationResponseReplayId(responseCrash)
+    const sigDigestCrash = createHash('sha256').update(responseCrash.signature).digest('hex')
+    fs.mkdirSync(crashReplayDir, { recursive: true })
+    const orphanLock1Path = path.join(crashReplayDir, `consumed-response-${crashReplayId}.json`)
+    fs.writeFileSync(
+      orphanLock1Path,
+      JSON.stringify({
+        schemaVersion: '1.0',
+        replayId: crashReplayId,
+        attestationId: 'ATT-RES-F03-CRASH',
+        responseId: 'ATT-RES-F03-CRASH',
+        requestId: responseCrash.requestId,
+        requestSha256: responseCrash.requestSha256,
+        manifestSha256: responseCrash.manifestSha256,
+        attestationPayloadSha256: responseCrash.attestationPayloadSha256,
+        signatureSha256: sigDigestCrash,
+        authorityId: responseCrash.authorityId,
+        keyId: responseCrash.keyId,
+        commitSha: responseCrash.commitSha,
+        processId: responseCrash.processId,
+        executionScope: responseCrash.executionScope,
+        consumedAt: '2026-11-05T01:08:01.000Z',
+        antiReplayGuarantee: 'HOST_LOCAL_DURABLE_ONE_TIME_USE',
+      }),
+      { encoding: 'utf8', mode: 0o600 }
+    )
+
+    // El reintento posterior tras el crash falla cerrado con ATTESTATION_RESPONSE_REPLAY_DETECTED y NO borra el lock huérfano
+    expect(() =>
+      consumeAttestationResponseDurable(responseCrash, {
+        attestationRequest: fixtureCrash.requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: fixtureCrash.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: crashReplayDir,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    expect(fs.existsSync(orphanLock1Path)).toBe(true)
+
+    // 4. Archivo vacío (0 bytes) o con digest interno incoherente o directorio en lugar de archivo -> falla cerrado
+    fs.writeFileSync(orphanLock1Path, '', { encoding: 'utf8' })
+    expect(() =>
+      consumeAttestationResponseDurable(responseCrash, {
+        attestationRequest: fixtureCrash.requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: fixtureCrash.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: crashReplayDir,
+      })
+    ).toThrow(/REPLAY_STORAGE_STATE_INCONSISTENT/)
+
+    fs.unlinkSync(orphanLock1Path)
+    fs.mkdirSync(orphanLock1Path)
+    expect(() =>
+      consumeAttestationResponseDurable(responseCrash, {
+        attestationRequest: fixtureCrash.requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: fixtureCrash.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: crashReplayDir,
+      })
+    ).toThrow(/SYMLINK_FORBIDDEN/)
+
+    cleanupTestDir()
+  })
+
+  // 115. FINDING-REPLAY-04 — Casos C, D y E de sustitución de identidad semántica y sensibilidad estricta a mayúsculas/minúsculas (Sección 10)
+  it('115. [FINDING-REPLAY-04] Rechaza reutilización de firma con contexto alterado (Caso C) y mutaciones de mayúsculas/minúsculas en hashes, firma, commitSha o espacios en IDs (Caso E)', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'finding-replay-04')
+    const { requestPkg, goPub } = buildTestRequestFixture('FINDING-04')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    // Caso C: Misma signature con representación contextual alterada (ej. issuedAt distinto) -> falla verificación criptográfica
+    const contextAlteredSameSig = {
+      ...validResponse,
+      issuedAt: '2026-11-05T02:00:00.000Z',
+    }
+    expect(() =>
+      consumeAttestationResponseDurable(contextAlteredSameSig, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+      })
+    ).toThrow(/ATTESTATION_PAYLOAD_MISMATCH/)
+
+    // Caso E: Mutaciones de mayúsculas/minúsculas en requestSha256, manifestSha256, attestationPayloadSha256, signature o commitSha
+    const upperCaseVariants = [
+      { ...validResponse, requestSha256: validResponse.requestSha256.toUpperCase() },
+      { ...validResponse, manifestSha256: validResponse.manifestSha256.toUpperCase() },
+      { ...validResponse, attestationPayloadSha256: validResponse.attestationPayloadSha256.toUpperCase() },
+      { ...validResponse, signature: validResponse.signature.toUpperCase() },
+      { ...validResponse, commitSha: validResponse.commitSha.toUpperCase() },
+      { ...validResponse, responseId: ` ${validResponse.responseId} ` },
+    ]
+
+    for (const variant of upperCaseVariants) {
+      expect(() => computeAttestationResponseReplayId(variant)).toThrow()
+      const vRes = verifyAttestationResponse(variant, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+      expect(vRes.valid).toBe(false)
+    }
+
+    // Y si el caller pasa expectedHead / commitSha en mayúsculas en las opciones, también se rechaza
+    const upperTargetCommitCheck = verifyAttestationResponse(validResponse, {
+      attestationRequest: requestPkg,
+      commitSha: VALID_HEAD.toUpperCase(),
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(upperTargetCommitCheck.valid).toBe(false)
+    expect(upperTargetCommitCheck.reason).toBe('ATTESTATION_REQUEST_MISMATCH')
+    cleanupTestDir()
+  })
+
+  // 116. Sección 5 — Concurrencia real entre 3 procesos hijos del sistema operativo intentando consumir la misma AttestationResponse
+  it('116. [ADV-CONCURRENCY-3PROC] Concurrencia real entre 3 procesos independientes intentando consumir simultáneamente la misma AttestationResponse: exactamente 1 SUCCESS y 2 ATTESTATION_RESPONSE_REPLAY_DETECTED', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'adv-concurrency-3proc')
+    fs.mkdirSync(replayDir, { recursive: true })
+
+    const { requestPkg, goPub } = buildTestRequestFixture('CONC-3PROC')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    const fixturePath = path.join(TEST_EVIDENCE_DIR, 'conc-3proc-fixture.json')
+    const pubKeyPem = String(testAuthority.publicKey)
+    const goPubPem = String(goPub)
+    fs.writeFileSync(
+      fixturePath,
+      JSON.stringify({
+        replayDir,
+        requestPkg,
+        validResponse,
+        pubKeyPem,
+        goPubPem,
+      }),
+      'utf8'
+    )
+
+    const workerScript = `
+      import fs from 'node:fs';
+      import { consumeAttestationResponseDurable } from './scripts/fiscal/plan-pr02-parameters.mjs';
+      const data = JSON.parse(fs.readFileSync(${JSON.stringify(fixturePath)}, 'utf8'));
+      try {
+        const res = consumeAttestationResponseDurable(data.validResponse, {
+          attestationRequest: data.requestPkg,
+          trustedAttestationPublicKey: data.pubKeyPem,
+          trustedGoPublicKey: data.goPubPem,
+          allowTestKeys: true,
+          consumedResponsesDir: data.replayDir,
+        });
+        process.stdout.write(JSON.stringify({ status: 'SUCCESS', consumed: res.consumed, replayId: res.replayId }));
+      } catch (err) {
+        process.stdout.write(JSON.stringify({ status: 'DENIED', message: err.message }));
+      }
+    `
+
+    const spawnConsumer = () =>
+      new Promise<{ status: string; consumed?: boolean; replayId?: string; message?: string }>((resolve, reject) => {
+        execFile(
+          process.execPath,
+          ['--input-type=module', '-e', workerScript],
+          { cwd: process.cwd() },
+          (err, stdout, stderr) => {
+            if (err) {
+              reject(new Error(`Worker process error: ${err.message} / ${stderr}`))
+              return
+            }
+            try {
+              resolve(JSON.parse(stdout.trim()))
+            } catch (parseErr) {
+              reject(new Error(`Invalid JSON from worker: ${stdout} (${String(parseErr)})`))
+            }
+          }
+        )
+      })
+
+    const results = await Promise.all([spawnConsumer(), spawnConsumer(), spawnConsumer()])
+    const successes = results.filter((r) => r.status === 'SUCCESS')
+    const denied = results.filter((r) => r.status === 'DENIED')
+
+    expect(successes.length).toBe(1)
+    expect(successes[0].consumed).toBe(true)
+    expect(denied.length).toBe(2)
+    for (const d of denied) {
+      expect(d.message).toMatch(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    }
+
+    // Confirmar que los 4 archivos de bloqueo están presentes e íntegros tras la carrera entre procesos
+    const lockFiles = fs.readdirSync(replayDir).filter((f) => f.endsWith('.json'))
+    expect(lockFiles.length).toBe(4)
+    cleanupTestDir()
+  })
+
+  // =========================================================================
+  // FASE 10 — PRUEBAS ADVERSARIALES DE HARDENING DE ARQUITECTURA DE AUTORIDAD
+  // EXTERNA INDEPENDIENTE (AUTH-EXT-01 a AUTH-EXT-15)
+  // =========================================================================
+
+  // 117. AUTH-EXT-01 — Configuración correcta del adaptador externo
+  it('117. AUTH-EXT-01: Configuración correcta del adaptador externo separa AUTHORITY_ADAPTER_IMPLEMENTED=true de AUTHORITY_REAL_WORLD_AVAILABLE=false e INDEPENDENT_ATTESTATION_AVAILABLE=false', () => {
+    const { goPub } = buildTestRequestFixture('AUTH-EXT-01')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'external-attestation-authority-prod-contract-01',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: testAuthority.authorityId,
+      keyId: testAuthority.keyId,
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      goAuthorityId: 'OWNER_OFFICIAL_APPROVER_2026',
+      allowTestKeys: true,
+      transport: testAuthority.sendAttestationRequest,
+    })
+
+    expect(AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(adapter.AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(adapter.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    expect(adapter.ATTESTATION_TRUST_MODEL).toBe('SELF_ATTESTED')
+    expect(adapter.isConfigured()).toBe(true)
+    expect(adapter.isAuthorityAvailable()).toBe(false)
+    expect(adapter.authorityId).toBe(testAuthority.authorityId)
+    expect(adapter.keyId).toBe(testAuthority.keyId)
+    expect(adapter.publicKeySpki).toContain('-----BEGIN PUBLIC KEY-----')
+    expect(IndependentAttestationAuthority.AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(IndependentAttestationAuthority.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(IndependentAttestationAuthority.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(IndependentAttestationAuthority.isRealWorldAuthorityAvailable({
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      allowTestKeys: true,
+    })).toBe(false)
+    expect(IndependentAttestationAuthority.isPublicKeyConfigured({
+      publicKeySpki: testAuthority.publicKey,
+      allowTestKeys: true,
+    })).toBe(true)
+  })
+
+  // 118. AUTH-EXT-02 — Clave privada presente en runtime fiscal o pasada como configuración de verificación
+  it('118. AUTH-EXT-02: Clave privada presente en runtime fiscal o suministrada como configuración de verificación falla cerrado con RUNTIME_PRIVATE_KEY_DETECTED', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-02')
+    const { publicKey: attPub, privateKey: attPriv } = generateEphemeralAttestationKeyPair()
+    const signedRes = createSignedTestAttestationResponse(requestPkg, attPriv, {
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+
+    // 1. Clave privada PEM pasada directamente a parseEd25519PublicKey / validateP0AttestationPublicKey / validateP0GoPublicKey
+    expect(() => parseEd25519PublicKey(attPriv)).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+    expect(() => validateP0AttestationPublicKey(attPriv, true)).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+    expect(() => validateP0GoPublicKey(attPriv, true)).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    // 2. Clave privada pasada como publicKeySpki / trustedAttestationPublicKey / privateKey al adaptador
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: 'ext-auth-02',
+        publicKeySpki: attPriv,
+        allowTestKeys: true,
+      })
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: 'ext-auth-02',
+        publicKeySpki: attPub,
+        privateKey: attPriv,
+        allowTestKeys: true,
+      })
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    // 3. Clave privada pasada como trustedAttestationPublicKey o trustedGoPublicKey a verifyAttestationResponse
+    const verifyWithPrivAtt = verifyAttestationResponse(signedRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: attPriv,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(verifyWithPrivAtt.valid).toBe(false)
+    expect(verifyWithPrivAtt.reason).toBe('RUNTIME_PRIVATE_KEY_DETECTED')
+
+    const verifyWithPrivGo = verifyAttestationResponse(signedRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: attPub,
+      trustedGoPublicKey: attPriv,
+      allowTestKeys: true,
+    })
+    expect(verifyWithPrivGo.valid).toBe(false)
+    expect(verifyWithPrivGo.reason).toBe('RUNTIME_PRIVATE_KEY_DETECTED')
+
+    // 4. Archivo en disco que contiene una clave privada pasado como ruta de clave pública
+    fs.mkdirSync(TEST_EVIDENCE_DIR, { recursive: true })
+    const privKeyFile = path.join(TEST_EVIDENCE_DIR, 'injected-private-key.pem')
+    fs.writeFileSync(privKeyFile, String(attPriv), 'utf8')
+    expect(() => validateP0AttestationPublicKey(privKeyFile, true)).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 119. AUTH-EXT-03 — GO Authority y Attestation Authority iguales (GO_AUTHORITY_ID == ATTESTATION_AUTHORITY_ID)
+  it('119. AUTH-EXT-03: GO Authority y Attestation Authority con el mismo authorityId fallan cerrado con COLLAPSED_AUTHORITIES_REJECTED', async () => {
+    const { requestPkg, goPub, goDoc } = buildTestRequestFixture('AUTH-EXT-03')
+    const sharedAuthorityId = goDoc.authorization.aprobador_identidad // 'OWNER_OFFICIAL_APPROVER_2026'
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: sharedAuthorityId,
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const responseWithSameAuthId = testAuthority.issueResponse(requestPkg)
+
+    expect(() =>
+      assertAuthoritiesSeparated({
+        goAuthorityId: sharedAuthorityId,
+        attestationAuthorityId: sharedAuthorityId,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: sharedAuthorityId,
+        goAuthorityId: sharedAuthorityId,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    const verifyCollapsedId = verifyAttestationResponse(responseWithSameAuthId, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      goAuthorityId: sharedAuthorityId,
+      allowTestKeys: true,
+    })
+    expect(verifyCollapsedId.valid).toBe(false)
+    expect(verifyCollapsedId.reason).toBe('COLLAPSED_AUTHORITIES_REJECTED')
+
+    const verifyCollapsedViaGoDoc = verifyAttestationResponse(responseWithSameAuthId, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      goAuthorizationDoc: goDoc,
+      allowTestKeys: true,
+    })
+    expect(verifyCollapsedViaGoDoc.valid).toBe(false)
+    expect(verifyCollapsedViaGoDoc.reason).toBe('COLLAPSED_AUTHORITIES_REJECTED')
+
+    await expect(
+      submitAttestationRequest(requestPkg, {
+        authorityId: sharedAuthorityId,
+        goAuthorityId: sharedAuthorityId,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        transport: async () => responseWithSameAuthId,
+      })
+    ).rejects.toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+  })
+
+  // 120. AUTH-EXT-04 — Misma identidad criptográfica (keyId o SPKI DER) para roles incompatibles
+  it('120. AUTH-EXT-04: Reutilizar la misma identidad criptográfica (keyId o clave pública SPKI) entre GO Authority y Attestation Authority falla cerrado con COLLAPSED_AUTHORITIES_REJECTED', () => {
+    const { requestPkg } = buildTestRequestFixture('AUTH-EXT-04')
+    const sharedKeyPair = generateEphemeralAttestationKeyPair()
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'distinct-attestation-authority-04',
+      keyPair: sharedKeyPair,
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validResponse = testAuthority.issueResponse(requestPkg)
+
+    // 1. Mismo keyId entre GO Authority y Attestation Authority
+    expect(() =>
+      assertAuthoritiesSeparated({
+        goAuthorityId: 'go-approver-04',
+        attestationAuthorityId: 'att-authority-04',
+        goKeyId: testAuthority.keyId,
+        attestationKeyId: testAuthority.keyId,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    const verifySameKeyId = verifyAttestationResponse(validResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      goKeyId: testAuthority.keyId,
+      allowTestKeys: true,
+    })
+    expect(verifySameKeyId.valid).toBe(false)
+    expect(verifySameKeyId.reason).toBe('COLLAPSED_AUTHORITIES_REJECTED')
+
+    // 2. Misma clave pública SPKI para GO Authority y Attestation Authority en el adaptador y verificador
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: 'distinct-attestation-authority-04',
+        goAuthorityId: 'distinct-go-authority-04',
+        trustedAttestationPublicKey: sharedKeyPair.publicKey,
+        trustedGoPublicKey: sharedKeyPair.publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    const verifySameSpki = verifyAttestationResponse(validResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: sharedKeyPair.publicKey,
+      trustedGoPublicKey: sharedKeyPair.publicKey,
+      allowTestKeys: true,
+    })
+    expect(verifySameSpki.valid).toBe(false)
+    expect(verifySameSpki.reason).toBe('COLLAPSED_AUTHORITIES_REJECTED')
+  })
+
+  // 121. AUTH-EXT-05 — authorityId incorrecto
+  it('121. AUTH-EXT-05: Respuesta con authorityId incorrecto falla cerrado con ATTESTATION_AUTHORITY_MISMATCH', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-05')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'unexpected-authority-id-05',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const signedRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'expected-official-authority-05',
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      transport: async () => signedRes,
+    })
+
+    const res = adapter.verifyAttestationResponse(signedRes, {
+      attestationRequest: requestPkg,
+    })
+    expect(res.valid).toBe(false)
+    expect(res.reason).toBe('ATTESTATION_AUTHORITY_MISMATCH')
+    expect(() =>
+      adapter.validateAttestationResponse(signedRes, {
+        attestationRequest: requestPkg,
+      })
+    ).toThrow(/ATTESTATION_AUTHORITY_MISMATCH/)
+  })
+
+  // 122. AUTH-EXT-06 — keyId incorrecto
+  it('122. AUTH-EXT-06: Configuración o respuesta con keyId incorrecto falla cerrado con ATTESTATION_KEY_ID_MISMATCH', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-06')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const signedRes = testAuthority.issueResponse(requestPkg)
+
+    // 1. Adaptador configurado con un keyId que no coincide con publicKeySpki
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: testAuthority.authorityId,
+        keyId: 'ed25519-spki-deadbeefdeadbeef',
+        publicKeySpki: testAuthority.publicKey,
+        allowTestKeys: true,
+      })
+    ).toThrow(/ATTESTATION_KEY_ID_MISMATCH/)
+
+    // 2. Respuesta cuyo keyId no coincide con expectedKeyId / allowedKeyIds
+    const check = verifyAttestationResponse(signedRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      expectedKeyId: 'ed25519-spki-deadbeefdeadbeef',
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_KEY_ID_MISMATCH')
+  })
+
+  // 123. AUTH-EXT-07 — Firma válida de una autoridad no autorizada
+  it('123. AUTH-EXT-07: Firma Ed25519 matemáticamente válida emitida por una autoridad externa no autorizada es bloqueada fail-closed', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'auth-ext-07')
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-07')
+    const trustedAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'trusted-authority-07',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const rogueAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'trusted-authority-07', // Incluso suplantando el mismo nombre authorityId
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const rogueSignedResponse = rogueAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: trustedAuthority.authorityId,
+      publicKeySpki: trustedAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      transport: async () => rogueSignedResponse,
+    })
+
+    const check = adapter.verifyAttestationResponse(rogueSignedResponse, {
+      attestationRequest: requestPkg,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_KEY_ID_MISMATCH')
+
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(/ATTESTATION_KEY_ID_MISMATCH/)
+    cleanupTestDir()
+  })
+
+  // 124. AUTH-EXT-08 — Sustitución de clave pública
+  it('124. AUTH-EXT-08: Intento de sustituir la clave pública anclada (publicKeySpki) en el adaptador o verificador falla cerrado con PUBLIC_KEY_SUBSTITUTION_REJECTED', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'auth-ext-08')
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-08')
+    const pinnedAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'pinned-authority-08',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const substitutedAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'pinned-authority-08',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const responseSignedBySubstitutedKey = substitutedAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: pinnedAuthority.authorityId,
+      publicKeySpki: pinnedAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      transport: async () => responseSignedBySubstitutedKey,
+    })
+
+    // Intento de sustituir trustedAttestationPublicKey al verificar sobre el adaptador anclado
+    const verifySub = adapter.verifyAttestationResponse(responseSignedBySubstitutedKey, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: substitutedAuthority.publicKey,
+    })
+    expect(verifySub.valid).toBe(false)
+    expect(verifySub.reason).toBe('PUBLIC_KEY_SUBSTITUTION_REJECTED')
+
+    // Intento de sustituir publicKeySpki al consumir sobre el adaptador anclado
+    expect(() =>
+      adapter.consumeAttestationResponse(responseSignedBySubstitutedKey, {
+        attestationRequest: requestPkg,
+        publicKeySpki: substitutedAuthority.publicKey,
+      })
+    ).toThrow(/PUBLIC_KEY_SUBSTITUTION_REJECTED/)
+
+    // Intento de sustituir trustedAttestationPublicKey en submitAttestationRequest sobre el adaptador anclado
+    await expect(
+      adapter.submitAttestationRequest(requestPkg, {
+        trustedAttestationPublicKey: substitutedAuthority.publicKey,
+      })
+    ).rejects.toThrow(/PUBLIC_KEY_SUBSTITUTION_REJECTED/)
+    cleanupTestDir()
+  })
+
+  // 125. AUTH-EXT-09 — Respuesta válida vinculada a otro requestSha256
+  it('125. AUTH-EXT-09: Respuesta con firma válida pero vinculada a otro requestSha256 falla cerrado con ATTESTATION_REQUEST_MISMATCH', () => {
+    const fixtureA = buildTestRequestFixture('AUTH-EXT-09A')
+    const fixtureB = buildTestRequestFixture('AUTH-EXT-09B')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validResForB = testAuthority.issueResponse(fixtureB.requestPkg)
+
+    const check = verifyAttestationResponse(validResForB, {
+      attestationRequest: fixtureA.requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: fixtureA.goPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_REQUEST_MISMATCH')
+  })
+
+  // 126. AUTH-EXT-10 — Respuesta válida vinculada a otro manifestSha256
+  it('126. AUTH-EXT-10: Respuesta con firma válida pero vinculada a otro manifestSha256 falla cerrado con ATTESTATION_MANIFEST_MISMATCH', () => {
+    const { requestPkg, manifestDraft, goPub } = buildTestRequestFixture('AUTH-EXT-10')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const resOtherManifest = testAuthority.issueResponse(requestPkg, {
+      manifestSha256: 'c'.repeat(64),
+    })
+
+    const check = verifyAttestationResponse(resOtherManifest, {
+      attestationRequest: requestPkg,
+      manifest: manifestDraft,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_MANIFEST_MISMATCH')
+  })
+
+  // 127. AUTH-EXT-11 — commitSha diferente
+  it('127. AUTH-EXT-11: Respuesta con firma válida pero vinculada a un commitSha diferente falla cerrado con ATTESTATION_REQUEST_MISMATCH', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-11')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const resDifferentCommit = testAuthority.issueResponse(requestPkg, {
+      commitSha: 'd'.repeat(40),
+    })
+
+    const check = verifyAttestationResponse(resDifferentCommit, {
+      attestationRequest: requestPkg,
+      commitSha: VALID_HEAD,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_REQUEST_MISMATCH')
+  })
+
+  // 128. AUTH-EXT-12 — Respuesta expirada
+  it('128. AUTH-EXT-12: Respuesta con firma válida pero expirada (expiresAt <= now) falla cerrado con ATTESTATION_ISSUED_AT_INVALID', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'auth-ext-12')
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-12')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const expiredResponse = testAuthority.issueResponse(requestPkg, {
+      issuedAt: '2026-11-05T01:06:00.000Z',
+      expiresAt: '2026-11-05T01:30:00.000Z',
+    })
+
+    const check = verifyAttestationResponse(expiredResponse, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      now: '2026-11-05T02:00:00.000Z',
+    })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_ISSUED_AT_INVALID')
+
+    expect(() =>
+      consumeAttestationResponseDurable(expiredResponse, {
+        attestationRequest: requestPkg,
+        trustedAttestationPublicKey: testAuthority.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: replayDir,
+        now: '2026-11-05T02:00:00.000Z',
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_ISSUED_AT_INVALID/)
+    cleanupTestDir()
+  })
+
+  // 129. AUTH-EXT-13 — Intento de elevar SELF_ATTESTED mediante flags/configuración
+  it('129. AUTH-EXT-13: Intento de elevar SELF_ATTESTED a INDEPENDENT_ATTESTED mediante flags, env vars o configuración local falla cerrado con SELF_ATTESTATION_AUTO_ELEVATION_REJECTED', () => {
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-13')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    for (const badConfig of [
+      { independentAuthorityAvailable: true },
+      { INDEPENDENT_ATTESTATION_AVAILABLE: true },
+      { authorityRealWorldAvailable: true },
+      { AUTHORITY_REAL_WORLD_AVAILABLE: true },
+      { elevateToIndependent: true },
+      { forceIndependentAttestation: true },
+      { allowSelfAttestedAsIndependent: true },
+      { elevateTrustModel: true },
+      { forceProductionAuthority: true },
+      { P1_IMPORT_ALLOWED: true },
+      { ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED' },
+      { env: { PR02_P0_FORCE_INDEPENDENT_ATTESTATION: '1' } },
+      { env: { INDEPENDENT_ATTESTATION_AVAILABLE: 'true' } },
+      { env: { AUTHORITY_REAL_WORLD_AVAILABLE: 'true' } },
+    ]) {
+      expect(() => createIndependentAttestationAuthorityAdapter(badConfig)).toThrow(
+        /SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/
+      )
+    }
+
+    expect(() =>
+      IndependentAttestationAuthority.isAuthorityAvailable({
+        AUTHORITY_REAL_WORLD_AVAILABLE: true,
+      })
+    ).toThrow(/SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/)
+
+    const verifyElevated = verifyAttestationResponse(validRes, {
+      attestationRequest: requestPkg,
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      elevateTrustModel: true,
+    })
+    expect(verifyElevated.valid).toBe(false)
+    expect(verifyElevated.reason).toBe('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED')
+  })
+
+  // 130. AUTH-EXT-14 — Verificación exitosa seguida de consumo durable -> PASS una sola vez
+  it('130. AUTH-EXT-14: Verificación read-only exitosa seguida de consumo atómico durable pasa exactamente una vez', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'auth-ext-14')
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-14')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'external-authority-14',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg, {
+      expiresAt: '2026-11-05T02:06:00.000Z',
+    })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: testAuthority.authorityId,
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      goAuthorityId: 'OWNER_OFFICIAL_APPROVER_2026',
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      now: '2026-11-05T01:10:00.000Z',
+      transport: async () => validRes,
+    })
+
+    // 1. Múltiples verificaciones read-only no consumen la respuesta
+    const v1 = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg })
+    const v2 = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg, checkReplay: true })
+    expect(v1.valid).toBe(true)
+    expect(v1.consumed).toBe(false)
+    expect(v2.valid).toBe(true)
+    expect(v2.consumed).toBe(false)
+    expect(adapter.isAttestationResponseConsumed(validRes)).toBe(false)
+
+    // 2. Consumo durable atómico: pasa exactamente una vez
+    const consumed = adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(consumed.valid).toBe(true)
+    expect(consumed.consumed).toBe(true)
+    expect(consumed.ATTESTATION_RESPONSE_CONSUMPTION).toBe('CONSUMED')
+    expect(adapter.isAttestationResponseConsumed(validRes)).toBe(true)
+    cleanupTestDir()
+  })
+
+  // 131. AUTH-EXT-15 — Replay posterior -> BLOCKED
+  it('131. AUTH-EXT-15: Replay posterior a través del adaptador (en el mismo proceso y en proceso externo) permanece bloqueado con ATTESTATION_RESPONSE_REPLAY_DETECTED', async () => {
+    cleanupTestDir()
+    const replayDir = path.resolve(TEST_EVIDENCE_DIR, 'auth-ext-15')
+    const { requestPkg, goPub } = buildTestRequestFixture('AUTH-EXT-15')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'external-authority-15',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg, {
+      expiresAt: '2026-11-05T02:06:00.000Z',
+    })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: testAuthority.authorityId,
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      goAuthorityId: 'OWNER_OFFICIAL_APPROVER_2026',
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      now: '2026-11-05T01:10:00.000Z',
+      transport: async () => validRes,
+    })
+
+    // Primer envío/consumo: exitoso
+    const first = await adapter.submitAttestationRequest(requestPkg)
+    expect(first.valid).toBe(true)
+    expect(first.verification.consumed).toBe(true)
+
+    // Replay posterior en el mismo proceso: bloqueado
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /ATTESTATION_RESPONSE_REPLAY_DETECTED/
+    )
+    expect(() =>
+      adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    ).toThrow(/ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+
+    // Replay posterior en un nuevo proceso del sistema operativo: bloqueado
+    const planModuleUrl = pathToFileURL(
+      path.resolve(process.cwd(), 'scripts/fiscal/plan-pr02-parameters.mjs')
+    ).href
+    const childScript = `
+      import { consumeAttestationResponseDurable } from ${JSON.stringify(planModuleUrl)};
+      const data = JSON.parse(process.env.AUTH_EXT_15_PAYLOAD);
+      consumeAttestationResponseDurable(data.response, {
+        attestationRequest: data.requestPkg,
+        trustedAttestationPublicKey: data.pubKey,
+        trustedGoPublicKey: data.goPub,
+        allowTestKeys: true,
+        consumedResponsesDir: data.replayDir,
+        now: '2026-11-05T01:10:00.000Z',
+      });
+    `
+    const proc = spawnSync(process.execPath, ['--input-type=module', '-e', childScript], {
+      env: {
+        ...process.env,
+        AUTH_EXT_15_PAYLOAD: JSON.stringify({
+          response: validRes,
+          requestPkg,
+          pubKey: testAuthority.publicKey,
+          goPub,
+          replayDir,
+        }),
+      },
+      encoding: 'utf8',
+    })
+    expect(proc.status).not.toBe(0)
+    expect(proc.stderr).toMatch(/ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 132. [EXT-ARCH-01] Transport adapter existe pero no hay endpoint configurado -> AUTHORITY_REAL_WORLD_AVAILABLE = false, P1_IMPORT_ALLOWED = false
+  it('132. [EXT-ARCH-01]: Transport adapter existe pero sin endpoint configurado mantiene AUTHORITY_REAL_WORLD_AVAILABLE = false, P1_IMPORT_ALLOWED = false y submit falla cerrado', async () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-01')
+    const testAuthority = createTestIndependentAttestationAuthority({ issuedAt: '2026-11-05T01:06:00.000Z' })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: testAuthority.authorityId,
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      endpoint: null,
+    })
+
+    expect(AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION).toBe('1.0')
+    expect(EXTERNAL_AUTHORITY_ENDPOINT_SPEC.method).toBe('POST')
+    expect(EXTERNAL_AUTHORITY_ENDPOINT_SPEC.defaultPath).toBe('/attestations')
+    expect(IndependentAttestationAuthorityTransportContract.contractVersion).toBe('1.0')
+    expect(adapter.endpoint).toBeNull()
+    expect(adapter.AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(adapter.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    expect(adapter.ATTESTATION_TRUST_MODEL).toBe('SELF_ATTESTED')
+
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE/
+    )
+    cleanupTestDir()
+  })
+
+  // 133. [EXT-ARCH-02] Endpoint configurado sin clave pública autorizada -> falla cerrado
+  it('133. [EXT-ARCH-02]: Endpoint configurado sin clave pública autorizada falla cerrado con INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE', () => {
+    cleanupTestDir()
+    const { goPub } = buildTestRequestFixture('EXT-ARCH-02')
+
+    // Sin clave pública autorizada pero con endpoint:
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation-authority.arca.gov.ar/attestations',
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada/)
+
+    expect(() =>
+      assertAdapterConfigSecurity({
+        endpoint: 'https://attestation-authority.arca.gov.ar/attestations',
+      })
+    ).toThrow(/INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada/)
+    cleanupTestDir()
+  })
+
+  // 134. [EXT-ARCH-03] Clave pública configurada pero authorityId incorrecto -> falla cerrado
+  it('134. [EXT-ARCH-03]: Clave pública configurada pero authorityId incorrecto falla cerrado con ATTESTATION_AUTHORITY_MISMATCH', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-arch-03')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-03')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXPECTED',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const responseFromMismatched = testAuthority.issueResponse(requestPkg, {
+      authorityId: 'ATT_AUTH_MISMATCHED',
+    })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_EXPECTED',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      consumedResponsesDir: replayDir,
+      allowTestKeys: true,
+      transport: async () => responseFromMismatched,
+    })
+
+    // Fallo al enviar/verificar por autoridad inesperada
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /ATTESTATION_AUTHORITY_MISMATCH/
+    )
+
+    // Fallo en verificación directa de verifyAttestationResponse
+    const directVerify = verifyAttestationResponse(responseFromMismatched, {
+      authorityId: 'ATT_AUTH_EXPECTED',
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      allowTestKeys: true,
+    })
+    expect(directVerify.valid).toBe(false)
+    expect(directVerify.reason).toBe('ATTESTATION_AUTHORITY_MISMATCH')
+    cleanupTestDir()
+  })
+
+  // 135. [EXT-ARCH-04] keyId sustituido por runtime input -> falla: PUBLIC_KEY_SUBSTITUTION_REJECTED
+  it('135. [EXT-ARCH-04]: Sustitución arbitraria de keyId por runtime input falla cerrado con PUBLIC_KEY_SUBSTITUTION_REJECTED', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-arch-04')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-04')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_KEY_PIN',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+    const expectedKeyId = computePublicKeyId(testAuthority.publicKey)
+
+    // 1. Adapter configurado con pinnedKeyId alterado
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: 'ATT_AUTH_KEY_PIN',
+        publicKeySpki: testAuthority.publicKey,
+        pinnedKeyId: 'ed25519-spki-substitutedkey01',
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/PUBLIC_KEY_SUBSTITUTION_REJECTED/)
+
+    // 2. Respuesta devuelta con keyId sustituido distinto al esperado/computado
+    const tamperedKeyIdRes = { ...validRes, keyId: 'ed25519-spki-substitutedkey02' }
+    const directVerify = verifyAttestationResponse(tamperedKeyIdRes, {
+      authorityId: 'ATT_AUTH_KEY_PIN',
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      pinnedKeyId: expectedKeyId,
+      allowTestKeys: true,
+    })
+    expect(directVerify.valid).toBe(false)
+    expect(directVerify.reason).toBe('PUBLIC_KEY_SUBSTITUTION_REJECTED')
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_KEY_PIN',
+      publicKeySpki: testAuthority.publicKey,
+      pinnedKeyId: expectedKeyId,
+      trustedGoPublicKey: goPub,
+      consumedResponsesDir: replayDir,
+      allowTestKeys: true,
+      transport: async () => tamperedKeyIdRes,
+    })
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /PUBLIC_KEY_SUBSTITUTION_REJECTED/
+    )
+    cleanupTestDir()
+  })
+
+  // 136. [EXT-ARCH-05] Intento de inyectar private key en la configuración del runtime -> falla: RUNTIME_PRIVATE_KEY_DETECTED
+  it('136. [EXT-ARCH-05]: Intento de inyectar clave privada en la configuración o variables del runtime falla con RUNTIME_PRIVATE_KEY_DETECTED', () => {
+    cleanupTestDir()
+    const { goPub } = buildTestRequestFixture('EXT-ARCH-05')
+
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: 'ATT_AUTH_05',
+        publicKeySpki: 'MCowBQYDK2VwAyEA0000000000000000000000000000000000000000000=',
+        trustedGoPublicKey: goPub,
+        privateKey: '-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIP000000000000000000000000000000000000000000\n-----END PRIVATE KEY-----',
+      })
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    expect(() =>
+      assertAdapterConfigSecurity({
+        secretKey: 'my-ultra-secret-attestation-signing-key',
+      })
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    // Verificar que verifyRuntimeSigningIsolation pasa y no detecta secretos residuales
+    const isolation = verifyRuntimeSigningIsolation()
+    expect(isolation.valid).toBe(true)
+    expect(isolation.reason).toBe('RUNTIME_SIGNING_ISOLATED')
+    expect(isolation.privateKeysDetected).toBe(0)
+    cleanupTestDir()
+  })
+
+  // 137. [EXT-ARCH-06] Transport devuelve una respuesta sin firma válida -> falla: ATTESTATION_SIGNATURE_INVALID
+  it('137. [EXT-ARCH-06]: Transport que devuelve una respuesta sin firma válida falla cerrado con ATTESTATION_SIGNATURE_INVALID', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-arch-06')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-06')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_06',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+    const corruptedSigRes = {
+      ...validRes,
+      signature: Buffer.from('corrupted-signature-payload-that-fails-ed25519-verification').toString('base64'),
+    }
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_06',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      consumedResponsesDir: replayDir,
+      allowTestKeys: true,
+      transport: async () => corruptedSigRes,
+    })
+
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /ATTESTATION_SIGNATURE_INVALID/
+    )
+
+    const directVerify = verifyAttestationResponse(corruptedSigRes, {
+      authorityId: 'ATT_AUTH_06',
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      allowTestKeys: true,
+    })
+    expect(directVerify.valid).toBe(false)
+    expect(directVerify.reason).toBe('ATTESTATION_SIGNATURE_INVALID')
+    cleanupTestDir()
+  })
+
+  // 138. [EXT-ARCH-07] Transport intenta devolver SELF_ATTESTED como independiente -> falla: SELF_ATTESTATION_AUTO_ELEVATION_REJECTED
+  it('138. [EXT-ARCH-07]: Transport que intenta devolver confianza SELF_ATTESTED como independiente falla cerrado con SELF_ATTESTATION_AUTO_ELEVATION_REJECTED', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-arch-07')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-07')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_07',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    // Intento 1: la respuesta incluye trustModel: 'SELF_ATTESTED' pretendiendo auto-elevarse
+    const selfAttestedRes = {
+      ...validRes,
+      trustModel: 'SELF_ATTESTED',
+    }
+
+    const directVerify1 = verifyAttestationResponse(selfAttestedRes, {
+      authorityId: 'ATT_AUTH_07',
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      allowTestKeys: true,
+    })
+    expect(directVerify1.valid).toBe(false)
+    expect(directVerify1.reason).toBe('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED')
+
+    // Intento 2: respuesta con independentAuthorityAvailable: true
+    const elevatedFlagRes = {
+      ...validRes,
+      independentAuthorityAvailable: true,
+    }
+    const directVerify2 = verifyAttestationResponse(elevatedFlagRes, {
+      authorityId: 'ATT_AUTH_07',
+      trustedAttestationPublicKey: testAuthority.publicKey,
+      allowTestKeys: true,
+    })
+    expect(directVerify2.valid).toBe(false)
+    expect(directVerify2.reason).toBe('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED')
+
+    // Intento 3: assertNoSelfAttestationElevation
+    expect(() =>
+      assertNoSelfAttestationElevation({ ATTESTATION_TRUST_MODEL: 'INDEPENDENT_ATTESTED' })
+    ).toThrow(/SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/)
+
+    // Intento 4: submitAttestationRequest a través del adaptador con respuesta self-attested
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_07',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      consumedResponsesDir: replayDir,
+      allowTestKeys: true,
+      transport: async () => selfAttestedRes,
+    })
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /SELF_ATTESTATION_AUTO_ELEVATION_REJECTED/
+    )
+    cleanupTestDir()
+  })
+
+  // 139. [EXT-ARCH-08] GO Authority utilizada como Attestation Authority -> falla: COLLAPSED_AUTHORITIES_REJECTED
+  it('139. [EXT-ARCH-08]: Utilización de la GO Authority como Attestation Authority falla cerrado con COLLAPSED_AUTHORITIES_REJECTED', () => {
+    cleanupTestDir()
+    const { goPub } = buildTestRequestFixture('EXT-ARCH-08')
+
+    // Mismo authorityId
+    expect(() =>
+      assertAuthoritiesSeparated({
+        goAuthorityId: 'COLLAPSED_ID',
+        attestationAuthorityId: 'COLLAPSED_ID',
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    // Misma clave pública entre GO y Attestation
+    expect(() =>
+      assertAuthoritiesSeparated({
+        goAuthorityId: 'GO_AUTH_OFFICIAL',
+        attestationAuthorityId: 'ATT_AUTH_OFFICIAL',
+        trustedGoPublicKey: goPub,
+        trustedAttestationPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    // En creación de adapter:
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: 'SHARED_COLLAPSED_AUTHORITY',
+        goAuthorityId: 'SHARED_COLLAPSED_AUTHORITY',
+        publicKeySpki: goPub,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+    cleanupTestDir()
+  })
+
+  // 140. [EXT-ARCH-09] Respuesta válida recibida por transporte -> requiere VERIFY antes de CONSUME
+  it('140. [EXT-ARCH-09]: Respuesta válida de transporte requiere obligatoriamente VERIFY antes de CONSUME (no-consumo en verify, consumo atómico en consume)', () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-arch-09')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-09')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_09',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_09',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      now: '2026-11-05T01:10:00.000Z',
+    })
+
+    // Paso 1: VERIFY es de solo lectura y no consume la respuesta
+    const verifyResult = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(verifyResult.valid).toBe(true)
+    expect(verifyResult.consumed).toBe(false)
+    expect(adapter.isAttestationResponseConsumed(validRes)).toBe(false)
+
+    // Paso 2: CONSUME realiza la persistencia durable atómica
+    const consumeResult = adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(consumeResult.valid).toBe(true)
+    expect(consumeResult.consumed).toBe(true)
+    expect(consumeResult.ATTESTATION_RESPONSE_CONSUMPTION).toBe('CONSUMED')
+    expect(adapter.isAttestationResponseConsumed(validRes)).toBe(true)
+    cleanupTestDir()
+  })
+
+  // 141. [EXT-ARCH-10] Respuesta verificada pero replay detectado -> impide cualquier avance posterior
+  it('141. [EXT-ARCH-10]: Respuesta verificada una vez es bloqueada en intentos posteriores impidiendo replay durable', async () => {
+    cleanupTestDir()
+    const replayDir = path.join(TEST_EVIDENCE_DIR, 'ext-arch-10')
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-10')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_10',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_10',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      consumedResponsesDir: replayDir,
+      now: '2026-11-05T01:10:00.000Z',
+      transport: async () => validRes,
+    })
+
+    // Primer consumo: éxito
+    const firstResult = await adapter.submitAttestationRequest(requestPkg)
+    expect(firstResult.valid).toBe(true)
+    expect(firstResult.verification.consumed).toBe(true)
+
+    // Segundo consumo: bloqueado por replay durable
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /ATTESTATION_RESPONSE_REPLAY_DETECTED/
+    )
+    expect(() =>
+      adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    ).toThrow(/ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+    cleanupTestDir()
+  })
+
+  // 142. [EXT-ARCH-11] Transport intenta establecer P1_IMPORT_ALLOWED = true directamente -> imposible
+  it('142. [EXT-ARCH-11]: Imposibilidad de elevar P1_IMPORT_ALLOWED = true mediante transporte o payload de respuesta', async () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-11')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_11',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    // Intento 1: payload devuelto con campo inesperado P1_IMPORT_ALLOWED: true
+    const tamperedRes = {
+      ...validRes,
+      P1_IMPORT_ALLOWED: true,
+    }
+    expect(() =>
+      validateAttestationResponse(tamperedRes)
+    ).toThrow(/Campo inesperado|UNEXPECTED_RESPONSE_FIELD|ATTESTATION_RESPONSE_INVALID/)
+
+    // Intento 2: mutar propiedad sobre el adapter
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_11',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      transport: async () => validRes,
+    })
+
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    try {
+      // @ts-expect-error mutación prohibida en getter
+      adapter.P1_IMPORT_ALLOWED = true
+    } catch {
+      // TypeError en strict mode
+    }
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 143. [EXT-ARCH-12] Modo test -> simulación opera estrictamente con allowTestKeys: true, trustScope: TEST_ONLY, PRODUCTION_ATTESTED: false, P1_IMPORT_ALLOWED: false
+  it('143. [EXT-ARCH-12]: Modo test opera estrictamente con allowTestKeys: true, trustScope: TEST_ONLY, PRODUCTION_ATTESTED: false y P1_IMPORT_ALLOWED: false', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT-ARCH-12')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_12_TEST',
+      issuedAt: '2026-11-05T01:06:00.000Z',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    // Sin allowTestKeys: true, clave de prueba identificada con marcador test rechazada
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        authorityId: 'ATT_AUTH_12_TEST',
+        publicKeySpki: 'test-attestation-dummy-key-marker',
+        trustedGoPublicKey: goPub,
+        allowTestKeys: false,
+      })
+    ).toThrow(/TEST_KEY_PROHIBITED/)
+
+    // Con allowTestKeys: true, la confianza está estrictamente restringida a TEST_ONLY
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_12_TEST',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+      transport: async () => validRes,
+    })
+
+    expect(adapter.ATTESTATION_TRUST_MODEL).toBe('SELF_ATTESTED')
+    expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+
+    const verification = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(verification.valid).toBe(true)
+    expect(verification.trustScope).toBe('TEST_ONLY')
+    expect(verification.PRODUCTION_ATTESTED).toBe(false)
+    expect(verification.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
   })
 })

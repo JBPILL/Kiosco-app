@@ -52,23 +52,49 @@ export function isTestAuthorityKey(secret) {
 
 export const ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 
+export const AUTHORITY_ADAPTER_IMPLEMENTED = true
+export const AUTHORITY_REAL_WORLD_AVAILABLE = false
+
 /**
  * Parsea y normaliza una clave pública Ed25519 a un KeyObject nativo de Node.js.
- * Acepta PEM SPKI, KeyObject nativo, o digest raw de 64 caracteres hex.
+ * Acepta PEM SPKI, KeyObject nativo público, o digest raw de 64 caracteres hex.
+ * Rechaza fail-closed cualquier clave privada (KeyObject privado, PEM PKCS#8/OpenSSH/EC/RSA privado)
+ * pasada como configuración de verificación en el runtime fiscal.
  */
 export function parseEd25519PublicKey(raw, name = 'PUBLIC_KEY') {
   if (!raw) {
     throw new Error(`${name}_MISSING: Se requiere clave pública Ed25519 custodiada fuera del repositorio`)
   }
-  if (typeof raw === 'object' && raw !== null && raw.asymmetricKeyType) {
-    if (raw.asymmetricKeyType !== 'ed25519') {
-      throw new Error(`${name}_ALGORITHM_INVALID: Se requiere clave Ed25519, recibido '${raw.asymmetricKeyType}'`)
+  if (typeof raw === 'object' && raw !== null) {
+    if (
+      raw.type === 'private' ||
+      raw.privateKey !== undefined ||
+      raw.secretKey !== undefined ||
+      (raw.asymmetricKeyType && raw.type && raw.type !== 'public')
+    ) {
+      throw new Error(
+        `RUNTIME_PRIVATE_KEY_DETECTED: ${name}_PRIVATE_KEY_FORBIDDEN: Prohibido aceptar o cargar una clave privada como configuración de verificación en el runtime fiscal`
+      )
     }
-    return raw
+    if (raw.asymmetricKeyType) {
+      if (raw.asymmetricKeyType !== 'ed25519') {
+        throw new Error(`${name}_ALGORITHM_INVALID: Se requiere clave Ed25519, recibido '${raw.asymmetricKeyType}'`)
+      }
+      return raw
+    }
   }
   const str = String(raw).trim()
   if (str.length === 0) {
     throw new Error(`${name}_MISSING: Se requiere clave pública Ed25519 custodiada fuera del repositorio`)
+  }
+  if (
+    /-----\s*BEGIN[A-Z0-9\s]*PRIVATE\s+KEY\s*-----/i.test(str) ||
+    /-----\s*END[A-Z0-9\s]*PRIVATE\s+KEY\s*-----/i.test(str) ||
+    /\bprivate[_\-\s]?key\b/i.test(str)
+  ) {
+    throw new Error(
+      `RUNTIME_PRIVATE_KEY_DETECTED: ${name}_PRIVATE_KEY_FORBIDDEN: Prohibido aceptar o cargar una clave privada PEM como configuración de verificación en el runtime fiscal`
+    )
   }
   for (const compromised of PR02_P0_COMPROMISED_SECRETS) {
     if (str === compromised || str.toLowerCase() === compromised.toLowerCase()) {
@@ -78,12 +104,17 @@ export function parseEd25519PublicKey(raw, name = 'PUBLIC_KEY') {
   if (str.startsWith('-----BEGIN')) {
     try {
       const k = crypto.createPublicKey(str)
+      if (k.type !== 'public') {
+        throw new Error(
+          `RUNTIME_PRIVATE_KEY_DETECTED: ${name}_PRIVATE_KEY_FORBIDDEN: Se requiere clave estrictamente pública`
+        )
+      }
       if (k.asymmetricKeyType !== 'ed25519') {
         throw new Error(`${name}_ALGORITHM_INVALID: Se requiere clave Ed25519, recibido '${k.asymmetricKeyType}'`)
       }
       return k
     } catch (err) {
-      if (err.message.includes('ALGORITHM_INVALID')) throw err
+      if (err.message.includes('ALGORITHM_INVALID') || err.message.includes('RUNTIME_PRIVATE_KEY_DETECTED')) throw err
       throw new Error(`${name}_INVALID_FORMAT: Falló parsing de clave pública PEM: ${err.message}`)
     }
   }
@@ -105,10 +136,115 @@ export function parseEd25519PublicKey(raw, name = 'PUBLIC_KEY') {
       const content = fs.readFileSync(str, 'utf8')
       return parseEd25519PublicKey(content, name)
     } catch (err) {
+      if (err && err.message && err.message.includes('RUNTIME_PRIVATE_KEY_DETECTED')) {
+        throw err
+      }
       throw new Error(`${name}_FILE_READ_FAILED: No se pudo leer clave desde '${str}': ${err.message}`)
     }
   }
   throw new Error(`${name}_INVALID_FORMAT: Formato de clave pública no reconocido (se espera PEM SPKI o hex 64)`)
+}
+
+/**
+ * Verifica fail-closed la separación estricta entre GO Authority e Independent Attestation Authority:
+ * - GO_AUTHORITY_ID != ATTESTATION_AUTHORITY_ID
+ * - goKeyId != attestationKeyId
+ * - Claves públicas SPKI distintas
+ */
+export function assertAuthoritiesSeparated(params = {}) {
+  if (!params || typeof params !== 'object') return true
+
+  const goAuthIdRaw =
+    params.goAuthorityId ??
+    params.trustedGoAuthorityId ??
+    params.goApproverId ??
+    (params.goAuthorizationDoc &&
+      params.goAuthorizationDoc.authorization &&
+      params.goAuthorizationDoc.authorization.aprobador_identidad)
+  const attAuthIdRaw =
+    params.attestationAuthorityId ??
+    params.authorityId ??
+    params.expectedAuthorityId
+
+  if (
+    typeof goAuthIdRaw === 'string' &&
+    goAuthIdRaw.trim().length > 0 &&
+    typeof attAuthIdRaw === 'string' &&
+    attAuthIdRaw.trim().length > 0 &&
+    goAuthIdRaw.trim().toLowerCase() === attAuthIdRaw.trim().toLowerCase()
+  ) {
+    throw new Error(
+      `COLLAPSED_AUTHORITIES_REJECTED: GO_AUTHORITY_ID ('${goAuthIdRaw.trim()}') y ATTESTATION_AUTHORITY_ID ('${attAuthIdRaw.trim()}') no pueden ser iguales`
+    )
+  }
+
+  const goKeyIdRaw =
+    params.goKeyId ??
+    params.trustedGoKeyId ??
+    (params.goAuthorizationDoc &&
+      params.goAuthorizationDoc.signature &&
+      params.goAuthorizationDoc.signature.key_id)
+  const attKeyIdRaw =
+    params.attestationKeyId ??
+    params.keyId ??
+    params.expectedKeyId
+
+  if (
+    typeof goKeyIdRaw === 'string' &&
+    goKeyIdRaw.trim().length > 0 &&
+    typeof attKeyIdRaw === 'string' &&
+    attKeyIdRaw.trim().length > 0 &&
+    goKeyIdRaw.trim().toLowerCase() === attKeyIdRaw.trim().toLowerCase()
+  ) {
+    throw new Error(
+      `COLLAPSED_AUTHORITIES_REJECTED: GO Authority y Attestation Authority no pueden compartir el mismo keyId ('${attKeyIdRaw.trim()}')`
+    )
+  }
+
+  const rawGoPub = params.trustedGoPublicKey ?? params.goPublicKey
+  const rawAttPub =
+    params.trustedAttestationPublicKey ??
+    params.authorityPublicKey ??
+    params.publicKeySpki
+
+  let goKeyObj = null
+  let attKeyObj = null
+  if (rawGoPub) {
+    goKeyObj = validateP0GoPublicKey(rawGoPub, Boolean(params.allowTestKeys))
+  }
+  if (rawAttPub) {
+    attKeyObj = validateP0AttestationPublicKey(rawAttPub, Boolean(params.allowTestKeys))
+  }
+
+  if (goKeyObj && attKeyObj) {
+    const goDer = goKeyObj.export({ format: 'der', type: 'spki' })
+    const attDer = attKeyObj.export({ format: 'der', type: 'spki' })
+    if (goDer.equals(attDer)) {
+      throw new Error(
+        'COLLAPSED_AUTHORITIES_REJECTED: La clave pública de GO Authority y la de Independent Attestation Authority no pueden colapsar en la misma identidad criptográfica'
+      )
+    }
+  }
+
+  if (goKeyObj && typeof attKeyIdRaw === 'string' && attKeyIdRaw.trim().length > 0) {
+    const derivedGoKeyId = `ed25519-spki-${sha256(goKeyObj.export({ format: 'der', type: 'spki' })).slice(0, 16)}`
+    if (derivedGoKeyId.toLowerCase() === attKeyIdRaw.trim().toLowerCase()) {
+      throw new Error(
+        `COLLAPSED_AUTHORITIES_REJECTED: El keyId de Attestation Authority ('${attKeyIdRaw.trim()}') colapsa con la clave pública de GO Authority`
+      )
+    }
+  }
+
+  if (attKeyObj && typeof goKeyIdRaw === 'string' && goKeyIdRaw.trim().length > 0) {
+    const derivedAttKeyId = `ed25519-spki-${sha256(attKeyObj.export({ format: 'der', type: 'spki' })).slice(0, 16)}`
+    if (derivedAttKeyId.toLowerCase() === goKeyIdRaw.trim().toLowerCase()) {
+      throw new Error(
+        `COLLAPSED_AUTHORITIES_REJECTED: El keyId de GO Authority ('${goKeyIdRaw.trim()}') colapsa con la clave pública de Attestation Authority`
+      )
+    }
+  }
+
+  return true
 }
 
 /**
@@ -845,24 +981,303 @@ export const ATTESTATION_AUTHORITY_TYPES = Object.freeze({
 
 export const ATTESTATION_ALLOWED_ALGORITHMS = Object.freeze(['Ed25519'])
 
-export const ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = 'PROCESS_LOCAL_ONE_TIME_USE'
+export const ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
 
-const _consumedAttestationResponsesProcessLocal = new Set()
+export const PR02_P0_ATTESTATION_REPLAY_DIR_ENV = 'PR02_P0_ATTESTATION_REPLAY_DIR'
 
-export function isAttestationResponseConsumedProcessLocal(responseKey) {
-  if (!responseKey || typeof responseKey !== 'string') return false
-  return _consumedAttestationResponsesProcessLocal.has(responseKey)
+/**
+ * Serializa de forma canónica y determinista los campos criptográficamente vinculantes
+ * de una respuesta de atestación para derivar su identificador canónico de replay (replayId).
+ * Vincula explícitamente:
+ * - attestationId (responseId / attestationId)
+ * - requestSha256
+ * - manifestSha256
+ * - attestationPayloadSha256
+ * - signature
+ * - authorityId
+ * - keyId
+ */
+export function serializeCanonicalAttestationResponseReplayIdentity(response) {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    throw new Error('ATTESTATION_RESPONSE_REPLAY_IDENTITY_INVALID: Se requiere un objeto AttestationResponse estructurado')
+  }
+  const hasAttestationId = response.attestationId !== undefined && response.attestationId !== null
+  const hasResponseId = response.responseId !== undefined && response.responseId !== null
+  if (hasAttestationId && hasResponseId && String(response.attestationId) !== String(response.responseId)) {
+    throw new Error('ATTESTATION_RESPONSE_REPLAY_IDENTITY_INVALID: Inconsistencia entre attestationId y responseId')
+  }
+  const rawId = hasAttestationId ? response.attestationId : response.responseId
+  if (typeof rawId !== 'string' || rawId.trim().length === 0 || rawId !== rawId.trim()) {
+    throw new Error('ATTESTATION_RESPONSE_REPLAY_IDENTITY_INVALID: attestationId/responseId inválido o vacío')
+  }
+  const attestationId = rawId
+  const requestSha256 = typeof response.requestSha256 === 'string' ? response.requestSha256 : ''
+  const manifestSha256 = typeof response.manifestSha256 === 'string' ? response.manifestSha256 : ''
+  const attestationPayloadSha256 =
+    typeof response.attestationPayloadSha256 === 'string' ? response.attestationPayloadSha256 : ''
+  const signature = typeof response.signature === 'string' ? response.signature : ''
+  const authorityId = typeof response.authorityId === 'string' ? response.authorityId : ''
+  const keyId = typeof response.keyId === 'string' ? response.keyId : ''
+
+  if (
+    !/^[0-9a-f]{64}$/.test(requestSha256) ||
+    !/^[0-9a-f]{64}$/.test(manifestSha256) ||
+    !/^[0-9a-f]{64}$/.test(attestationPayloadSha256) ||
+    !/^[0-9a-f]{128}$/.test(signature) ||
+    (response.commitSha !== undefined &&
+      (typeof response.commitSha !== 'string' || !/^[0-9a-f]{40}$/.test(response.commitSha))) ||
+    authorityId.trim().length === 0 ||
+    authorityId !== authorityId.trim() ||
+    keyId.trim().length === 0 ||
+    keyId !== keyId.trim()
+  ) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_REPLAY_IDENTITY_INVALID: Faltan campos vinculantes obligatorios o tienen formato inválido para el identificador canónico de replay'
+    )
+  }
+
+  const canonical = {
+    schemaVersion: '1.0',
+    attestationId,
+    requestSha256,
+    manifestSha256,
+    attestationPayloadSha256,
+    signature,
+    authorityId,
+    keyId,
+  }
+  return JSON.stringify(canonical)
 }
 
-export function consumeAttestationResponseProcessLocal(responseKey) {
-  if (!responseKey || typeof responseKey !== 'string') {
-    throw new Error('ATTESTATION_RESPONSE_REPLAY_KEY_INVALID')
+/**
+ * Calcula el digest determinista SHA-256 (replayId) sobre la identidad canónica de replay
+ * de una respuesta de atestación (AttestationResponse).
+ */
+export function computeAttestationResponseReplayId(response) {
+  return sha256(serializeCanonicalAttestationResponseReplayIdentity(response))
+}
+
+function assertNotProtectedRepoReplayPath(candidatePath, baseRepoPath) {
+  const normCandidate = path.normalize(candidatePath)
+  const normRepo = path.normalize(baseRepoPath)
+  const isWin = process.platform === 'win32'
+  const cmpCandidate = isWin ? normCandidate.toLowerCase() : normCandidate
+  const cmpRepo = isWin ? normRepo.toLowerCase() : normRepo
+
+  if (cmpCandidate === cmpRepo) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: UNAUTHORIZED_REPLAY_STORAGE_DIR: El directorio del registro durable no puede ser la raíz del repositorio'
+    )
   }
-  if (_consumedAttestationResponsesProcessLocal.has(responseKey)) {
-    throw new Error('ATTESTATION_RESPONSE_REPLAY_DETECTED: La respuesta de atestación ya fue consumida en este proceso')
+
+  const protectedDirs = [
+    'src',
+    'scripts',
+    'supabase',
+    'docs',
+    '.agent',
+    '.agents',
+    '.git',
+    '.github',
+    '.husky',
+    'public',
+    'legacy',
+    'tools',
+    'dist',
+    'node_modules',
+  ]
+
+  for (const dirName of protectedDirs) {
+    const protPath = path.normalize(path.join(normRepo, dirName))
+    const cmpProt = isWin ? protPath.toLowerCase() : protPath
+    if (cmpCandidate === cmpProt || cmpCandidate.startsWith(cmpProt + path.sep)) {
+      throw new Error(
+        `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: UNAUTHORIZED_REPLAY_STORAGE_DIR: El directorio del registro durable no puede ubicarse dentro del directorio protegido del repositorio ('${dirName}')`
+      )
+    }
   }
-  _consumedAttestationResponsesProcessLocal.add(responseKey)
-  return true
+
+  if (cmpCandidate.startsWith(cmpRepo + path.sep)) {
+    const rel = path.relative(normRepo, normCandidate)
+    const topSegment = rel.split(path.sep)[0] || ''
+    const allowedPrivateTopSegments =
+      topSegment === '.fiscal-evidence-pr02' ||
+      topSegment === '.fiscal-evidence' ||
+      topSegment === 'private' ||
+      topSegment.startsWith('temp-test-') ||
+      topSegment.startsWith('.tmp-test-')
+    if (!allowedPrivateTopSegments) {
+      throw new Error(
+        `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: UNAUTHORIZED_REPLAY_STORAGE_DIR: Ubicación dentro del repositorio ('${topSegment}') no autorizada por riesgo de versionado accidental`
+      )
+    }
+  }
+}
+
+function lstatIfExists(targetPath) {
+  try {
+    return fs.lstatSync(targetPath)
+  } catch (err) {
+    if (err && err.code === 'ENOENT') {
+      return null
+    }
+    throw err
+  }
+}
+
+/**
+ * Valida fail-closed el directorio del registro durable host-local de respuestas de atestación.
+ * Audita y rechaza:
+ * - configuración ausente o vacía;
+ * - rutas UNC o de dispositivos Windows (\\?\, \\.\, \\server\share) y NTFS Alternate Data Streams (:);
+ * - path traversal, segmentos '..' o '.' y segmentos con puntos o espacios finales;
+ * - symlinks (incluyendo symlinks rotos/colgantes) en el destino o en cualquier ancestro;
+ * - directorios de código fuente o del repositorio que puedan versionarse (.git, src, scripts, supabase, docs, .agent, etc.).
+ * Aplica permisos privados 0o700 al directorio.
+ */
+export function validateAttestationReplayDirectory(dirPath, options = {}) {
+  if (
+    dirPath === undefined ||
+    dirPath === null ||
+    dirPath === false ||
+    typeof dirPath !== 'string' ||
+    dirPath.trim().length === 0
+  ) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_REPLAY_STORAGE_NOT_CONFIGURED: El directorio de registro durable de anti-replay no está configurado'
+    )
+  }
+
+  if (dirPath.includes('\0')) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: INVALID_REPLAY_STORAGE_DIR: La ruta del registro durable contiene bytes nulos prohibidos'
+    )
+  }
+
+  const raw = dirPath.trim()
+
+  // Rechazar rutas UNC o espacios de nombres de dispositivos Windows (\\?\, \\.\, \\server\share, //server/share)
+  if (raw.startsWith('\\\\') || raw.startsWith('//')) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: PATH_TRAVERSAL_FORBIDDEN: No se permiten rutas UNC ni espacios de nombres de dispositivos en el registro durable'
+    )
+  }
+
+  // Rechazar NTFS Alternate Data Streams (:) o dos puntos fuera de la letra de unidad inicial en Windows
+  const withoutDrivePrefix = raw.replace(/^[a-zA-Z]:/, '')
+  if (withoutDrivePrefix.includes(':')) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: INVALID_REPLAY_STORAGE_DIR: La ruta del registro durable contiene flujos alternativos NTFS (:) o caracteres de dispositivo prohibidos'
+    )
+  }
+
+  const rawSegments = raw.split(/[\\/]+/).filter((seg) => seg.length > 0)
+  const normalizedSegments = path.normalize(raw).split(path.sep).filter((seg) => seg.length > 0)
+  if (
+    rawSegments.includes('..') ||
+    rawSegments.includes('.') ||
+    normalizedSegments.includes('..') ||
+    normalizedSegments.includes('.')
+  ) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: PATH_TRAVERSAL_FORBIDDEN: La ruta del registro durable no puede contener segmentos relativos de escape (.. o .)'
+    )
+  }
+
+  // Rechazar segmentos con puntos o espacios finales (que Win32 normaliza silenciosamente)
+  for (const seg of rawSegments) {
+    if (/^[a-zA-Z]:$/.test(seg)) continue
+    if (seg.endsWith('.') || seg.endsWith(' ')) {
+      throw new Error(
+        'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: INVALID_REPLAY_STORAGE_DIR: Los segmentos de ruta del registro durable no pueden finalizar con puntos ni espacios'
+      )
+    }
+  }
+
+  const resolved = path.resolve(raw)
+  const resolvedRepo = path.resolve(options.repoRoot || process.cwd())
+
+  // 1. Verificar mediante lstatSync (sin seguir enlaces) que ningún ancestro ni el destino sea un symlink (incluso roto)
+  const ancestorsToCheck = []
+  let cursor = resolved
+  while (true) {
+    ancestorsToCheck.unshift(cursor)
+    const parent = path.dirname(cursor)
+    if (!parent || parent === cursor) break
+    cursor = parent
+  }
+
+  for (const segmentPath of ancestorsToCheck) {
+    const st = lstatIfExists(segmentPath)
+    if (st) {
+      if (st.isSymbolicLink()) {
+        throw new Error(
+          `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN: La ruta del registro durable o su ancestro '${segmentPath}' es un enlace simbólico`
+        )
+      }
+      if (segmentPath === resolved && !st.isDirectory()) {
+        throw new Error(
+          `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: INVALID_REPLAY_STORAGE_DIR: La ruta destino '${resolved}' existe pero no es un directorio`
+        )
+      }
+    }
+  }
+
+  // 2. Verificar que la ruta lógica no apunte a código fuente o directorios versionables del repositorio
+  assertNotProtectedRepoReplayPath(resolved, resolvedRepo)
+
+  // 3. Crear el directorio con permisos 0o700 si no existe
+  if (options.createIfMissing !== false) {
+    try {
+      const existingResolved = lstatIfExists(resolved)
+      if (!existingResolved) {
+        fs.mkdirSync(resolved, { recursive: true, mode: 0o700 })
+      } else if (existingResolved.isSymbolicLink() || !existingResolved.isDirectory()) {
+        throw new Error(
+          `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN: La ruta destino '${resolved}' es un enlace simbólico o no es un directorio`
+        )
+      }
+      try {
+        fs.chmodSync(resolved, 0o700)
+      } catch {
+        // En plataformas que no aplican chmod POSIX (Windows), continuar
+      }
+    } catch (err) {
+      if (err && err.message && err.message.includes('ATTESTATION_RESPONSE_CONSUMPTION_DENIED:')) {
+        throw err
+      }
+      throw new Error(
+        `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: REPLAY_STORAGE_DIR_CREATE_FAILED: Fallo al preparar el directorio del registro durable: ${err.message}`
+      )
+    }
+
+    const postStat = lstatIfExists(resolved)
+    if (!postStat || postStat.isSymbolicLink() || !postStat.isDirectory()) {
+      throw new Error(
+        `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN: El directorio del registro durable '${resolved}' no es un directorio físico válido`
+      )
+    }
+
+    const realBase = fs.realpathSync(resolved)
+    const realRepo = fs.existsSync(resolvedRepo) ? fs.realpathSync(resolvedRepo) : resolvedRepo
+    assertNotProtectedRepoReplayPath(realBase, realRepo)
+    return realBase
+  }
+
+  const existingStat = lstatIfExists(resolved)
+  if (existingStat) {
+    if (existingStat.isSymbolicLink() || !existingStat.isDirectory()) {
+      throw new Error(
+        `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN: La ruta del registro durable '${resolved}' es un enlace simbólico o no es un directorio`
+      )
+    }
+    const realBase = fs.realpathSync(resolved)
+    const realRepo = fs.existsSync(resolvedRepo) ? fs.realpathSync(resolvedRepo) : resolvedRepo
+    assertNotProtectedRepoReplayPath(realBase, realRepo)
+    return realBase
+  }
+
+  return resolved
 }
 
 /**
@@ -1620,7 +2035,12 @@ export function verifyIndependentAttestation(attestation, options = {}) {
   }
 
   // Condición 2: Clave pública confiable configurada explícitamente
-  const rawKey = trustedAttestationPublicKey || authoritySecret || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
+  const rawKey =
+    trustedAttestationPublicKey ||
+    options.publicKeySpki ||
+    authoritySecret ||
+    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+    process.env[PR02_P0_AUTHORITY_ENV]
   if (!rawKey) {
     return Object.freeze({
       ...deniedBase,
@@ -1632,6 +2052,14 @@ export function verifyIndependentAttestation(attestation, options = {}) {
   try {
     pubKeyObj = validateP0AttestationPublicKey(rawKey, Boolean(options.allowTestKeys))
   } catch (err) {
+    if (err.message.includes('RUNTIME_PRIVATE_KEY_DETECTED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+        errorCategory: 'COMPROMISED_RUNTIME_BOUNDARY',
+        detail: err.message,
+      })
+    }
     if (err.message.includes('P0_ATTESTATION_KEY_MISSING') || err.message.includes('ATTESTATION_AUTHORITY_NOT_AVAILABLE')) {
       return Object.freeze({
         ...deniedBase,
@@ -1656,22 +2084,52 @@ export function verifyIndependentAttestation(attestation, options = {}) {
     return Object.freeze({ ...deniedBase, reason: 'ATTESTATION_KEY_INVALID' })
   }
 
-  // Condición 3: Clave pública de atestación distinta de la GO Authority
-  if (trustedGoPublicKey) {
-    try {
-      const goKeyObj = validateP0GoPublicKey(trustedGoPublicKey, Boolean(options.allowTestKeys))
-      const goDer = goKeyObj.export({ format: 'der', type: 'spki' })
-      const attDer = pubKeyObj.export({ format: 'der', type: 'spki' })
-      if (goDer.equals(attDer)) {
-        return Object.freeze({
-          ...deniedBase,
-          reason: 'COLLAPSED_AUTHORITIES_REJECTED',
-          errorCategory: 'COLLAPSED_AUTHORITIES_REJECTED',
-        })
-      }
-    } catch {
-      return Object.freeze({ ...deniedBase, reason: 'GO_AUTHORITY_KEY_INVALID' })
+  // Condición 3: Separación estricta entre GO Authority e Independent Attestation Authority
+  try {
+    assertAuthoritiesSeparated({
+      goAuthorityId:
+        options.goAuthorityId ??
+        options.trustedGoAuthorityId ??
+        options.goApproverId ??
+        (options.goAuthorizationDoc &&
+          options.goAuthorizationDoc.authorization &&
+          options.goAuthorizationDoc.authorization.aprobador_identidad),
+      attestationAuthorityId:
+        attestation.authorityId ??
+        options.authorityId ??
+        options.expectedAuthorityId,
+      goKeyId:
+        options.goKeyId ??
+        options.trustedGoKeyId ??
+        (options.goAuthorizationDoc &&
+          options.goAuthorizationDoc.signature &&
+          options.goAuthorizationDoc.signature.key_id),
+      attestationKeyId:
+        attestation.keyId ??
+        options.keyId ??
+        options.expectedKeyId ??
+        computePublicKeyId(pubKeyObj),
+      trustedGoPublicKey,
+      trustedAttestationPublicKey: pubKeyObj,
+      allowTestKeys: Boolean(options.allowTestKeys),
+    })
+  } catch (sepErr) {
+    if (sepErr && sepErr.message && sepErr.message.includes('RUNTIME_PRIVATE_KEY_DETECTED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+        errorCategory: 'COMPROMISED_RUNTIME_BOUNDARY',
+        detail: sepErr.message,
+      })
     }
+    if (sepErr && sepErr.message && sepErr.message.includes('COLLAPSED_AUTHORITIES_REJECTED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'COLLAPSED_AUTHORITIES_REJECTED',
+        errorCategory: 'COLLAPSED_AUTHORITIES_REJECTED',
+      })
+    }
+    return Object.freeze({ ...deniedBase, reason: 'GO_AUTHORITY_KEY_INVALID' })
   }
 
   // Prohibición estricta de aceptar signers de test como producción
@@ -1787,32 +2245,32 @@ export function serializeCanonicalAttestationResponsePayload(res) {
   }
   const canonical = {
     schemaVersion: res.schemaVersion,
-    responseId: res.responseId,
+    responseId: res.responseId || res.attestationId,
     authorityType: res.authorityType,
     authorityId: res.authorityId,
     keyId: res.keyId,
     algorithm: res.algorithm,
     requestId: res.requestId,
-    requestSha256: res.requestSha256 ? String(res.requestSha256).toLowerCase() : '',
-    manifestSha256: res.manifestSha256 ? String(res.manifestSha256).toLowerCase() : '',
+    requestSha256: res.requestSha256 ? String(res.requestSha256) : '',
+    manifestSha256: res.manifestSha256 ? String(res.manifestSha256) : '',
     processId: res.processId,
     executionScope: res.executionScope,
-    commitSha: res.commitSha ? String(res.commitSha).toLowerCase() : '',
+    commitSha: res.commitSha ? String(res.commitSha) : '',
     environment: res.environment,
     authorizationId: res.authorizationId,
     goAuthorizationDocumentSha256: res.goAuthorizationDocumentSha256
-      ? String(res.goAuthorizationDocumentSha256).toLowerCase()
+      ? String(res.goAuthorizationDocumentSha256)
       : '',
     rawSoapArtifacts: Array.isArray(res.rawSoapArtifacts)
       ? res.rawSoapArtifacts.map((a) => ({
           name: a && a.name ? String(a.name) : '',
-          sha256: a && a.sha256 ? String(a.sha256).toLowerCase() : '',
+          sha256: a && a.sha256 ? String(a.sha256) : '',
         }))
       : [],
     normalizedArtifacts: Array.isArray(res.normalizedArtifacts)
       ? res.normalizedArtifacts.map((a) => ({
           name: a && a.name ? String(a.name) : '',
-          sha256: a && a.sha256 ? String(a.sha256).toLowerCase() : '',
+          sha256: a && a.sha256 ? String(a.sha256) : '',
         }))
       : [],
     consultadoEn: res.consultadoEn,
@@ -1833,6 +2291,7 @@ export function computeAttestationResponsePayloadDigest(res) {
 const ATTESTATION_RESPONSE_ALLOWED_KEYS = new Set([
   'schemaVersion',
   'responseId',
+  'attestationId',
   'authorityType',
   'authorityId',
   'keyId',
@@ -1859,11 +2318,17 @@ const ATTESTATION_RESPONSE_ALLOWED_KEYS = new Set([
 /**
  * Verificador fail-closed del contrato explícito de respuesta de atestación (AttestationResponse)
  * emitido por una Autoridad de Atestación Independiente externa.
- * Verifica exclusivamente mediante clave pública Ed25519 y vincula solicitud, manifiesto y evidencia.
+ *
+ * OPERACIÓN DE SOLO LECTURA (VERIFY ≠ CONSUME):
+ * - Verifica exclusivamente mediante clave pública Ed25519 y vincula solicitud, manifiesto y evidencia.
+ * - NO consume la respuesta ni escribe en el registro durable de anti-replay (`consumed: false`).
+ * - Puede invocarse múltiples veces para inspección o diagnóstico sin quemar la respuesta.
  */
 export function verifyAttestationResponse(response, options = {}) {
   const deniedBase = {
     valid: false,
+    consumed: false,
+    ATTESTATION_RESPONSE_CONSUMPTION: 'NOT_CONSUMED',
     P1_IMPORT_ALLOWED: false,
     INDEPENDENT_ATTESTATION_AVAILABLE: false,
     PRODUCTION_ATTESTED: false,
@@ -1923,6 +2388,19 @@ export function verifyAttestationResponse(response, options = {}) {
     })
   }
 
+  if (
+    response.trustModel === 'SELF_ATTESTED' ||
+    response.ATTESTATION_TRUST_MODEL === 'SELF_ATTESTED' ||
+    response.independentAuthorityAvailable === true
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'SELF_ATTESTATION_AUTO_ELEVATION_REJECTED',
+      errorCategory: 'UNTRUSTED_SELF_ATTESTATION',
+      detail: 'Una atestación SELF_ATTESTED o flag independentAuthorityAvailable no puede ser devuelta o elevada como independiente',
+    })
+  }
+
   // Rechazar cualquier campo inesperado o intento de modificar directamente el modelo de confianza
   for (const key of Object.keys(response)) {
     if (!ATTESTATION_RESPONSE_ALLOWED_KEYS.has(key)) {
@@ -1933,6 +2411,18 @@ export function verifyAttestationResponse(response, options = {}) {
         detail: `Campo inesperado o no permitido en respuesta de atestación: '${key}'`,
       })
     }
+  }
+
+  if (
+    response.attestationId !== undefined &&
+    response.responseId !== undefined &&
+    response.attestationId !== response.responseId
+  ) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'ATTESTATION_RESPONSE_INVALID',
+      detail: 'Inconsistencia entre responseId y attestationId en la respuesta de atestación',
+    })
   }
 
   // Rechazar presencia de secretos o credenciales
@@ -2010,15 +2500,19 @@ export function verifyAttestationResponse(response, options = {}) {
     }
   }
 
-  // Validar campos estructurales críticos
+  const effectiveResponseId = response.responseId || response.attestationId
+
+  // Validar campos estructurales críticos (incluyendo ausencia de espacios extremos y formato hexadecimal estricto en minúsculas)
   if (
     response.schemaVersion !== '1.0' ||
-    !response.responseId ||
-    typeof response.responseId !== 'string' ||
-    response.responseId.trim().length === 0 ||
+    !effectiveResponseId ||
+    typeof effectiveResponseId !== 'string' ||
+    effectiveResponseId.trim().length === 0 ||
+    effectiveResponseId !== effectiveResponseId.trim() ||
     !response.requestId ||
     typeof response.requestId !== 'string' ||
     response.requestId.trim().length === 0 ||
+    response.requestId !== response.requestId.trim() ||
     !response.requestSha256 ||
     typeof response.requestSha256 !== 'string' ||
     !/^[0-9a-f]{64}$/.test(response.requestSha256) ||
@@ -2138,11 +2632,12 @@ export function verifyAttestationResponse(response, options = {}) {
       })
     }
   }
-  if (options.expectedAuthorityId !== undefined && response.authorityId !== options.expectedAuthorityId) {
+  const expectedAuthId = options.expectedAuthorityId ?? options.authorityId
+  if (expectedAuthId !== undefined && expectedAuthId !== null && response.authorityId !== expectedAuthId) {
     return Object.freeze({
       ...deniedBase,
       reason: 'ATTESTATION_AUTHORITY_MISMATCH',
-      detail: `authorityId '${response.authorityId}' no coincide con expectedAuthorityId '${options.expectedAuthorityId}'`,
+      detail: `authorityId '${response.authorityId}' no coincide con expectedAuthorityId '${expectedAuthId}'`,
     })
   }
 
@@ -2150,6 +2645,7 @@ export function verifyAttestationResponse(response, options = {}) {
   const rawKey =
     options.trustedAttestationPublicKey ||
     options.authorityPublicKey ||
+    options.publicKeySpki ||
     options.authoritySecret ||
     process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
     process.env[PR02_P0_AUTHORITY_ENV]
@@ -2166,6 +2662,14 @@ export function verifyAttestationResponse(response, options = {}) {
   try {
     pubKeyObj = validateP0AttestationPublicKey(rawKey, Boolean(options.allowTestKeys))
   } catch (err) {
+    if (err.message.includes('RUNTIME_PRIVATE_KEY_DETECTED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+        errorCategory: 'COMPROMISED_RUNTIME_BOUNDARY',
+        detail: err.message,
+      })
+    }
     if (err.message.includes('TEST_KEY_PROHIBITED')) {
       return Object.freeze({
         ...deniedBase,
@@ -2181,28 +2685,99 @@ export function verifyAttestationResponse(response, options = {}) {
     })
   }
 
-  if (options.trustedGoPublicKey) {
+  // Protección contra sustitución de clave pública (cuando existe una clave pública anclada / esperada)
+  const pinnedRawKey = options.pinnedPublicKeySpki || options.expectedPublicKeySpki
+  if (pinnedRawKey) {
     try {
-      const goKeyObj = validateP0GoPublicKey(options.trustedGoPublicKey, Boolean(options.allowTestKeys))
-      const goDer = goKeyObj.export({ format: 'der', type: 'spki' })
-      const attDer = pubKeyObj.export({ format: 'der', type: 'spki' })
-      if (goDer.equals(attDer)) {
+      const pinnedKeyObj = validateP0AttestationPublicKey(pinnedRawKey, Boolean(options.allowTestKeys))
+      const pinnedDer = pinnedKeyObj.export({ format: 'der', type: 'spki' })
+      const currentDer = pubKeyObj.export({ format: 'der', type: 'spki' })
+      if (!pinnedDer.equals(currentDer)) {
         return Object.freeze({
           ...deniedBase,
-          reason: 'COLLAPSED_AUTHORITIES_REJECTED',
-          errorCategory: 'COLLAPSED_AUTHORITIES_REJECTED',
-          detail: 'La clave pública de GO Authority y la de Independent Attestation Authority no pueden colapsar en la misma identidad',
+          reason: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+          errorCategory: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+          detail: 'La clave pública suministrada no coincide con la clave pública anclada (publicKeySpki) de la autoridad',
         })
       }
-    } catch {
+    } catch (pinErr) {
       return Object.freeze({
         ...deniedBase,
-        reason: 'GO_AUTHORITY_KEY_INVALID',
+        reason: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+        errorCategory: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+        detail: pinErr && pinErr.message ? pinErr.message : String(pinErr),
       })
     }
   }
 
   const derivedKeyId = computePublicKeyId(pubKeyObj)
+
+  const pinnedDerivedKeyId = pinnedRawKey
+    ? computePublicKeyId(validateP0AttestationPublicKey(pinnedRawKey, Boolean(options.allowTestKeys)))
+    : null
+  const effectivePinnedKeyId = options.pinnedKeyId || pinnedDerivedKeyId
+  if (effectivePinnedKeyId && options.keyId !== undefined && options.keyId !== null && options.keyId !== effectivePinnedKeyId) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+      errorCategory: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+      detail: `El keyId suministrado ('${options.keyId}') no coincide con el keyId anclado ('${effectivePinnedKeyId}')`,
+    })
+  }
+  if (options.pinnedKeyId && response && response.keyId !== undefined && response.keyId !== null && response.keyId !== options.pinnedKeyId) {
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+      errorCategory: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+      detail: `El keyId de la respuesta ('${response.keyId}') no coincide con el keyId anclado ('${options.pinnedKeyId}')`,
+    })
+  }
+
+  // Separación estricta de autoridades: GO_AUTHORITY_ID != ATTESTATION_AUTHORITY_ID, goKeyId != attestationKeyId y claves públicas distintas
+  try {
+    assertAuthoritiesSeparated({
+      goAuthorityId:
+        options.goAuthorityId ??
+        options.trustedGoAuthorityId ??
+        options.goApproverId ??
+        (options.goAuthorizationDoc &&
+          options.goAuthorizationDoc.authorization &&
+          options.goAuthorizationDoc.authorization.aprobador_identidad),
+      attestationAuthorityId: response.authorityId,
+      goKeyId:
+        options.goKeyId ??
+        options.trustedGoKeyId ??
+        (options.goAuthorizationDoc &&
+          options.goAuthorizationDoc.signature &&
+          options.goAuthorizationDoc.signature.key_id),
+      attestationKeyId: response.keyId || derivedKeyId,
+      trustedGoPublicKey: options.trustedGoPublicKey,
+      trustedAttestationPublicKey: pubKeyObj,
+      allowTestKeys: Boolean(options.allowTestKeys),
+    })
+  } catch (sepErr) {
+    if (sepErr && sepErr.message && sepErr.message.includes('RUNTIME_PRIVATE_KEY_DETECTED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'RUNTIME_PRIVATE_KEY_DETECTED',
+        errorCategory: 'COMPROMISED_RUNTIME_BOUNDARY',
+        detail: sepErr.message,
+      })
+    }
+    if (sepErr && sepErr.message && sepErr.message.includes('COLLAPSED_AUTHORITIES_REJECTED')) {
+      return Object.freeze({
+        ...deniedBase,
+        reason: 'COLLAPSED_AUTHORITIES_REJECTED',
+        errorCategory: 'COLLAPSED_AUTHORITIES_REJECTED',
+        detail: sepErr.message,
+      })
+    }
+    return Object.freeze({
+      ...deniedBase,
+      reason: 'GO_AUTHORITY_KEY_INVALID',
+    })
+  }
+
   const isKnownTestKey =
     isTestAuthorityKey(rawKey) ||
     isTestAuthorityKey(response.authorityId) ||
@@ -2269,11 +2844,11 @@ export function verifyAttestationResponse(response, options = {}) {
     })
   }
 
-  if (!/^[0-9a-fA-F]{128}$/.test(response.signature)) {
+  if (!/^[0-9a-f]{128}$/.test(response.signature)) {
     return Object.freeze({
       ...deniedBase,
       reason: 'ATTESTATION_SIGNATURE_INVALID',
-      detail: 'Formato de firma Ed25519 inválido (se requieren 128 caracteres hexadecimales)',
+      detail: 'Formato de firma Ed25519 inválido (se requieren 128 caracteres hexadecimales en minúsculas)',
     })
   }
 
@@ -2292,11 +2867,11 @@ export function verifyAttestationResponse(response, options = {}) {
   }
 
   const targetCommit = options.commitSha || options.expectedHead
-  if (targetCommit && response.commitSha.toLowerCase() !== String(targetCommit).toLowerCase()) {
+  if (targetCommit && (typeof targetCommit !== 'string' || !/^[0-9a-f]{40}$/.test(targetCommit) || response.commitSha !== targetCommit)) {
     return Object.freeze({
       ...deniedBase,
       reason: 'ATTESTATION_REQUEST_MISMATCH',
-      detail: 'commitSha de la respuesta no coincide con el commit esperado',
+      detail: 'commitSha de la respuesta no coincide exactamente (40 hex en minúsculas) con el commit esperado',
     })
   }
 
@@ -2344,7 +2919,7 @@ export function verifyAttestationResponse(response, options = {}) {
     if (
       response.processId !== attestationRequest.processId ||
       response.executionScope !== attestationRequest.executionScope ||
-      response.commitSha.toLowerCase() !== attestationRequest.commitSha.toLowerCase() ||
+      response.commitSha !== attestationRequest.commitSha ||
       response.environment !== attestationRequest.environment ||
       response.authorizationId !== attestationRequest.authorizationId ||
       response.goAuthorizationDocumentSha256 !== attestationRequest.goAuthorizationDocumentSha256 ||
@@ -2409,19 +2984,29 @@ export function verifyAttestationResponse(response, options = {}) {
     }
   }
 
-  // Protección anti-replay process-local (PROCESS_LOCAL_ONE_TIME_USE)
-  const replayKey = `${response.responseId}:${response.requestSha256}:${response.attestationPayloadSha256}:${response.signature}`
-  if (options.enforceAntiReplay !== false) {
-    if (isAttestationResponseConsumedProcessLocal(replayKey)) {
+  const replayId = computeAttestationResponseReplayId(response)
+
+  // VERIFY ≠ CONSUME:
+  // verifyAttestationResponse es una operación pura y sin efectos secundarios sobre el estado anti-replay.
+  // Si el caller solicita explícitamente checkReplay: true, se realiza una consulta de solo lectura.
+  if (options.checkReplay === true) {
+    try {
+      if (isAttestationResponseConsumedDurable(response, options)) {
+        return Object.freeze({
+          ...deniedBase,
+          replayId,
+          reason: 'ATTESTATION_RESPONSE_REPLAY_DETECTED',
+          errorCategory: 'REPLAY_ATTACK_DETECTED',
+          detail: 'Respuesta de atestación ya consumida en el registro durable del host (HOST_LOCAL_DURABLE_ONE_TIME_USE)',
+        })
+      }
+    } catch (err) {
       return Object.freeze({
         ...deniedBase,
-        reason: 'ATTESTATION_RESPONSE_REPLAY_DETECTED',
-        errorCategory: 'REPLAY_ATTACK_DETECTED',
-        detail: 'Reutilización de respuesta de atestación detectada dentro del mismo proceso (PROCESS_LOCAL_ONE_TIME_USE)',
+        replayId,
+        reason: 'ATTESTATION_REPLAY_STORAGE_INVALID',
+        detail: err && err.message ? err.message : String(err),
       })
-    }
-    if (options.consumeOnVerify !== false) {
-      consumeAttestationResponseProcessLocal(replayKey)
     }
   }
 
@@ -2433,6 +3018,11 @@ export function verifyAttestationResponse(response, options = {}) {
   if (isTestSigner) {
     return Object.freeze({
       valid: true,
+      consumed: false,
+      ATTESTATION_RESPONSE_CONSUMPTION: 'NOT_CONSUMED',
+      replayId,
+      responseId: effectiveResponseId,
+      attestationId: effectiveResponseId,
       reason: 'VERIFIED_TEST_ONLY',
       authorityType: ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY,
       authorityId: response.authorityId,
@@ -2458,6 +3048,11 @@ export function verifyAttestationResponse(response, options = {}) {
 
   return Object.freeze({
     valid: true,
+    consumed: false,
+    ATTESTATION_RESPONSE_CONSUMPTION: 'NOT_CONSUMED',
+    replayId,
+    responseId: effectiveResponseId,
+    attestationId: effectiveResponseId,
     reason: 'VERIFIED',
     authorityType: ATTESTATION_AUTHORITY_TYPES.PRODUCTION_AUTHORITY,
     authorityId: response.authorityId,
@@ -2482,7 +3077,7 @@ export function verifyAttestationResponse(response, options = {}) {
 }
 
 /**
- * Valida fail-closed una respuesta de atestación (AttestationResponse).
+ * Valida fail-closed una respuesta de atestación (AttestationResponse) SIN consumirla (`consumed: false`).
  * Lanza error tipado si la respuesta no supera cualquiera de las verificaciones.
  */
 export function validateAttestationResponse(response, options = {}) {
@@ -2493,7 +3088,371 @@ export function validateAttestationResponse(response, options = {}) {
   return result
 }
 
-function assertAdapterConfigSecurity(config = {}) {
+function resolveAttestationReplayDirOption(options = {}) {
+  const env = options.env || process.env
+  return (
+    options.consumedResponsesDir ??
+    options.attestationReplayDir ??
+    options.replayRegistryDir ??
+    env?.[PR02_P0_ATTESTATION_REPLAY_DIR_ENV]
+  )
+}
+
+function assertNoAntiReplayDowngradeFlags(optionsOrConfig = {}, includePrefix = false) {
+  if (!optionsOrConfig || typeof optionsOrConfig !== 'object') return
+  const prefix = includePrefix ? 'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ' : ''
+  if (
+    optionsOrConfig.allowProcessLocalFallback === true ||
+    optionsOrConfig.degradeToProcessLocal === true ||
+    optionsOrConfig.fallbackToMemory === true ||
+    Boolean(optionsOrConfig.processLocal) ||
+    Boolean(optionsOrConfig.fallback) ||
+    Boolean(optionsOrConfig.allowMemoryReplay) ||
+    Boolean(optionsOrConfig.disableDurableReplay) ||
+    Boolean(optionsOrConfig.skipReplayStorage) ||
+    Boolean(optionsOrConfig.inMemoryReplay) ||
+    optionsOrConfig.enforceAntiReplay === false ||
+    optionsOrConfig.consumeOnVerify === false ||
+    (optionsOrConfig.antiReplayGuarantee !== undefined &&
+      optionsOrConfig.antiReplayGuarantee !== ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL)
+  ) {
+    throw new Error(
+      `${prefix}ANTI_REPLAY_DOWNGRADE_FORBIDDEN: Prohibido deshabilitar el anti-replay durable o degradar a PROCESS_LOCAL_ONE_TIME_USE`
+    )
+  }
+}
+
+function inspectExistingReplayLockFile(filePath, expectedTarget = null) {
+  const st = lstatIfExists(filePath)
+  if (!st) {
+    throw new Error(
+      `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: REPLAY_STORAGE_STATE_INCONSISTENT: El archivo de bloqueo anti-replay esperado '${filePath}' no existe`
+    )
+  }
+  if (st.isSymbolicLink() || !st.isFile()) {
+    throw new Error(
+      `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN: El archivo de bloqueo anti-replay existente '${filePath}' es un symlink o no es un archivo regular`
+    )
+  }
+  if (st.size === 0) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: REPLAY_STORAGE_STATE_INCONSISTENT: El archivo de bloqueo anti-replay existente se encuentra vacío (0 bytes)'
+    )
+  }
+  let rawText
+  try {
+    rawText = fs.readFileSync(filePath, 'utf8')
+  } catch (readErr) {
+    throw new Error(
+      `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: REPLAY_STORAGE_STATE_INCONSISTENT: No se pudo leer el archivo de bloqueo existente: ${readErr.message}`
+    )
+  }
+  let parsed
+  try {
+    parsed = JSON.parse(rawText)
+  } catch {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: REPLAY_STORAGE_STATE_INCONSISTENT: El archivo de bloqueo anti-replay existente se encuentra corrupto o truncado'
+    )
+  }
+  if (
+    !parsed ||
+    typeof parsed !== 'object' ||
+    Array.isArray(parsed) ||
+    parsed.schemaVersion !== '1.0' ||
+    !parsed.replayId ||
+    typeof parsed.replayId !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(parsed.replayId) ||
+    !parsed.attestationId ||
+    typeof parsed.attestationId !== 'string' ||
+    parsed.attestationId.trim().length === 0 ||
+    parsed.attestationId !== parsed.attestationId.trim() ||
+    !parsed.responseId ||
+    parsed.responseId !== parsed.attestationId ||
+    !parsed.requestId ||
+    typeof parsed.requestId !== 'string' ||
+    parsed.requestId.trim().length === 0 ||
+    !parsed.requestSha256 ||
+    typeof parsed.requestSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(parsed.requestSha256) ||
+    !parsed.manifestSha256 ||
+    typeof parsed.manifestSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(parsed.manifestSha256) ||
+    !parsed.attestationPayloadSha256 ||
+    typeof parsed.attestationPayloadSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(parsed.attestationPayloadSha256) ||
+    !parsed.signatureSha256 ||
+    typeof parsed.signatureSha256 !== 'string' ||
+    !/^[0-9a-f]{64}$/.test(parsed.signatureSha256) ||
+    !parsed.authorityId ||
+    typeof parsed.authorityId !== 'string' ||
+    parsed.authorityId.trim().length === 0 ||
+    !parsed.keyId ||
+    typeof parsed.keyId !== 'string' ||
+    parsed.keyId.trim().length === 0 ||
+    !parsed.commitSha ||
+    typeof parsed.commitSha !== 'string' ||
+    !/^[0-9a-f]{40}$/.test(parsed.commitSha) ||
+    !parsed.consumedAt ||
+    typeof parsed.consumedAt !== 'string' ||
+    !Number.isFinite(Date.parse(parsed.consumedAt)) ||
+    parsed.antiReplayGuarantee !== ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL
+  ) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: REPLAY_STORAGE_STATE_INCONSISTENT: Estructura o campos obligatorios inválidos en registro anti-replay existente'
+    )
+  }
+
+  if (expectedTarget && expectedTarget.kind && expectedTarget.expectedDigest) {
+    const actualDigest =
+      expectedTarget.kind === 'RESPONSE_REPLAY_ID'
+        ? parsed.replayId
+        : expectedTarget.kind === 'ATTESTATION_ID'
+          ? sha256(parsed.attestationId)
+          : expectedTarget.kind === 'REQUEST_SHA256'
+            ? sha256(parsed.requestSha256)
+            : expectedTarget.kind === 'SIGNATURE'
+              ? parsed.signatureSha256
+              : null
+    if (actualDigest && actualDigest !== expectedTarget.expectedDigest) {
+      throw new Error(
+        `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: REPLAY_STORAGE_STATE_INCONSISTENT: El contenido del archivo de bloqueo (${expectedTarget.kind}) no coincide con su llave de índice en disco`
+      )
+    }
+  }
+
+  return parsed
+}
+
+/**
+ * Consulta de solo lectura (sin mutar estado) si una AttestationResponse o cualquiera de sus
+ * llaves semánticas (replayId, attestationId, requestSha256, signature) ya fue consumida
+ * en el registro durable del host local.
+ */
+export function isAttestationResponseConsumedDurable(response, options = {}) {
+  const rawDir = resolveAttestationReplayDirOption(options)
+  const validatedDir = validateAttestationReplayDirectory(rawDir, {
+    repoRoot: options.repoRoot,
+    createIfMissing: false,
+  })
+  const dirStat = lstatIfExists(validatedDir)
+  if (!dirStat) {
+    return false
+  }
+  const replayId = computeAttestationResponseReplayId(response)
+  const attestationId = String(response.responseId || response.attestationId)
+  const idDigest = sha256(attestationId)
+  const reqDigest = sha256(String(response.requestSha256))
+  const sigDigest = sha256(String(response.signature))
+
+  const candidateTargets = [
+    { kind: 'RESPONSE_REPLAY_ID', expectedDigest: replayId, filePath: path.join(validatedDir, `consumed-response-${replayId}.json`) },
+    { kind: 'ATTESTATION_ID', expectedDigest: idDigest, filePath: path.join(validatedDir, `consumed-id-${idDigest}.json`) },
+    { kind: 'REQUEST_SHA256', expectedDigest: reqDigest, filePath: path.join(validatedDir, `consumed-req-${reqDigest}.json`) },
+    { kind: 'SIGNATURE', expectedDigest: sigDigest, filePath: path.join(validatedDir, `consumed-sig-${sigDigest}.json`) },
+  ]
+
+  for (const target of candidateTargets) {
+    if (lstatIfExists(target.filePath)) {
+      inspectExistingReplayLockFile(target.filePath, target)
+      return true
+    }
+  }
+  return false
+}
+
+/**
+ * FRONTERA EXPLÍCITA DE CONSUMO / RESERVA DURABLE (CONSUME / RESERVE):
+ * Consume y reserva atómicamente una AttestationResponse en el registro durable host-local
+ * (`HOST_LOCAL_DURABLE_ONE_TIME_USE`).
+ *
+ * Garantías:
+ * 1. Reejecuta internamente la verificación criptográfica y contractual completa (`ADV-REPLAY-12`);
+ *    jamás confía en un booleano externo ni permite omitir la verificación.
+ * 2. Prohibe cualquier degradación o fallback a memoria (`PROCESS_LOCAL_ONE_TIME_USE`).
+ * 3. Valida fail-closed el directorio del registro durable (rechaza rutas no configuradas,
+ *    path traversal `..`, symlinks en destino/ancestros y directorios versionables del repositorio).
+ * 4. Reserva de forma atómica y exclusiva (`flag: 'wx'` / `O_CREAT | O_EXCL`, modo `0o600`) el
+ *    identificador canónico `replayId` y los bloqueos semánticos (`attestationId`, `requestSha256`, `signature`),
+ *    cerrando cualquier ventana TOCTOU entre procesos o ejecuciones concurrentes.
+ */
+export function consumeAttestationResponseDurable(response, options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw new Error('ATTESTATION_RESPONSE_CONSUMPTION_DENIED: CONSUME_OPTIONS_INVALID')
+  }
+
+  // Prohibir cualquier intento de saltear la verificación criptográfica o confiar en un verify previo (ADV-REPLAY-12)
+  if (
+    options.skipVerification === true ||
+    options.preVerified === true ||
+    options.trustPreviousVerify === true ||
+    options.verified === true
+  ) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: VERIFICATION_BYPASS_FORBIDDEN: Prohibido consumir una AttestationResponse sin ejecutar la verificación criptográfica y contractual completa'
+    )
+  }
+
+  // Prohibir degradación silenciosa o explícita a anti-replay en memoria (PROCESS_LOCAL_ONE_TIME_USE)
+  assertNoAntiReplayDowngradeFlags(options, true)
+
+  if (!options.attestationRequest) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_REQUEST_MISMATCH: Se requiere AttestationRequestPackage explícito para consumir una AttestationResponse'
+    )
+  }
+
+  // 1. Re-ejecución obligatoria de toda la verificación criptográfica y de vinculación
+  const verification = verifyAttestationResponse(response, {
+    ...options,
+    checkReplay: false,
+  })
+  if (!verification.valid) {
+    throw new Error(
+      `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ${verification.reason}: ${verification.detail || verification.reason}`
+    )
+  }
+
+  // 2. Validación fail-closed del almacenamiento durable host-local (sin fallback a memoria)
+  const rawDir = resolveAttestationReplayDirOption(options)
+  const realBase = validateAttestationReplayDirectory(rawDir, {
+    repoRoot: options.repoRoot,
+    createIfMissing: true,
+  })
+
+  // 3. Construcción determinista del identificador canónico de replay y bloqueos semánticos
+  const replayId = computeAttestationResponseReplayId(response)
+  const attestationId = String(response.responseId || response.attestationId)
+  const idDigest = sha256(attestationId)
+  const reqDigest = sha256(response.requestSha256)
+  const sigDigest = sha256(response.signature)
+
+  const lockTargets = [
+    { kind: 'RESPONSE_REPLAY_ID', expectedDigest: replayId, filePath: path.join(realBase, `consumed-response-${replayId}.json`) },
+    { kind: 'ATTESTATION_ID', expectedDigest: idDigest, filePath: path.join(realBase, `consumed-id-${idDigest}.json`) },
+    { kind: 'REQUEST_SHA256', expectedDigest: reqDigest, filePath: path.join(realBase, `consumed-req-${reqDigest}.json`) },
+    { kind: 'SIGNATURE', expectedDigest: sigDigest, filePath: path.join(realBase, `consumed-sig-${sigDigest}.json`) },
+  ]
+
+  // Comprobar que ninguna ruta destino dentro del directorio real escape ni preexista como symlink o directorio
+  for (const target of lockTargets) {
+    const resolvedTarget = path.resolve(target.filePath)
+    const isWin = process.platform === 'win32'
+    const cmpBase = isWin ? realBase.toLowerCase() : realBase
+    const cmpTarget = isWin ? resolvedTarget.toLowerCase() : resolvedTarget
+    if (!cmpTarget.startsWith(cmpBase + path.sep)) {
+      throw new Error(
+        'ATTESTATION_RESPONSE_CONSUMPTION_DENIED: PATH_TRAVERSAL_FORBIDDEN: La ruta del archivo de consumo escapa del directorio durable autorizado'
+      )
+    }
+    const existingStat = lstatIfExists(resolvedTarget)
+    if (existingStat) {
+      if (existingStat.isSymbolicLink() || !existingStat.isFile()) {
+        throw new Error(
+          `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: SYMLINK_FORBIDDEN: El archivo de bloqueo '${resolvedTarget}' es un enlace simbólico o no es un archivo regular`
+        )
+      }
+    }
+  }
+
+  const consumedAt = options.now
+    ? typeof options.now === 'string'
+      ? options.now
+      : new Date(options.now).toISOString()
+    : new Date().toISOString()
+
+  // Registro auditable mínimo: sin secretos, sin claves privadas, sin tokens WSAA
+  const recordPayload = JSON.stringify(
+    {
+      schemaVersion: '1.0',
+      replayId,
+      attestationId,
+      responseId: attestationId,
+      requestId: response.requestId,
+      requestSha256: response.requestSha256,
+      manifestSha256: response.manifestSha256,
+      attestationPayloadSha256: response.attestationPayloadSha256,
+      signatureSha256: sigDigest,
+      authorityId: response.authorityId,
+      keyId: response.keyId,
+      commitSha: response.commitSha,
+      processId: response.processId,
+      executionScope: response.executionScope,
+      consumedAt,
+      antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+    },
+    null,
+    2
+  )
+
+  const writeExclusive =
+    typeof options.fsWriteExclusive === 'function'
+      ? options.fsWriteExclusive
+      : (targetPath, content) => {
+          fs.writeFileSync(targetPath, content, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+        }
+
+  const createdFiles = []
+  try {
+    for (const target of lockTargets) {
+      writeExclusive(target.filePath, recordPayload)
+      createdFiles.push(target.filePath)
+      try {
+        fs.chmodSync(target.filePath, 0o600)
+      } catch {
+        // En plataformas sin chmod POSIX estricto (Windows), continuar
+      }
+    }
+  } catch (err) {
+    // Rollback atómico exclusivamente de los archivos creados en esta invocación (jamás elimina bloqueos preexistentes)
+    for (const created of createdFiles) {
+      try {
+        if (lstatIfExists(created)) {
+          fs.unlinkSync(created)
+        }
+      } catch {
+        // Ignorar errores secundarios de limpieza en rollback
+      }
+    }
+
+    // Verificar integridad de cualquier archivo existente que haya causado o acompañado la colisión
+    let existingCollisionDetected = false
+    for (const target of lockTargets) {
+      if (lstatIfExists(target.filePath)) {
+        inspectExistingReplayLockFile(target.filePath, target)
+        existingCollisionDetected = true
+      }
+    }
+
+    if ((err && err.code === 'EEXIST') || existingCollisionDetected) {
+      throw new Error(
+        `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: ATTESTATION_RESPONSE_REPLAY_DETECTED: Reutilización o sustitución semántica de respuesta de atestación bloqueada por registro durable (${ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL})`
+      )
+    }
+
+    throw new Error(
+      `ATTESTATION_RESPONSE_CONSUMPTION_DENIED: EXCLUSIVE_REPLAY_WRITE_FAILED: No se pudo registrar atómicamente el consumo durable de la respuesta de atestación: ${err && err.message ? err.message : String(err)}`
+    )
+  }
+
+  return Object.freeze({
+    ...verification,
+    consumed: true,
+    ATTESTATION_RESPONSE_CONSUMPTION: 'CONSUMED',
+    replayId,
+    consumedAt,
+    antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+  })
+}
+
+/**
+ * Alias explícito de reserva atómica durable de una AttestationResponse.
+ */
+export function reserveAttestationResponseDurable(response, options = {}) {
+  return consumeAttestationResponseDurable(response, options)
+}
+
+export function assertAdapterConfigSecurity(config = {}) {
   if (!config || typeof config !== 'object' || Array.isArray(config)) {
     throw new Error('INDEPENDENT_ATTESTATION_ADAPTER_CONFIG_INVALID')
   }
@@ -2506,6 +3465,9 @@ function assertAdapterConfigSecurity(config = {}) {
   const env = config.env || process.env
   if (
     config.independentAuthorityAvailable === true ||
+    config.INDEPENDENT_ATTESTATION_AVAILABLE === true ||
+    config.authorityRealWorldAvailable === true ||
+    config.AUTHORITY_REAL_WORLD_AVAILABLE === true ||
     config.elevateToIndependent === true ||
     config.forceIndependentAttestation === true ||
     config.allowSelfAttestedAsIndependent === true ||
@@ -2514,9 +3476,21 @@ function assertAdapterConfigSecurity(config = {}) {
     config.P1_IMPORT_ALLOWED === true ||
     config.ATTESTATION_TRUST_MODEL === 'INDEPENDENT_ATTESTED' ||
     Boolean(env.PR02_P0_FORCE_INDEPENDENT_ATTESTATION) ||
-    env.INDEPENDENT_ATTESTATION_AVAILABLE === 'true'
+    env.INDEPENDENT_ATTESTATION_AVAILABLE === 'true' ||
+    env.AUTHORITY_REAL_WORLD_AVAILABLE === 'true'
   ) {
     throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Un booleano como independentAuthorityAvailable: true o flags de configuración no pueden elevar el modelo de confianza')
+  }
+
+  if (
+    config.localPrivateKey ||
+    config.privateKey ||
+    config.authorityPrivateKey ||
+    config.secretKey
+  ) {
+    throw new Error(
+      'RUNTIME_PRIVATE_KEY_DETECTED: LOCAL_FALLBACK_SIGNING_FORBIDDEN: Prohibido configurar o aceptar claves privadas en el adaptador de atestación independiente del runtime fiscal'
+    )
   }
 
   if (
@@ -2525,9 +3499,7 @@ function assertAdapterConfigSecurity(config = {}) {
     config.fallbackSigner ||
     config.signLocallyOnFailure ||
     config.useLocalSigner ||
-    config.enableLocalSigningFallback ||
-    config.localPrivateKey ||
-    config.privateKey
+    config.enableLocalSigningFallback
   ) {
     throw new Error('LOCAL_FALLBACK_SIGNING_FORBIDDEN: Prohibido configurar fallback a firma local o claves privadas en el adaptador de atestación independiente')
   }
@@ -2535,12 +3507,118 @@ function assertAdapterConfigSecurity(config = {}) {
   if (config.autoDiscoverRemoteAuthority === true || config.implicitNetworkAccess === true) {
     throw new Error('IMPLICIT_AUTHORITY_DISCOVERY_FORBIDDEN: Prohibido el descubrimiento automático de autoridad remota o acceso de red implícito')
   }
+
+  assertNoAntiReplayDowngradeFlags(config, false)
+
+  const rawReplayDir =
+    config.consumedResponsesDir ??
+    config.attestationReplayDir ??
+    config.replayRegistryDir
+  if (rawReplayDir !== undefined) {
+    validateAttestationReplayDirectory(rawReplayDir, {
+      repoRoot: config.repoRoot,
+      createIfMissing: false,
+    })
+  }
+
+  const endpoint = config.endpoint || config.endpointUrl || null
+  const rawKeyForEndpoint =
+    config.trustedAttestationPublicKey ||
+    config.authorityPublicKey ||
+    config.publicKeySpki ||
+    process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+    process.env[PR02_P0_AUTHORITY_ENV]
+  if (endpoint && !rawKeyForEndpoint) {
+    throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
+  }
 }
+
+export const EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION = '1.0'
+export const EXTERNAL_AUTHORITY_ENDPOINT_SPEC = Object.freeze({
+  method: 'POST',
+  defaultPath: '/attestations',
+  contentType: 'application/json',
+})
+
+export const IndependentAttestationAuthorityTransportContract = Object.freeze({
+  contractVersion: EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
+  endpointSpec: EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
+  requestSchemaVersion: '1.0',
+  responseSchemaVersion: '1.0',
+  algorithm: 'Ed25519',
+  executionScope: PR02_P0_SCOPE,
+  environment: 'HOMOLOGACION',
+  prohibitedPayloadFields: Object.freeze([
+    'token',
+    'sign',
+    'loginticket',
+    'cmsbase64',
+    'mock_cms',
+    'privatekey',
+    'private key',
+    '-----begin',
+    'password',
+    'service_role',
+    'anon_key',
+    'secret',
+  ]),
+  requiredRequestFields: Object.freeze([
+    'schemaVersion',
+    'requestId',
+    'processId',
+    'executionScope',
+    'commitSha',
+    'environment',
+    'authorizationId',
+    'goAuthorizationDocumentSha256',
+    'manifestSha256',
+    'rawSoapArtifacts',
+    'normalizedArtifacts',
+    'consultadoEn',
+    'requestedAt',
+    'collectorIdentity',
+    'requestSha256',
+  ]),
+  requiredResponseFields: Object.freeze([
+    'schemaVersion',
+    'attestationId',
+    'requestId',
+    'requestSha256',
+    'manifestSha256',
+    'processId',
+    'executionScope',
+    'commitSha',
+    'environment',
+    'authorizationId',
+    'goAuthorizationDocumentSha256',
+    'rawSoapArtifacts',
+    'normalizedArtifacts',
+    'consultadoEn',
+    'attestationPayloadSha256',
+    'authorityType',
+    'authorityId',
+    'keyId',
+    'algorithm',
+    'issuedAt',
+    'signature',
+  ]),
+  invariants: Object.freeze({
+    NO_PRIVATE_KEYS_IN_RUNTIME: true,
+    NO_SECRET_TRANSMISSION: true,
+    CANONICAL_SERIALIZATION_REQUIRED: true,
+    GO_AND_ATTESTATION_AUTHORITIES_SEPARATED: true,
+    VERIFY_BEFORE_CONSUME_REQUIRED: true,
+    HOST_LOCAL_DURABLE_ONE_TIME_USE_REPLAY_PROTECTION: true,
+    HONEST_AVAILABILITY_STATE: true,
+  }),
+})
 
 /**
  * Envía un AttestationRequestPackage a través de una frontera de transporte explícita
- * hacia una Autoridad de Atestación Independiente externa y verifica su respuesta fail-closed.
- * Sin acceso de red implícito, sin descubrimiento automático y sin fallback a firma local.
+ * hacia una Autoridad de Atestación Independiente externa, verifica criptográficamente
+ * su respuesta fail-closed y la CONSUME atómicamente en el registro durable del host local.
+ * Sin acceso de red implícito, sin descubrimiento automático, sin fallback a firma local
+ * y sin degradación a anti-replay en memoria.
  */
 export async function submitAttestationRequest(requestPkg, adapterOrConfig = {}) {
   assertAdapterConfigSecurity(adapterOrConfig)
@@ -2556,20 +3634,78 @@ export async function submitAttestationRequest(requestPkg, adapterOrConfig = {})
   const rawPubKey =
     adapterOrConfig.trustedAttestationPublicKey ||
     adapterOrConfig.authorityPublicKey ||
+    adapterOrConfig.publicKeySpki ||
     process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
     process.env[PR02_P0_AUTHORITY_ENV]
 
+  const endpoint = adapterOrConfig.endpoint || adapterOrConfig.endpointUrl || null
+  if (endpoint && !rawPubKey) {
+    throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
+  }
+
   const authorityId = adapterOrConfig.authorityId || adapterOrConfig.expectedAuthorityId
 
-  if (!transportCandidate || !rawPubKey || !authorityId || typeof authorityId !== 'string' || authorityId.trim().length === 0) {
+  if (!transportCandidate || !rawPubKey || !authorityId || typeof authorityId !== 'string' || authorityId.trim().length > 0 === false) {
     throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: No existe una Autoridad de Atestación Independiente externa configurada (se requiere transporte explícito, authorityId y clave pública autorizada)')
   }
 
   const pubKeyObj = validateP0AttestationPublicKey(rawPubKey, Boolean(adapterOrConfig.allowTestKeys))
   const derivedKeyId = computePublicKeyId(pubKeyObj)
 
+  const pinnedRawKey = adapterOrConfig.pinnedPublicKeySpki || adapterOrConfig.expectedPublicKeySpki
+  if (pinnedRawKey) {
+    const pinnedObj = validateP0AttestationPublicKey(pinnedRawKey, Boolean(adapterOrConfig.allowTestKeys))
+    if (!pinnedObj.export({ format: 'der', type: 'spki' }).equals(pubKeyObj.export({ format: 'der', type: 'spki' }))) {
+      throw new Error('PUBLIC_KEY_SUBSTITUTION_REJECTED: Prohibido sustituir la clave pública anclada del adaptador de autoridad independiente')
+    }
+  }
+
+  const pinnedKeyId =
+    adapterOrConfig.pinnedKeyId ||
+    adapterOrConfig.expectedKeyId ||
+    (pinnedRawKey ? computePublicKeyId(validateP0AttestationPublicKey(pinnedRawKey, Boolean(adapterOrConfig.allowTestKeys))) : null)
+  if (pinnedKeyId && adapterOrConfig.keyId !== undefined && adapterOrConfig.keyId !== null && adapterOrConfig.keyId !== pinnedKeyId) {
+    throw new Error(`PUBLIC_KEY_SUBSTITUTION_REJECTED: keyId suministrado ('${adapterOrConfig.keyId}') no coincide con el keyId anclado ('${pinnedKeyId}')`)
+  }
+
+  if (
+    adapterOrConfig.keyId !== undefined &&
+    adapterOrConfig.keyId !== null &&
+    adapterOrConfig.keyId !== derivedKeyId
+  ) {
+    throw new Error(`ATTESTATION_KEY_ID_MISMATCH: keyId configurado ('${adapterOrConfig.keyId}') no coincide con la huella SPKI ('${derivedKeyId}')`)
+  }
+
+  assertAuthoritiesSeparated({
+    goAuthorityId:
+      adapterOrConfig.goAuthorityId ??
+      adapterOrConfig.trustedGoAuthorityId ??
+      adapterOrConfig.goApproverId ??
+      (adapterOrConfig.goAuthorizationDoc &&
+        adapterOrConfig.goAuthorizationDoc.authorization &&
+        adapterOrConfig.goAuthorizationDoc.authorization.aprobador_identidad),
+    attestationAuthorityId: authorityId,
+    goKeyId:
+      adapterOrConfig.goKeyId ??
+      adapterOrConfig.trustedGoKeyId ??
+      (adapterOrConfig.goAuthorizationDoc &&
+        adapterOrConfig.goAuthorizationDoc.signature &&
+        adapterOrConfig.goAuthorizationDoc.signature.key_id),
+    attestationKeyId: derivedKeyId,
+    trustedGoPublicKey: adapterOrConfig.trustedGoPublicKey,
+    trustedAttestationPublicKey: pubKeyObj,
+    allowTestKeys: Boolean(adapterOrConfig.allowTestKeys),
+  })
+
   const allowedAuthorityIds = adapterOrConfig.allowedAuthorityIds || [authorityId]
   const allowedKeyIds = adapterOrConfig.allowedKeyIds || [derivedKeyId]
+
+  // Validar fail-closed el directorio de consumo durable ANTES de invocar el transporte
+  const rawReplayDir = resolveAttestationReplayDirOption(adapterOrConfig)
+  validateAttestationReplayDirectory(rawReplayDir, {
+    repoRoot: adapterOrConfig.repoRoot,
+    createIfMissing: true,
+  })
 
   let rawResponse
   try {
@@ -2578,20 +3714,26 @@ export async function submitAttestationRequest(requestPkg, adapterOrConfig = {})
     throw new Error(`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Fallo en transporte externo de autoridad de atestación (prohibido fallback local): ${err && err.message ? err.message : String(err)}`)
   }
 
-  const verification = validateAttestationResponse(rawResponse, {
+  const verification = consumeAttestationResponseDurable(rawResponse, {
     attestationRequest: requestPkg,
     manifest: adapterOrConfig.manifest,
     commitSha: adapterOrConfig.commitSha || requestPkg.commitSha,
     trustedAttestationPublicKey: rawPubKey,
+    pinnedPublicKeySpki: pinnedRawKey || rawPubKey,
+    pinnedKeyId: adapterOrConfig.pinnedKeyId || undefined,
     trustedGoPublicKey: adapterOrConfig.trustedGoPublicKey,
+    goAuthorityId: adapterOrConfig.goAuthorityId ?? adapterOrConfig.trustedGoAuthorityId ?? adapterOrConfig.goApproverId,
+    goKeyId: adapterOrConfig.goKeyId ?? adapterOrConfig.trustedGoKeyId,
+    goAuthorizationDoc: adapterOrConfig.goAuthorizationDoc,
     allowedAuthorityIds,
     allowedKeyIds,
     allowTestKeys: Boolean(adapterOrConfig.allowTestKeys),
     fiscalScriptsDir: adapterOrConfig.fiscalScriptsDir,
     env: adapterOrConfig.env,
     now: adapterOrConfig.now,
-    enforceAntiReplay: adapterOrConfig.enforceAntiReplay,
-    consumeOnVerify: adapterOrConfig.consumeOnVerify,
+    consumedResponsesDir: rawReplayDir,
+    repoRoot: adapterOrConfig.repoRoot,
+    fsWriteExclusive: adapterOrConfig.fsWriteExclusive,
   })
 
   return Object.freeze({
@@ -2605,7 +3747,8 @@ export async function submitAttestationRequest(requestPkg, adapterOrConfig = {})
 /**
  * Crea un adaptador explícito y fail-closed para la integración con una
  * Autoridad de Atestación Independiente externa (IndependentAttestationAuthorityAdapter).
- * Separa estrictamente: REQUEST CREATION ≠ REQUEST TRANSPORT ≠ EXTERNAL SIGNING ≠ RESPONSE VERIFICATION.
+ * Separa estrictamente:
+ * REQUEST CREATION ≠ REQUEST TRANSPORT ≠ EXTERNAL SIGNING ≠ RESPONSE VERIFICATION ≠ RESPONSE CONSUMPTION.
  */
 export function createIndependentAttestationAuthorityAdapter(config = {}) {
   assertAdapterConfigSecurity(config)
@@ -2613,6 +3756,7 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
   const rawPubKey =
     config.trustedAttestationPublicKey ||
     config.authorityPublicKey ||
+    config.publicKeySpki ||
     process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
     process.env[PR02_P0_AUTHORITY_ENV]
   const authorityId = config.authorityId || config.expectedAuthorityId || null
@@ -2621,18 +3765,72 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
     Boolean(config.transport && typeof config.transport.sendAttestationRequest === 'function')
 
   let validatedKeyId = null
+  let validatedPublicKeySpki = null
   let hasValidKey = false
   if (rawPubKey) {
     try {
       const pubObj = validateP0AttestationPublicKey(rawPubKey, Boolean(config.allowTestKeys))
       validatedKeyId = computePublicKeyId(pubObj)
+      validatedPublicKeySpki = pubObj.export({ format: 'pem', type: 'spki' }).toString().trim()
+      if (
+        config.pinnedKeyId !== undefined &&
+        config.pinnedKeyId !== null &&
+        config.pinnedKeyId !== validatedKeyId
+      ) {
+        throw new Error(
+          `PUBLIC_KEY_SUBSTITUTION_REJECTED: pinnedKeyId configurado ('${config.pinnedKeyId}') no coincide con la huella SPKI de publicKeySpki ('${validatedKeyId}')`
+        )
+      }
+      if (
+        config.keyId !== undefined &&
+        config.keyId !== null &&
+        config.keyId !== validatedKeyId
+      ) {
+        throw new Error(
+          `ATTESTATION_KEY_ID_MISMATCH: keyId configurado ('${config.keyId}') no coincide con la huella SPKI de publicKeySpki ('${validatedKeyId}')`
+        )
+      }
       hasValidKey = true
     } catch (err) {
-      if (config.requireAvailable === true || (err && err.message && err.message.includes('TEST_KEY_PROHIBITED'))) {
+      if (
+        config.requireAvailable === true ||
+        (err &&
+          err.message &&
+          (err.message.includes('TEST_KEY_PROHIBITED') ||
+            err.message.includes('RUNTIME_PRIVATE_KEY_DETECTED') ||
+            err.message.includes('PUBLIC_KEY_SUBSTITUTION_REJECTED') ||
+            err.message.includes('ATTESTATION_KEY_ID_MISMATCH')))
+      ) {
         throw err
       }
       hasValidKey = false
     }
+  }
+
+  assertAuthoritiesSeparated({
+    goAuthorityId:
+      config.goAuthorityId ??
+      config.trustedGoAuthorityId ??
+      config.goApproverId ??
+      (config.goAuthorizationDoc &&
+        config.goAuthorizationDoc.authorization &&
+        config.goAuthorizationDoc.authorization.aprobador_identidad),
+    attestationAuthorityId: authorityId,
+    goKeyId:
+      config.goKeyId ??
+      config.trustedGoKeyId ??
+      (config.goAuthorizationDoc &&
+        config.goAuthorizationDoc.signature &&
+        config.goAuthorizationDoc.signature.key_id),
+    attestationKeyId: config.keyId || config.expectedKeyId || validatedKeyId,
+    trustedGoPublicKey: config.trustedGoPublicKey,
+    trustedAttestationPublicKey: hasValidKey ? rawPubKey : undefined,
+    allowTestKeys: Boolean(config.allowTestKeys),
+  })
+
+  const endpoint = config.endpoint || config.endpointUrl || null
+  if (endpoint && !hasValidKey) {
+    throw new Error('INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE: Endpoint configurado sin clave pública autorizada')
   }
 
   const isConfigured = Boolean(hasTransport && hasValidKey && authorityId && typeof authorityId === 'string' && authorityId.trim().length > 0)
@@ -2656,10 +3854,15 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
     adapterVersion: '1.0',
     authorityId,
     keyId: validatedKeyId,
+    publicKeySpki: validatedPublicKeySpki,
     allowedAuthorityIds,
     allowedKeyIds,
+    endpoint,
     algorithm: 'Ed25519',
-    // El adaptador técnico no eleva por sí mismo el modelo de confianza
+    transportContract: IndependentAttestationAuthorityTransportContract,
+    // Separación estricta entre adaptador técnico implementado y autoridad real externa
+    AUTHORITY_ADAPTER_IMPLEMENTED: true,
+    AUTHORITY_REAL_WORLD_AVAILABLE: false,
     ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED',
     INDEPENDENT_ATTESTATION_AVAILABLE: false,
     P1_IMPORT_ALLOWED: false,
@@ -2670,31 +3873,102 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
     validateAttestationRequest: (pkg) => validateAttestationRequest(pkg),
     submitAttestationRequest: async (requestPkg, submitOptions = {}) => {
       assertAdapterConfigSecurity(submitOptions)
+      if (validatedKeyId && submitOptions.keyId && submitOptions.keyId !== validatedKeyId) {
+        throw new Error(`PUBLIC_KEY_SUBSTITUTION_REJECTED: keyId suministrado ('${submitOptions.keyId}') no coincide con el keyId anclado del adaptador ('${validatedKeyId}')`)
+      }
       return submitAttestationRequest(requestPkg, {
         ...config,
         ...submitOptions,
         transport: config.transport,
-        trustedAttestationPublicKey: rawPubKey,
+        endpoint,
+        trustedAttestationPublicKey:
+          submitOptions.trustedAttestationPublicKey ||
+          submitOptions.authorityPublicKey ||
+          submitOptions.publicKeySpki ||
+          rawPubKey,
+        pinnedPublicKeySpki: validatedPublicKeySpki || rawPubKey,
+        pinnedKeyId: submitOptions.pinnedKeyId || config.pinnedKeyId || undefined,
         authorityId,
         allowedAuthorityIds,
         allowedKeyIds,
       })
     },
-    verifyAttestationResponse: (response, verifyOptions = {}) =>
-      verifyAttestationResponse(response, {
+    verifyAttestationResponse: (response, verifyOptions = {}) => {
+      const effectivePinned = verifyOptions.pinnedKeyId || config.pinnedKeyId
+      if (
+        (validatedKeyId && verifyOptions.keyId && verifyOptions.keyId !== validatedKeyId) ||
+        (effectivePinned && response && response.keyId && response.keyId !== effectivePinned)
+      ) {
+        return Object.freeze({
+          valid: false,
+          P1_IMPORT_ALLOWED: false,
+          INDEPENDENT_ATTESTATION_AVAILABLE: false,
+          EVIDENCE_CUSTODY_ATTESTED: false,
+          ATTESTATION_TRUST_MODEL: 'UNVERIFIED',
+          TRUSTED_EXECUTION_BOUNDARY: 'UNVERIFIED',
+          ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
+          reason: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+          errorCategory: 'PUBLIC_KEY_SUBSTITUTION_REJECTED',
+          detail: `keyId suministrado ('${verifyOptions.keyId}') no coincide con el keyId anclado ('${validatedKeyId}')`,
+        })
+      }
+      return verifyAttestationResponse(response, {
         ...config,
         ...verifyOptions,
-        trustedAttestationPublicKey: verifyOptions.trustedAttestationPublicKey || rawPubKey,
+        trustedAttestationPublicKey:
+          verifyOptions.trustedAttestationPublicKey ||
+          verifyOptions.authorityPublicKey ||
+          verifyOptions.publicKeySpki ||
+          rawPubKey,
+        pinnedPublicKeySpki: verifyOptions.pinnedPublicKeySpki || validatedPublicKeySpki || rawPubKey,
+        pinnedKeyId: verifyOptions.pinnedKeyId || config.pinnedKeyId || undefined,
         allowedAuthorityIds: verifyOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
         allowedKeyIds: verifyOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
-      }),
+      })
+    },
     validateAttestationResponse: (response, verifyOptions = {}) =>
       validateAttestationResponse(response, {
         ...config,
         ...verifyOptions,
-        trustedAttestationPublicKey: verifyOptions.trustedAttestationPublicKey || rawPubKey,
+        trustedAttestationPublicKey:
+          verifyOptions.trustedAttestationPublicKey ||
+          verifyOptions.authorityPublicKey ||
+          verifyOptions.publicKeySpki ||
+          rawPubKey,
+        pinnedPublicKeySpki: verifyOptions.pinnedPublicKeySpki || validatedPublicKeySpki || rawPubKey,
         allowedAuthorityIds: verifyOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
         allowedKeyIds: verifyOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
+      }),
+    consumeAttestationResponse: (response, consumeOptions = {}) =>
+      consumeAttestationResponseDurable(response, {
+        ...config,
+        ...consumeOptions,
+        trustedAttestationPublicKey:
+          consumeOptions.trustedAttestationPublicKey ||
+          consumeOptions.authorityPublicKey ||
+          consumeOptions.publicKeySpki ||
+          rawPubKey,
+        pinnedPublicKeySpki: consumeOptions.pinnedPublicKeySpki || validatedPublicKeySpki || rawPubKey,
+        allowedAuthorityIds: consumeOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
+        allowedKeyIds: consumeOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
+      }),
+    reserveAttestationResponse: (response, consumeOptions = {}) =>
+      reserveAttestationResponseDurable(response, {
+        ...config,
+        ...consumeOptions,
+        trustedAttestationPublicKey:
+          consumeOptions.trustedAttestationPublicKey ||
+          consumeOptions.authorityPublicKey ||
+          consumeOptions.publicKeySpki ||
+          rawPubKey,
+        pinnedPublicKeySpki: consumeOptions.pinnedPublicKeySpki || validatedPublicKeySpki || rawPubKey,
+        allowedAuthorityIds: consumeOptions.allowedAuthorityIds || (allowedAuthorityIds.length > 0 ? allowedAuthorityIds : undefined),
+        allowedKeyIds: consumeOptions.allowedKeyIds || (allowedKeyIds.length > 0 ? allowedKeyIds : undefined),
+      }),
+    isAttestationResponseConsumed: (response, checkOptions = {}) =>
+      isAttestationResponseConsumedDurable(response, {
+        ...config,
+        ...checkOptions,
       }),
     signProductionAttestation: () => {
       throw new Error('PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME: El adaptador en el runtime fiscal tiene prohibido firmar atestaciones de producción')
@@ -2709,15 +3983,28 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
 }
 
 export const IndependentAttestationAuthorityAdapter = Object.freeze({
+  AUTHORITY_ADAPTER_IMPLEMENTED: true,
+  AUTHORITY_REAL_WORLD_AVAILABLE: false,
+  INDEPENDENT_ATTESTATION_AVAILABLE: false,
+  transportContract: IndependentAttestationAuthorityTransportContract,
+  TRANSPORT_CONTRACT_VERSION: EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
+  ENDPOINT_SPEC: EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
   createAdapter: createIndependentAttestationAuthorityAdapter,
   createAttestationRequest,
   validateAttestationRequest,
   submitAttestationRequest,
   verifyAttestationResponse,
   validateAttestationResponse,
+  consumeAttestationResponse: consumeAttestationResponseDurable,
+  reserveAttestationResponse: reserveAttestationResponseDurable,
+  isAttestationResponseConsumed: isAttestationResponseConsumedDurable,
   serializeCanonicalAttestationResponsePayload,
   computeAttestationResponsePayloadDigest,
+  serializeCanonicalAttestationResponseReplayIdentity,
+  computeAttestationResponseReplayId,
+  validateAttestationReplayDirectory,
   computePublicKeyId,
+  assertAuthoritiesSeparated,
   AUTHORITY_TYPES: ATTESTATION_AUTHORITY_TYPES,
   ALLOWED_ALGORITHMS: ATTESTATION_ALLOWED_ALGORITHMS,
   ANTI_REPLAY_GUARANTEE_LEVEL: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
@@ -2725,11 +4012,20 @@ export const IndependentAttestationAuthorityAdapter = Object.freeze({
 
 /**
  * Frontera externa de Autoridad de Atestación Independiente (IndependentAttestationAuthority).
- * El runtime fiscal puede crear solicitudes de atestación y verificar firmas con clave pública,
- * pero tiene terminantemente prohibido acceder a claves privadas o firmar atestaciones de producción.
+ * El runtime fiscal puede crear solicitudes de atestación, verificar firmas con clave pública
+ * y consumir respuestas en el registro durable del host local, pero tiene terminantemente
+ * prohibido acceder a claves privadas o firmar atestaciones de producción.
  */
 export const IndependentAttestationAuthority = Object.freeze({
+  AUTHORITY_ADAPTER_IMPLEMENTED: true,
+  AUTHORITY_REAL_WORLD_AVAILABLE: false,
+  INDEPENDENT_ATTESTATION_AVAILABLE: false,
+  P1_IMPORT_ALLOWED: false,
+  transportContract: IndependentAttestationAuthorityTransportContract,
+  TRANSPORT_CONTRACT_VERSION: EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
+  ENDPOINT_SPEC: EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  REPLAY_DIR_ENV: PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
   SIGNER_ORIGINS: ATTESTATION_SIGNER_ORIGINS,
   AUTHORITY_TYPES: ATTESTATION_AUTHORITY_TYPES,
   ALLOWED_ALGORITHMS: ATTESTATION_ALLOWED_ALGORITHMS,
@@ -2741,9 +4037,16 @@ export const IndependentAttestationAuthority = Object.freeze({
   serializeCanonicalAttestationRequest,
   serializeCanonicalAttestationResponsePayload,
   computeAttestationResponsePayloadDigest,
+  serializeCanonicalAttestationResponseReplayIdentity,
+  computeAttestationResponseReplayId,
+  validateAttestationReplayDirectory,
   computePublicKeyId,
+  assertAuthoritiesSeparated,
   verifyAttestationResponse,
   validateAttestationResponse,
+  consumeAttestationResponse: consumeAttestationResponseDurable,
+  reserveAttestationResponse: reserveAttestationResponseDurable,
+  isAttestationResponseConsumed: isAttestationResponseConsumedDurable,
   createAdapter: createIndependentAttestationAuthorityAdapter,
   submitAttestationRequest,
   verifyIndependentAttestation,
@@ -2751,11 +4054,51 @@ export const IndependentAttestationAuthority = Object.freeze({
   assertRuntimeSigningIsolation,
   assertNoSelfAttestationElevation,
   validatePublicKey: validateP0AttestationPublicKey,
-  isAuthorityAvailable: (options = {}) => {
+  isPublicKeyConfigured: (options = {}) => {
     if (options && options.independentAuthorityAvailable === true) {
       throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido declarar disponibilidad de autoridad independiente mediante un booleano')
     }
-    const raw = options.trustedAttestationPublicKey || process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] || process.env[PR02_P0_AUTHORITY_ENV]
+    const raw =
+      options.trustedAttestationPublicKey ||
+      options.publicKeySpki ||
+      process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+      process.env[PR02_P0_AUTHORITY_ENV]
+    if (!raw) return false
+    try {
+      validateP0AttestationPublicKey(raw, Boolean(options.allowTestKeys))
+      const iso = verifyRuntimeSigningIsolation({ fiscalScriptsDir: options.fiscalScriptsDir, env: options.env })
+      return iso.valid
+    } catch {
+      return false
+    }
+  },
+  isRealWorldAuthorityAvailable: (options = {}) => {
+    if (
+      options &&
+      (options.independentAuthorityAvailable === true ||
+        options.INDEPENDENT_ATTESTATION_AVAILABLE === true ||
+        options.authorityRealWorldAvailable === true ||
+        options.AUTHORITY_REAL_WORLD_AVAILABLE === true)
+    ) {
+      throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido declarar disponibilidad de autoridad independiente mediante un booleano')
+    }
+    return false
+  },
+  isAuthorityAvailable: (options = {}) => {
+    if (
+      options &&
+      (options.independentAuthorityAvailable === true ||
+        options.INDEPENDENT_ATTESTATION_AVAILABLE === true ||
+        options.authorityRealWorldAvailable === true ||
+        options.AUTHORITY_REAL_WORLD_AVAILABLE === true)
+    ) {
+      throw new Error('SELF_ATTESTATION_AUTO_ELEVATION_REJECTED: Prohibido declarar disponibilidad de autoridad independiente mediante un booleano')
+    }
+    const raw =
+      options.trustedAttestationPublicKey ||
+      options.publicKeySpki ||
+      process.env[PR02_P0_ATTESTATION_PUBLIC_KEY_ENV] ||
+      process.env[PR02_P0_AUTHORITY_ENV]
     if (!raw) return false
     try {
       validateP0AttestationPublicKey(raw, Boolean(options.allowTestKeys))
@@ -2792,10 +4135,16 @@ export const AttestationAuthority = Object.freeze({
   verifyIndependentAttestation,
   verifyAttestationResponse,
   validateAttestationResponse,
+  consumeAttestationResponse: consumeAttestationResponseDurable,
+  reserveAttestationResponse: reserveAttestationResponseDurable,
+  isAttestationResponseConsumed: isAttestationResponseConsumedDurable,
+  validateAttestationReplayDirectory,
+  computeAttestationResponseReplayId,
   createAdapter: createIndependentAttestationAuthorityAdapter,
   submitAttestationRequest,
   isAuthorityAvailable: IndependentAttestationAuthority.isAuthorityAvailable,
   PUBLIC_KEY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
+  REPLAY_DIR_ENV: PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
   AUTHORITY_ENV: PR02_P0_ATTESTATION_PUBLIC_KEY_ENV,
 })
 
@@ -3280,13 +4629,28 @@ export function validatePr02P1ImportEvidence(options = {}) {
     throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_AUTHORITY_NOT_AVAILABLE: Se requiere clave pública de autoridad de atestación custodiada para verificar procedencia')
   }
 
-  // Separación criptográfica estricta de autoridades: GO Authority vs Attestation Authority
-  const goKeyObj = validateP0GoPublicKey(trustedGoPublicKeyInput, Boolean(options.allowTestKeys))
-  const attestationKeyObj = validateP0AttestationPublicKey(trustedAttestationPublicKey, Boolean(options.allowTestKeys))
-  const goDer = goKeyObj.export({ format: 'der', type: 'spki' })
-  const attestationDer = attestationKeyObj.export({ format: 'der', type: 'spki' })
-  if (goDer.equals(attestationDer)) {
-    throw new Error('P1_IMPORT_FORBIDDEN: COLLAPSED_AUTHORITIES_REJECTED: La clave de autoridad GO y la clave de Attestation Authority deben ser criptográficamente distintas')
+  // Separación criptográfica y de identidad estricta de autoridades: GO Authority vs Attestation Authority
+  try {
+    const goKeyObj = validateP0GoPublicKey(trustedGoPublicKeyInput, Boolean(options.allowTestKeys))
+    const attestationKeyObj = validateP0AttestationPublicKey(trustedAttestationPublicKey, Boolean(options.allowTestKeys))
+    assertAuthoritiesSeparated({
+      goAuthorityId: options.goAuthorityId || goCheck.approverId,
+      attestationAuthorityId:
+        (options.attestationResponse && options.attestationResponse.authorityId) ||
+        targetAttestation.authorityId ||
+        options.authorityId,
+      goKeyId: options.goKeyId,
+      attestationKeyId:
+        (options.attestationResponse && options.attestationResponse.keyId) ||
+        targetAttestation.keyId ||
+        computePublicKeyId(attestationKeyObj),
+      trustedGoPublicKey: goKeyObj,
+      trustedAttestationPublicKey: attestationKeyObj,
+      goAuthorizationDoc: options.goAuthorizationDoc,
+      allowTestKeys: Boolean(options.allowTestKeys),
+    })
+  } catch (sepErr) {
+    throw new Error(`P1_IMPORT_FORBIDDEN: ${sepErr && sepErr.message ? sepErr.message : String(sepErr)}`)
   }
 
   // Verificación de cadena explícita: AttestationResponse -> AttestationRequestPackage -> requestSha256 -> manifestSha256 -> evidence digests
@@ -3313,33 +4677,60 @@ export function validatePr02P1ImportEvidence(options = {}) {
       options.attestationRequest.executionScope !== manifest.ejecucion_autorizada_scope ||
       options.attestationRequest.authorizationId !== manifest.go_authorization_id ||
       options.attestationRequest.goAuthorizationDocumentSha256 !== manifest.go_authorization_sha256 ||
-      options.attestationRequest.commitSha.toLowerCase() !== String(expectedHead).toLowerCase()
+      options.attestationRequest.commitSha !== String(expectedHead)
     ) {
       throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_REQUEST_MISMATCH: El AttestationRequestPackage no coincide con los digests de evidencia o el manifiesto P0')
     }
   }
 
+  let responseConsumption = null
   if (options.attestationResponse !== undefined) {
     if (!options.attestationRequest) {
       throw new Error('P1_IMPORT_FORBIDDEN: ATTESTATION_REQUEST_MISMATCH: Se requiere AttestationRequestPackage explícito para verificar la vinculación de AttestationResponse en P1')
     }
-    const responseCheck = verifyAttestationResponse(options.attestationResponse, {
-      attestationRequest: options.attestationRequest,
-      manifest,
-      commitSha: expectedHead,
-      trustedAttestationPublicKey,
-      trustedGoPublicKey: trustedGoPublicKeyInput,
-      allowedAuthorityIds: options.allowedAuthorityIds,
-      allowedKeyIds: options.allowedKeyIds,
-      allowTestKeys: Boolean(options.allowTestKeys),
-      fiscalScriptsDir: options.fiscalScriptsDir,
-      env: options.env,
-      now,
-      enforceAntiReplay: options.enforceAntiReplay,
-      consumeOnVerify: options.consumeOnVerify,
-    })
-    if (!responseCheck.valid) {
-      throw new Error(`P1_IMPORT_FORBIDDEN: ${responseCheck.reason}: ${responseCheck.detail || responseCheck.reason}`)
+    try {
+      responseConsumption = consumeAttestationResponseDurable(options.attestationResponse, {
+        attestationRequest: options.attestationRequest,
+        manifest,
+        commitSha: expectedHead,
+        trustedAttestationPublicKey,
+        trustedGoPublicKey: trustedGoPublicKeyInput,
+        goAuthorityId: options.goAuthorityId || goCheck.approverId,
+        goKeyId: options.goKeyId,
+        goAuthorizationDoc: options.goAuthorizationDoc,
+        allowedAuthorityIds: options.allowedAuthorityIds,
+        allowedKeyIds: options.allowedKeyIds,
+        allowTestKeys: Boolean(options.allowTestKeys),
+        fiscalScriptsDir: options.fiscalScriptsDir,
+        env: options.env,
+        now,
+        consumedResponsesDir:
+          options.consumedResponsesDir ??
+          options.attestationReplayDir ??
+          options.replayRegistryDir,
+        repoRoot: options.repoRoot,
+        fsWriteExclusive: options.fsWriteExclusive,
+        enforceAntiReplay: options.enforceAntiReplay,
+        allowProcessLocalFallback: options.allowProcessLocalFallback,
+        degradeToProcessLocal: options.degradeToProcessLocal,
+        fallbackToMemory: options.fallbackToMemory,
+        processLocal: options.processLocal,
+        fallback: options.fallback,
+        allowMemoryReplay: options.allowMemoryReplay,
+        disableDurableReplay: options.disableDurableReplay,
+        skipReplayStorage: options.skipReplayStorage,
+        inMemoryReplay: options.inMemoryReplay,
+        consumeOnVerify: options.consumeOnVerify,
+        antiReplayGuarantee: options.antiReplayGuarantee,
+        skipVerification: options.skipVerification,
+        preVerified: options.preVerified,
+        trustPreviousVerify: options.trustPreviousVerify,
+        verified: options.verified,
+      })
+    } catch (consumeErr) {
+      const rawMsg = consumeErr && consumeErr.message ? consumeErr.message : String(consumeErr)
+      const normalizedMsg = rawMsg.replace(/^ATTESTATION_RESPONSE_CONSUMPTION_DENIED:\s*/, '')
+      throw new Error(`P1_IMPORT_FORBIDDEN: ${normalizedMsg} [ATTESTATION_RESPONSE_CONSUMPTION_DENIED]`)
     }
   }
 
@@ -3348,6 +4739,9 @@ export function validatePr02P1ImportEvidence(options = {}) {
     commitSha: expectedHead,
     trustedAttestationPublicKey,
     trustedGoPublicKey: trustedGoPublicKeyInput,
+    goAuthorityId: options.goAuthorityId || goCheck.approverId,
+    goKeyId: options.goKeyId,
+    goAuthorizationDoc: options.goAuthorizationDoc,
     attestationRequest: options.attestationRequest,
     fiscalScriptsDir: options.fiscalScriptsDir,
     env: options.env,
@@ -3401,6 +4795,9 @@ export function validatePr02P1ImportEvidence(options = {}) {
     ARCA_ORIGIN_DIRECTLY_CRYPTOGRAPHICALLY_VERIFIED: false,
     trustModel: 'LIMITED',
     ANTI_REPLAY_GUARANTEE_LEVEL,
+    ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
+    attestationResponseConsumed: responseConsumption ? responseConsumption.consumed : false,
+    attestationResponseReplayId: responseConsumption ? responseConsumption.replayId : null,
     consultado_en: manifest.consultado_en,
     ivaSha256: ivaSha,
     conditionSha256: conditionSha,

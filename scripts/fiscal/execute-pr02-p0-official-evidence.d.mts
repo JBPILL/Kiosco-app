@@ -9,13 +9,27 @@ import type {
   SubmitAttestationRequestResult,
 } from './plan-pr02-parameters.d.mts'
 export {
+  PR02_P0_ATTESTATION_REPLAY_DIR_ENV,
+  AUTHORITY_ADAPTER_IMPLEMENTED,
+  AUTHORITY_REAL_WORLD_AVAILABLE,
+  EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
+  EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
+  IndependentAttestationAuthorityTransportContract,
+  assertAuthoritiesSeparated,
   createAttestationRequest,
   validateAttestationRequest,
   serializeCanonicalAttestationResponsePayload,
   computeAttestationResponsePayloadDigest,
+  serializeCanonicalAttestationResponseReplayIdentity,
+  computeAttestationResponseReplayId,
+  validateAttestationReplayDirectory,
+  isAttestationResponseConsumedDurable,
+  consumeAttestationResponseDurable,
+  reserveAttestationResponseDurable,
   computePublicKeyId,
   verifyAttestationResponse,
   validateAttestationResponse,
+  assertAdapterConfigSecurity,
   createIndependentAttestationAuthorityAdapter,
   submitAttestationRequest,
   IndependentAttestationAuthorityAdapter,
@@ -268,14 +282,29 @@ export interface Pr02P0ExecutionReport {
   readonly CONTENT_INTEGRITY?: string
   readonly OFFICIAL_PROVENANCE: string
   readonly ANTI_REPLAY_GUARANTEE_LEVEL?: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
-  readonly ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL?: 'PROCESS_LOCAL_ONE_TIME_USE'
+  readonly ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL?: 'HOST_LOCAL_DURABLE_ONE_TIME_USE'
+  readonly ATTESTATION_RESPONSE_DURABLE_REPLAY_GUARD?: 'PASS'
+  readonly ATTESTATION_RESPONSE_REPLAY_AFTER_RESTART?: 'BLOCKED'
+  readonly ATTESTATION_RESPONSE_CONCURRENT_REPLAY?: 'BLOCKED'
+  readonly ATTESTATION_RESPONSE_VERIFY_IS_NON_CONSUMING?: 'PASS'
+  readonly ATTESTATION_RESPONSE_CONSUMPTION_IS_ATOMIC?: 'PASS'
+  readonly ATTESTATION_REPLAY_STORAGE_FAIL_CLOSED?: 'PASS'
+  readonly ATTESTATION_REPLAY_PATH_GUARD?: 'PASS'
+  readonly ATTESTATION_REPLAY_SYMLINK_GUARD?: 'PASS'
   readonly ATTESTATION_REQUEST_CONTRACT?: 'PASS'
   readonly ATTESTATION_RESPONSE_CONTRACT?: 'PASS'
+  readonly EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT?: 'PASS'
+  readonly PUBLIC_KEY_PINNING?: 'PASS'
   readonly INDEPENDENT_AUTHORITY_ADAPTER?: 'PASS'
+  readonly AUTHORITY_ADAPTER_IMPLEMENTED?: boolean
+  readonly AUTHORITY_REAL_WORLD_AVAILABLE?: boolean
   readonly PUBLIC_KEY_VERIFICATION_BOUNDARY?: 'PASS'
   readonly RUNTIME_PRIVATE_KEY_ISOLATION?: 'PASS'
   readonly SELF_ATTESTATION_ELEVATION_BLOCKED?: 'PASS'
+  readonly GO_AND_ATTESTATION_AUTHORITIES_SEPARATED?: 'PASS'
   readonly COLLAPSED_AUTHORITIES_BLOCKED?: 'PASS'
+  readonly UNAUTHORIZED_AUTHORITY_BLOCKED?: 'PASS'
+  readonly PUBLIC_KEY_SUBSTITUTION_BLOCKED?: 'PASS'
   readonly TEST_SIGNER_PRODUCTION_ELEVATION_BLOCKED?: 'PASS'
   readonly EVIDENCE_INTEGRITY?: 'PASS' | 'NOT_RUN' | 'FAIL'
   readonly EVIDENCE_CUSTODY_ATTESTED?: boolean

@@ -283,6 +283,7 @@ export function createSignedTestAttestationResponse(
   overrides: Partial<{
     schemaVersion: '1.0'
     responseId: string
+    attestationId: string
     authorityType: AttestationAuthorityType
     authorityId: string
     keyId: string
@@ -313,9 +314,12 @@ export function createSignedTestAttestationResponse(
   const pubKeyObj = crypto.createPublicKey(privKeyObj)
   const derivedKeyId = computePublicKeyId(pubKeyObj)
 
+  const effectiveResponseId = overrides.responseId || overrides.attestationId || `att-res-${randomUUID()}`
+
   const draft = {
     schemaVersion: (overrides.schemaVersion || '1.0') as '1.0',
-    responseId: overrides.responseId || `att-res-${randomUUID()}`,
+    responseId: effectiveResponseId,
+    attestationId: overrides.attestationId || effectiveResponseId,
     authorityType: (overrides.authorityType || ATTESTATION_AUTHORITY_TYPES.TEST_AUTHORITY) as AttestationAuthorityType,
     authorityId: overrides.authorityId || 'test-independent-attestation-authority-v1',
     keyId: overrides.keyId || derivedKeyId,
