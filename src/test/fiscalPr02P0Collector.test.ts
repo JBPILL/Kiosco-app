@@ -91,6 +91,8 @@ import {
   EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE,
   EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED,
   PRODUCTION_TRUST_AVAILABLE,
+  HISTORICAL_042_REEMISSION_FORBIDDEN,
+  HISTORICAL_042_IDENTIFICATION,
   evaluateExternalAuthorityReadiness,
   validateAttestationEndpointUrl,
   parseWsfeTiposIvaResponse,
@@ -166,6 +168,9 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(report.OFFICIAL_PROVENANCE).toBe('UNVERIFIED')
     expect(report.REAL_PV2_ENABLED).toBe(false)
     expect(report.HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
+    expect(report.HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
+    expect(HISTORICAL_042_REEMISSION_FORBIDDEN).toBe(true)
+    expect(HISTORICAL_042_IDENTIFICATION).toBe('UNRESOLVED')
     expect(report.PR02_READY_FOR_EMISSION_GO).toBe(false)
     expect(report.ARCA_CALLS_NEW).toBe(0)
     expect(report.STAGING_WRITES_NEW).toBe(0)

@@ -793,6 +793,8 @@ export const LOCAL_TEST_AUTHORITY_AVAILABLE: boolean
 export const EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: boolean
 export const EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED: boolean
 export const PRODUCTION_TRUST_AVAILABLE: boolean
+export const HISTORICAL_042_REEMISSION_FORBIDDEN: true
+export const HISTORICAL_042_IDENTIFICATION: 'UNRESOLVED'
 
 export interface ExternalAuthorityReadinessAssessment {
   readonly AUTHORITY_ADAPTER_IMPLEMENTED: true

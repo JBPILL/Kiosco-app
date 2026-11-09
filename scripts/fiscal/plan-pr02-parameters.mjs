@@ -3659,8 +3659,12 @@ export const IndependentAttestationAuthorityTransportContract = Object.freeze({
     VERIFY_BEFORE_CONSUME_REQUIRED: true,
     HOST_LOCAL_DURABLE_ONE_TIME_USE_REPLAY_PROTECTION: true,
     HONEST_AVAILABILITY_STATE: true,
+    HISTORICAL_042_REEMISSION_FORBIDDEN: true,
   }),
 })
+
+export const HISTORICAL_042_REEMISSION_FORBIDDEN = true
+export const HISTORICAL_042_IDENTIFICATION = 'UNRESOLVED'
 
 /**
  * Consulta si un endpoint de autoridad de atestación está configurado en opciones o entorno.
@@ -4418,6 +4422,8 @@ export const IndependentAttestationAuthority = Object.freeze({
   PRODUCTION_TRUST_AVAILABLE: false,
   INDEPENDENT_ATTESTATION_AVAILABLE: false,
   P1_IMPORT_ALLOWED: false,
+  HISTORICAL_042_REEMISSION_FORBIDDEN: true,
+  HISTORICAL_042_IDENTIFICATION: 'UNRESOLVED',
   evaluateReadiness: evaluateExternalAuthorityReadiness,
   transportContract: IndependentAttestationAuthorityTransportContract,
   TRANSPORT_CONTRACT_VERSION: EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
@@ -4554,6 +4560,8 @@ export const AttestationAuthority = Object.freeze({
   EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE,
   EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED,
   PRODUCTION_TRUST_AVAILABLE,
+  HISTORICAL_042_REEMISSION_FORBIDDEN,
+  HISTORICAL_042_IDENTIFICATION,
   evaluateReadiness: evaluateExternalAuthorityReadiness,
   isEndpointConfigured: isAttestationEndpointConfigured,
   executeHttpsTransport: executeHttpsAttestationTransport,
