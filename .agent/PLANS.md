@@ -1742,3 +1742,58 @@ Remediación criptográfica y adversarial de las 6 vulnerabilidades de frontera 
   - `STAGING_WRITES_NEW = 0`
   - `PRODUCTION_MUTATIONS = 0`
   - `CAE_EMISSIONS_NEW = 0`
+
+
+### FASE: PR02-P0-EXT1 — Provisionamiento de una Autoridad Externa Independiente de Atestación (08/11/2026)
+
+- **Objetivo**: Formalizar el aprovisionamiento de frontera de la Autoridad de Atestación Independiente, asegurando la separación criptográfica estricta respecto del runtime fiscal y de la GO Authority, evaluar con honestidad técnica que la autoridad técnica de test está disponible (`LOCAL_TEST_AUTHORITY_AVAILABLE = true`), mientras que la autoridad externa real de producción permanece no provisionada y no alcanzable (`AUTHORITY_REAL_WORLD_AVAILABLE = false`, `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`, `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`), implementar la batería exhaustiva `EXT1-PROV-01` a `EXT1-PROV-15` (casos 172 a 186 en `src/test/fiscalPr02P0Collector.test.ts`), y validar 203/203 pruebas PR02 totales en PASS sin alterar las prohibiciones fiscales.
+- **Componentes Implementados / Endurecidos**:
+  - `LOCAL_TEST_AUTHORITY_AVAILABLE = true`, `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`, `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`, `PRODUCTION_TRUST_AVAILABLE = false`.
+  - Función de evaluación técnica honesta `evaluateExternalAuthorityReadiness(options)`.
+  - Guarda de runtime `PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME`: rechazo estricto ante presencia de claves privadas en configuración de signers y ante cualquier intento de firma de producción en memoria del runtime fiscal.
+  - Integración de los nuevos indicadores y de `STAGING_READS_NEW = 0` en el colector de evidencia oficial (`executePr02P0OfficialEvidenceCollector`).
+- **Suite de Pruebas Adversariales (`EXT1-PROV-01` a `EXT1-PROV-15`, casos 172 a 186)**:
+  - 172. [EXT1-PROV-01]: Autoridad externa no configurada (`AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`).
+  - 173. [EXT1-PROV-02]: Endpoint HTTPS válido sin clave pública autorizada -> rechazo cerrado (`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`).
+  - 174. [EXT1-PROV-03]: Clave pública válida pero `authorityId` incorrecto -> `ATTESTATION_AUTHORITY_MISMATCH`.
+  - 175. [EXT1-PROV-04]: Clave pública sustituida -> `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+  - 176. [EXT1-PROV-05]: Clave privada inyectada en runtime fiscal -> `RUNTIME_PRIVATE_KEY_DETECTED`.
+  - 177. [EXT1-PROV-06]: Colapso de GO Authority con Attestation Authority -> `COLLAPSED_AUTHORITIES_REJECTED`.
+  - 178. [EXT1-PROV-07]: Solicitud válida enviada a autoridad de prueba aislada -> respuesta recibida pero sin elevar producción (`PRODUCTION_ATTESTED = false`, `P1_IMPORT_ALLOWED = false`).
+  - 179. [EXT1-PROV-08]: Firma Ed25519 válida verifica exitosamente (`VERIFY = PASS`).
+  - 180. [EXT1-PROV-09]: Firma alterada es rechazada con `ATTESTATION_SIGNATURE_INVALID`.
+  - 181. [EXT1-PROV-10]: `requestSha256` alterado es rechazado con `ATTESTATION_REQUEST_SHA256_MISMATCH`.
+  - 182. [EXT1-PROV-11]: `manifestSha256` alterado es rechazado con `ATTESTATION_MANIFEST_SHA256_MISMATCH`.
+  - 183. [EXT1-PROV-12]: Respuesta reutilizada tras consumo es bloqueada con `ATTESTATION_RESPONSE_REPLAY_DETECTED`.
+  - 184. [EXT1-PROV-13]: Intento de respuesta de habilitar `P1_IMPORT_ALLOWED = true` directamente es rechazado cerrado.
+  - 185. [EXT1-PROV-14]: Runtime fiscal sin acceso a clave privada (`PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME`).
+  - 186. [EXT1-PROV-15]: Ausencia total de archivos de clave privada en Git y en runtime (`verifyRuntimeSigningIsolation = PASS`, 0 claves privadas).
+- **Resultados de Validación**:
+  - 186/186 tests PASS en `src/test/fiscalPr02P0Collector.test.ts`.
+  - 203/203 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+  - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+  - `verifyRuntimeSigningIsolation()` PASS (`RUNTIME_SIGNING_ISOLATED`, `privateKeysDetected = 0`).
+  - `scripts/fiscal/run-pr02-p0-staging-private.ps1 -DryRun` PASS con código 0.
+- **Estado Técnico Confirmado**:
+  - `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = PASS`
+  - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+  - `LOCAL_TEST_AUTHORITY_AVAILABLE = true`
+  - `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = false`
+  - `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`
+  - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+  - `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`
+  - `PRODUCTION_TRUST_AVAILABLE = false`
+  - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+  - `P1_IMPORT_ALLOWED = false`
+  - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+  - `OFFICIAL_PROVENANCE = UNVERIFIED`
+  - `P0_REMOTE_EXECUTED = false`
+  - `P1_REMOTE_EXECUTION_READY = false`
+  - `P2_REMOTE_EXECUTION_READY = false`
+  - `PR02_READY_FOR_EMISSION_GO = false`
+  - `REAL_PV2_ENABLED = false`
+  - `ARCA_CALLS_NEW = 0`
+  - `STAGING_READS_NEW = 0`
+  - `STAGING_WRITES_NEW = 0`
+  - `PRODUCTION_MUTATIONS = 0`
+  - `CAE_EMISSIONS_NEW = 0`

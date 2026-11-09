@@ -2647,6 +2647,63 @@ Dueño; nunca se infiere del cierre local ni de la preparación sin emisión.
       - `PR02_READY_FOR_EMISSION_GO = false`
       - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`.
 
+24. **Provisionamiento de Autoridad Externa Independiente de Atestación PR02-P0-EXT1**
+    - **1. Arquitectura y Separación Estricta de Dominios de Confianza**:
+      - Dominio 1: **PR02 Runtime / Fiscal Verifier** (`KioskoPOS`): Genera `AttestationRequestPackage`, NO posee clave privada alguna (`verifyRuntimeSigningIsolation = PASS`), envía HTTP POST a `/attestations`, verifica firma Ed25519 con clave pública SPKI fijada (`PUBLIC_KEY_PINNING = PASS`), previene reutilizaciones mediante registro durable host-local (`ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL = HOST_LOCAL_DURABLE_ONE_TIME_USE`), y mantiene `P1_IMPORT_ALLOWED = false` ante cualquier anomalía o simulación.
+      - Dominio 2: **GO Authority**: Autoriza ejecuciones de recolección de evidencia mediante documentos GO firmados con su propia clave Ed25519 independiente. Su identidad (`authorityId`, `keyId`, `publicKeySpki`) está completamente segregada de la autoridad de atestación (`assertAuthoritiesSeparated`).
+      - Dominio 3: **Independent Attestation Authority**: Servicio externo que custodia la clave privada Ed25519 en infraestructura externa (fuera de Git, de `scripts/fiscal/` y de `src/`), recibe la solicitud canónica, valida su integridad, y emite una respuesta firmada `AttestationResponse`.
+    - **2. Contrato Canónico `/attestations` (Versión 1.0)**:
+      - Método: `POST`, `Content-Type: application/json`.
+      - Campos requeridos en la solicitud: `schemaVersion` ("1.0"), `requestId`, `processId`, `executionScope`, `commitSha` (40 hex), `environment` ("HOMOLOGACION"), `authorizationId`, `goAuthorizationDocumentSha256`, `manifestSha256`, `rawSoapArtifacts`, `normalizedArtifacts`, `consultadoEn`, `requestedAt`, `collectorIdentity`, y `requestSha256`.
+      - Campos prohibidos: Prohibición tajante de cualquier secreto (`token`, `sign`, `cms`, `password`, `secret`, `private key`, credenciales Supabase o DB). Su detección provoca rechazo inmediato con código 400 (`PROHIBITED_SECRET_DETECTED`).
+      - Payload de respuesta canónico: `schemaVersion` ("1.0"), `attestationId`, `authorityId`, `keyId`, `requestId`, `requestSha256`, `manifestSha256`, `commitSha`, `environment`, `timestamp`, `trustScope`.
+    - **3. Gestión Criptográfica (Ed25519)**:
+      - Algoritmo: Ed25519 puro (RFC 8032).
+      - Derivación de `keyId`: SHA-256 en hexadecimal de la clave pública SPKI canónica (SubjectPublicKeyInfo DER).
+      - Aislamiento de clave privada: La clave privada reside exclusivamente en el entorno de la autoridad externa (HSM / KMS / custodio externo). Prohibido almacenarla en Git, en `scripts/fiscal/`, en `src/`, o en logs (`PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME`).
+      - Distribución de clave pública: Únicamente la clave pública SPKI se distribuye al runtime fiscal para fijación (`public key pinning`).
+    - **4. Configuración Segura de Transporte y Endpoint**:
+      - Variables formales: `PR02_P0_ATTESTATION_ENDPOINT`, `PR02_P0_ATTESTATION_AUTHORITY_ID`, `PR02_P0_ATTESTATION_KEY_ID`, `PR02_P0_ATTESTATION_PUBLIC_KEY`.
+      - Validación de endpoint: WHATWG URL estricta, exigencia de HTTPS salvo ensayos locales explícitos, timeout explícito (5s con `ATTESTATION_TRANSPORT_TIMEOUT`), tamaño máximo (512 KiB con `ATTESTATION_PAYLOAD_TOO_LARGE`), validación de `content-type: application/json`, sin reintentos automáticos.
+    - **5. Protección Anti-Replay Durable**:
+      - Nivel: `HOST_LOCAL_DURABLE_ONE_TIME_USE`.
+      - Identidad de replay: SHA-256 de `authorityId`, `keyId`, `attestationId`, `requestSha256` y `manifestSha256`.
+      - Operación en dos fases: `verify` es puro e idempotente (de solo lectura); `consume` es atómico, escribe archivo inmutable con `wx` en `.fiscal-evidence-pr02/.consumed-attestations/`, con validación contra symlinks y path traversal.
+    - **6. Procedimientos Operativos**:
+      - Despliegue: Inicialización de la autoridad externa en host segregado con su propio par Ed25519, publicación de clave pública y configuración de variables en el verificador fiscal.
+      - Rotación de clave / `keyId`: Generación de nueva clave en autoridad externa, actualización del anclaje de clave pública en el verificador; las respuestas previas conservan trazabilidad inmutable ligada a su `keyId` original.
+      - Manejo de incidentes y revocación: Denegación inmediata de `authorityId` en verificador; cualquier respuesta de una autoridad revocada o no fijada es rechazada con `ATTESTATION_AUTHORITY_MISMATCH` o `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+      - Indisponibilidad / fallo de red: Fail-Closed total. Sin bypass ni degradación a auto-atestación (`P1_IMPORT_ALLOWED = false`).
+    - **7. Suite Adversarial PR02-P0-EXT1 (`EXT1-PROV-01` a `EXT1-PROV-15`, casos 172 a 186)**:
+      - 172. [EXT1-PROV-01]: Autoridad externa no configurada (`AUTHORITY_REAL_WORLD_AVAILABLE = false`, `INDEPENDENT_ATTESTATION_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`).
+      - 173. [EXT1-PROV-02]: Endpoint HTTPS válido sin clave pública autorizada -> rechazo cerrado (`INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE`).
+      - 174. [EXT1-PROV-03]: Clave pública válida pero `authorityId` incorrecto -> `ATTESTATION_AUTHORITY_MISMATCH`.
+      - 175. [EXT1-PROV-04]: Clave pública sustituida -> `PUBLIC_KEY_SUBSTITUTION_REJECTED`.
+      - 176. [EXT1-PROV-05]: Clave privada inyectada en runtime fiscal -> `RUNTIME_PRIVATE_KEY_DETECTED`.
+      - 177. [EXT1-PROV-06]: Colapso de GO Authority con Attestation Authority -> `COLLAPSED_AUTHORITIES_REJECTED`.
+      - 178. [EXT1-PROV-07]: Solicitud válida enviada a autoridad de prueba aislada -> respuesta recibida pero sin elevar producción (`PRODUCTION_ATTESTED = false`, `P1_IMPORT_ALLOWED = false`).
+      - 179. [EXT1-PROV-08]: Firma Ed25519 válida verifica exitosamente (`VERIFY = PASS`).
+      - 180. [EXT1-PROV-09]: Firma alterada es rechazada con `ATTESTATION_SIGNATURE_INVALID`.
+      - 181. [EXT1-PROV-10]: `requestSha256` alterado es rechazado con `ATTESTATION_REQUEST_SHA256_MISMATCH`.
+      - 182. [EXT1-PROV-11]: `manifestSha256` alterado es rechazado con `ATTESTATION_MANIFEST_SHA256_MISMATCH`.
+      - 183. [EXT1-PROV-12]: Respuesta reutilizada tras consumo es bloqueada con `ATTESTATION_RESPONSE_REPLAY_DETECTED`.
+      - 184. [EXT1-PROV-13]: Intento de respuesta de habilitar `P1_IMPORT_ALLOWED = true` directamente es rechazado cerrado.
+      - 185. [EXT1-PROV-14]: Runtime fiscal sin acceso a clave privada (`PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME`).
+      - 186. [EXT1-PROV-15]: Ausencia total de archivos de clave privada en Git y en runtime (`verifyRuntimeSigningIsolation = PASS`, 0 claves privadas).
+      - **Resultados de la Suite**: 186/186 tests PASS en `src/test/fiscalPr02P0Collector.test.ts` y 203/203 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+    - **8. Estado Honesto de Disponibilidad y Límites de Confianza**:
+      - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+      - `LOCAL_TEST_AUTHORITY_AVAILABLE = true`
+      - `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = false`
+      - `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`
+      - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+      - `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`
+      - `PRODUCTION_TRUST_AVAILABLE = false`
+      - `P1_IMPORT_ALLOWED = false`
+      - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+      - `OFFICIAL_PROVENANCE = UNVERIFIED`
+      - `ARCA_CALLS_NEW = 0`, `STAGING_READS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`.
+
 ### Propuesta Futura de Autorización: PR02-P0 (Recolección Oficial de Evidencia)
 
 Para habilitar una futura ejecución remota autorizada de P0, se requerirá un GO explícito con los siguientes parámetros inmutables:

@@ -789,6 +789,34 @@ export function isAttestationEndpointConfigured(options?: {
   readonly env?: Record<string, string | undefined>
 }): boolean
 
+export const LOCAL_TEST_AUTHORITY_AVAILABLE: boolean
+export const EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: boolean
+export const EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED: boolean
+export const PRODUCTION_TRUST_AVAILABLE: boolean
+
+export interface ExternalAuthorityReadinessAssessment {
+  readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
+  readonly LOCAL_TEST_AUTHORITY_AVAILABLE: true
+  readonly EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: boolean
+  readonly EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false
+  readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
+  readonly EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED: false
+  readonly PRODUCTION_TRUST_AVAILABLE: false
+  readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
+  readonly P1_IMPORT_ALLOWED: false
+  readonly ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED'
+  readonly BLOCK_REASON: 'NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT'
+}
+
+export function evaluateExternalAuthorityReadiness(options?: {
+  readonly endpoint?: string
+  readonly endpointUrl?: string
+  readonly env?: Record<string, string | undefined>
+  readonly authorityId?: string
+  readonly publicKeySpki?: string
+  readonly keyId?: string
+}): ExternalAuthorityReadinessAssessment
+
 export interface ExternalAuthoritySigner {
   readonly signerType: 'TEST_SIGNER' | 'PRODUCTION_EXTERNAL_SIGNER'
   readonly trustScope: 'TEST_ONLY' | 'PRODUCTION'
@@ -885,9 +913,14 @@ export const IndependentAttestationAuthorityAdapter: IndependentAttestationAutho
 export interface IndependentAttestationAuthorityInterface {
   readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
   readonly EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true
+  readonly LOCAL_TEST_AUTHORITY_AVAILABLE: true
+  readonly EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false
   readonly AUTHORITY_REAL_WORLD_AVAILABLE: false
+  readonly EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED: false
+  readonly PRODUCTION_TRUST_AVAILABLE: false
   readonly INDEPENDENT_ATTESTATION_AVAILABLE: false
   readonly P1_IMPORT_ALLOWED: false
+  readonly evaluateReadiness: typeof evaluateExternalAuthorityReadiness
   readonly transportContract: IndependentAttestationAuthorityTransportContract
   readonly TRANSPORT_CONTRACT_VERSION: '1.0'
   readonly ENDPOINT_SPEC: typeof EXTERNAL_AUTHORITY_ENDPOINT_SPEC

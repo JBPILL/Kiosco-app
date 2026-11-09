@@ -87,6 +87,11 @@ import {
   PR02_P0_ATTESTATION_ENDPOINT_ENV,
   PR02_P0_ATTESTATION_AUTHORITY_ID_ENV,
   PR02_P0_ATTESTATION_KEY_ID_ENV,
+  LOCAL_TEST_AUTHORITY_AVAILABLE,
+  EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE,
+  EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED,
+  PRODUCTION_TRUST_AVAILABLE,
+  evaluateExternalAuthorityReadiness,
   validateAttestationEndpointUrl,
   parseWsfeTiposIvaResponse,
   parseWsfeCondicionIvaReceptorResponse,
@@ -7019,6 +7024,420 @@ describe('PR02-P0 Official Evidence Collector Unit, Hardening & Security Tests',
     expect(check.P1_IMPORT_ALLOWED).toBe(false)
     expect(check.reason).toBe('ATTESTATION_RESPONSE_INVALID')
     expect(check.errorCategory).toBe('UNEXPECTED_RESPONSE_FIELD')
+    cleanupTestDir()
+  })
+
+  // =========================================================================
+  // BATERÍA DE PRUEBAS ADVERSARIALES PR02-P0-EXT1 (casos 172 a 186)
+  // Provisionamiento de una Autoridad Externa Independiente de Atestación
+  // =========================================================================
+
+  // 172. [EXT1-PROV-01] Autoridad externa no configurada
+  it('172. [EXT1-PROV-01]: Autoridad externa no configurada: AUTHORITY_REAL_WORLD_AVAILABLE = false, INDEPENDENT_ATTESTATION_AVAILABLE = false, P1_IMPORT_ALLOWED = false', async () => {
+    cleanupTestDir()
+    expect(AUTHORITY_ADAPTER_IMPLEMENTED).toBe(true)
+    expect(LOCAL_TEST_AUTHORITY_AVAILABLE).toBe(true)
+    expect(EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE).toBe(false)
+    expect(AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+    expect(PRODUCTION_TRUST_AVAILABLE).toBe(false)
+
+    const readiness = evaluateExternalAuthorityReadiness()
+    expect(readiness.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(readiness.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(readiness.P1_IMPORT_ALLOWED).toBe(false)
+    expect(readiness.ATTESTATION_TRUST_MODEL).toBe('SELF_ATTESTED')
+    expect(readiness.BLOCK_REASON).toBe('NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT')
+
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-01')
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      authorityId: 'ATT_AUTH_UNCONFIGURED_01',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+    expect(adapter.isEndpointConfigured()).toBe(false)
+    expect(adapter.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(adapter.INDEPENDENT_ATTESTATION_AVAILABLE).toBe(false)
+    expect(adapter.P1_IMPORT_ALLOWED).toBe(false)
+
+    await expect(adapter.submitAttestationRequest(requestPkg)).rejects.toThrow(
+      /INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE/
+    )
+    cleanupTestDir()
+  })
+
+  // 173. [EXT1-PROV-02] Endpoint HTTPS válido pero sin clave pública: REJECT
+  it('173. [EXT1-PROV-02]: Endpoint HTTPS válido pero sin clave pública autorizada es rechazado cerrado', () => {
+    cleanupTestDir()
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation-authority.example.org/v1/attestations',
+        authorityId: 'ATT_AUTH_EXT1_02',
+      })
+    ).toThrow(/Endpoint configurado sin clave pública autorizada|INDEPENDENT_ATTESTATION_AUTHORITY_NOT_AVAILABLE/)
+    cleanupTestDir()
+  })
+
+  // 174. [EXT1-PROV-03] Clave pública válida pero authorityId incorrecto: ATTESTATION_AUTHORITY_MISMATCH
+  it('174. [EXT1-PROV-03]: Clave pública válida pero authorityId incorrecto es rechazada con ATTESTATION_AUTHORITY_MISMATCH', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-03')
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'GENUINE_AUTH_ID_EXT1_03',
+      keyPair,
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'EXPECTED_DIFFERENT_AUTH_ID',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const check = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_AUTHORITY_MISMATCH')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 175. [EXT1-PROV-04] Clave pública sustituida: PUBLIC_KEY_SUBSTITUTION_REJECTED
+  it('175. [EXT1-PROV-04]: Clave pública sustituida en verificación o config es rechazada con PUBLIC_KEY_SUBSTITUTION_REJECTED', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-04')
+    const pinnedKeyPair = generateEphemeralAttestationKeyPair()
+    const attackerKeyPair = generateEphemeralAttestationKeyPair()
+
+    const attackerAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXT1_04',
+      keyPair: attackerKeyPair,
+    })
+    const forgedRes = attackerAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_04',
+      publicKeySpki: pinnedKeyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const check = adapter.verifyAttestationResponse(forgedRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toMatch(/PUBLIC_KEY_SUBSTITUTION_REJECTED|ATTESTATION_KEY_ID_MISMATCH/)
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 176. [EXT1-PROV-05] Clave privada inyectada en runtime fiscal: RUNTIME_PRIVATE_KEY_DETECTED
+  it('176. [EXT1-PROV-05]: Clave privada inyectada en runtime fiscal es bloqueada con RUNTIME_PRIVATE_KEY_DETECTED', () => {
+    cleanupTestDir()
+    const { goPub } = buildTestRequestFixture('EXT1-PROV-05')
+    const keyPair = generateEphemeralAttestationKeyPair()
+
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation-authority.example.org/v1',
+        authorityId: 'ATT_AUTH_EXT1_05',
+        publicKeySpki: keyPair.publicKey,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+        privateKey: keyPair.privateKey,
+      } as any)
+    ).toThrow(/RUNTIME_PRIVATE_KEY_DETECTED/)
+
+    const envWithPrivKey = {
+      ...process.env,
+      PR02_P0_ATTESTATION_PRIVATE_KEY: keyPair.privateKey,
+    }
+    const isolation = verifyRuntimeSigningIsolation({ env: envWithPrivKey })
+    expect(isolation.valid).toBe(false)
+    expect(isolation.reason).toBe('RUNTIME_PRIVATE_KEY_DETECTED')
+    expect(isolation.productionSigningInRuntime).toBe(true)
+    cleanupTestDir()
+  })
+
+  // 177. [EXT1-PROV-06] GO Authority utilizada como Attestation Authority: COLLAPSED_AUTHORITIES_REJECTED
+  it('177. [EXT1-PROV-06]: GO Authority utilizada como Attestation Authority falla cerrado con COLLAPSED_AUTHORITIES_REJECTED', () => {
+    cleanupTestDir()
+    const { goPub } = buildTestRequestFixture('EXT1-PROV-06')
+
+    expect(() =>
+      assertAuthoritiesSeparated({
+        goAuthorityId: 'go-governance-authority-v1',
+        attestationAuthorityId: 'go-governance-authority-v1',
+        goKeyId: 'key-go-1',
+        attestationKeyId: 'key-att-1',
+        trustedGoPublicKey: goPub,
+        trustedAttestationPublicKey: generateEphemeralAttestationKeyPair().publicKey,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    expect(() =>
+      createIndependentAttestationAuthorityAdapter({
+        endpoint: 'https://attestation-authority.example.org/v1',
+        authorityId: 'COLLAPSED_AUTH',
+        publicKeySpki: goPub,
+        trustedGoPublicKey: goPub,
+        allowTestKeys: true,
+      })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+    cleanupTestDir()
+  })
+
+  // 178. [EXT1-PROV-07] Solicitud válida enviada a autoridad externa de prueba aislada: RESPONSE RECEIVED pero sin elevar producción
+  it('178. [EXT1-PROV-07]: Solicitud válida enviada a autoridad externa de prueba aislada recibe respuesta pero sin elevar producción', async () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-07')
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const testSigner = createTestAuthoritySigner({
+      authorityId: 'ATT_AUTH_EXT1_07',
+      keyPair,
+    })
+    const service = createExternalAttestationAuthorityService({
+      signer: testSigner,
+      authorityId: 'ATT_AUTH_EXT1_07',
+      publicKeySpki: keyPair.publicKey,
+    })
+
+    const response = await service.handleRequest(requestPkg)
+    expect(response).toBeDefined()
+    expect(response.schemaVersion).toBe('1.0')
+    expect(response.authorityId).toBe('ATT_AUTH_EXT1_07')
+    expect(response.signature).toBeDefined()
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_07',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const verification = adapter.verifyAttestationResponse(response, { attestationRequest: requestPkg })
+    expect(verification.valid).toBe(true)
+    expect(verification.trustScope).toBe('TEST_ONLY')
+    expect(verification.PRODUCTION_ATTESTED).toBe(false)
+    expect(verification.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 179. [EXT1-PROV-08] Firma Ed25519 válida: VERIFY = PASS
+  it('179. [EXT1-PROV-08]: Firma Ed25519 válida verifica exitosamente (VERIFY = PASS con Ed25519)', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-08')
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXT1_08',
+      keyPair,
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_08',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const check = adapter.verifyAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(true)
+    expect(check.algorithm).toBe('Ed25519')
+    expect(check.authorityId).toBe('ATT_AUTH_EXT1_08')
+    cleanupTestDir()
+  })
+
+  // 180. [EXT1-PROV-09] Firma alterada: ATTESTATION_SIGNATURE_INVALID
+  it('180. [EXT1-PROV-09]: Firma alterada es rechazada con ATTESTATION_SIGNATURE_INVALID', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-09')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXT1_09',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const corruptedSig = validRes.signature.startsWith('AA')
+      ? 'BB' + validRes.signature.slice(2)
+      : 'AA' + validRes.signature.slice(2)
+    const tamperedRes = { ...validRes, signature: corruptedSig }
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_09',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const check = adapter.verifyAttestationResponse(tamperedRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_SIGNATURE_INVALID')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 181. [EXT1-PROV-10] requestSha256 alterado: ATTESTATION_REQUEST_SHA256_MISMATCH
+  it('181. [EXT1-PROV-10]: requestSha256 alterado es rechazado con ATTESTATION_REQUEST_SHA256_MISMATCH', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-10')
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXT1_10',
+      keyPair,
+    })
+    const forgedReqHash = 'a'.repeat(64)
+    const tamperedRes = testAuthority.issueResponse(requestPkg, { requestSha256: forgedReqHash })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_10',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const check = adapter.verifyAttestationResponse(tamperedRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toMatch(/ATTESTATION_REQUEST_MISMATCH|ATTESTATION_REQUEST_SHA256_MISMATCH/)
+    expect(check.errorCategory).toBe('ATTESTATION_REQUEST_SHA256_MISMATCH')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 182. [EXT1-PROV-11] manifestSha256 alterado: ATTESTATION_MANIFEST_SHA256_MISMATCH
+  it('182. [EXT1-PROV-11]: manifestSha256 alterado es rechazado con ATTESTATION_MANIFEST_SHA256_MISMATCH', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-11')
+    const keyPair = generateEphemeralAttestationKeyPair()
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXT1_11',
+      keyPair,
+    })
+    const forgedManifestHash = 'b'.repeat(64)
+    const tamperedRes = testAuthority.issueResponse(requestPkg, { manifestSha256: forgedManifestHash })
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_11',
+      publicKeySpki: keyPair.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const check = adapter.verifyAttestationResponse(tamperedRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.reason).toMatch(/ATTESTATION_MANIFEST_MISMATCH|ATTESTATION_MANIFEST_SHA256_MISMATCH/)
+    expect(check.errorCategory).toBe('ATTESTATION_MANIFEST_SHA256_MISMATCH')
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    cleanupTestDir()
+  })
+
+  // 183. [EXT1-PROV-12] Respuesta reutilizada: ATTESTATION_RESPONSE_REPLAY_DETECTED
+  it('183. [EXT1-PROV-12]: Respuesta reutilizada tras consumo durable es bloqueada con ATTESTATION_RESPONSE_REPLAY_DETECTED', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-12')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXT1_12',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_12',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      consumedResponsesDir: path.join(TEST_EVIDENCE_DIR, 'ext1-prov-12-replay'),
+      allowTestKeys: true,
+    })
+
+    const firstConsume = adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    expect(firstConsume.valid).toBe(true)
+    expect(firstConsume.consumed).toBe(true)
+
+    expect(() =>
+      adapter.consumeAttestationResponse(validRes, { attestationRequest: requestPkg })
+    ).toThrow(/ATTESTATION_RESPONSE_REPLAY_DETECTED/)
+
+    cleanupTestDir()
+  })
+
+  // 184. [EXT1-PROV-13] Intento de respuesta de habilitar P1_IMPORT_ALLOWED = true directamente: REJECT
+  it('184. [EXT1-PROV-13]: Intento de respuesta de habilitar P1_IMPORT_ALLOWED = true directamente es rechazado cerrado', () => {
+    cleanupTestDir()
+    const { requestPkg, goPub } = buildTestRequestFixture('EXT1-PROV-13')
+    const testAuthority = createTestIndependentAttestationAuthority({
+      authorityId: 'ATT_AUTH_EXT1_13',
+    })
+    const validRes = testAuthority.issueResponse(requestPkg)
+
+    const injectedRes = {
+      ...validRes,
+      P1_IMPORT_ALLOWED: true,
+    }
+
+    const adapter = createIndependentAttestationAuthorityAdapter({
+      endpoint: 'https://attestation-authority.example.org/v1',
+      authorityId: 'ATT_AUTH_EXT1_13',
+      publicKeySpki: testAuthority.publicKey,
+      trustedGoPublicKey: goPub,
+      allowTestKeys: true,
+    })
+
+    const check = adapter.verifyAttestationResponse(injectedRes, { attestationRequest: requestPkg })
+    expect(check.valid).toBe(false)
+    expect(check.P1_IMPORT_ALLOWED).toBe(false)
+    expect(check.reason).toBe('ATTESTATION_RESPONSE_INVALID')
+    expect(check.errorCategory).toBe('UNEXPECTED_RESPONSE_FIELD')
+    cleanupTestDir()
+  })
+
+  // 185. [EXT1-PROV-14] El runtime fiscal no puede acceder a la clave privada: PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME
+  it('185. [EXT1-PROV-14]: El runtime fiscal no puede acceder a la clave privada (PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME)', () => {
+    cleanupTestDir()
+    const keyPair = generateEphemeralAttestationKeyPair()
+
+    expect(() =>
+      createExternalAuthoritySigner({
+        privateKey: keyPair.privateKey,
+      } as any)
+    ).toThrow(/PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME/)
+
+    const prodSigner = createExternalAuthoritySigner({
+      signerType: 'PRODUCTION_EXTERNAL_SIGNER',
+      authorityId: 'PROD_AUTH_ID',
+      keyId: 'key-123',
+    })
+    expect(prodSigner.isProductionReady()).toBe(false)
+    expect(() => prodSigner.sign('test-payload')).toThrow(/PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME/)
+    cleanupTestDir()
+  })
+
+  // 186. [EXT1-PROV-15] La clave privada no aparece en el árbol Git ni en archivos rastreados
+  it('186. [EXT1-PROV-15]: La clave privada no aparece en el árbol Git ni en archivos rastreados', () => {
+    cleanupTestDir()
+    const isolation = verifyRuntimeSigningIsolation({ forceRescan: true })
+    expect(isolation.valid).toBe(true)
+    expect(isolation.reason).toBe('RUNTIME_SIGNING_ISOLATED')
+    expect(isolation.privateKeysDetected).toBe(0)
+    expect(isolation.productionSigningInRuntime).toBe(false)
+
+    // Ningún archivo de clave (.pem, .key, .p12, .pfx) rastreado en Git
+    const gitLs = spawnSync('git', ['ls-files'], { encoding: 'utf8', cwd: process.cwd() })
+    const trackedFiles = (gitLs.stdout || '').split('\n').filter(Boolean)
+    const trackedKeyFiles = trackedFiles.filter((f) => /\.(pem|key|p12|pfx)$/i.test(f))
+    expect(trackedKeyFiles).toHaveLength(0)
+
+    // En scripts/fiscal no existen archivos de clave privada
+    const fiscalFiles = fs.readdirSync(path.resolve(process.cwd(), 'scripts', 'fiscal'))
+    const fiscalKeyFiles = fiscalFiles.filter((f) => /\.(pem|key|p12|pfx)$/i.test(f))
+    expect(fiscalKeyFiles).toHaveLength(0)
+
     cleanupTestDir()
   })
 })

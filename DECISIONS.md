@@ -2606,3 +2606,38 @@ Tras establecer el aprovisionamiento de frontera en PR02-P0-EXT, correspondía d
 - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
 - `P1_IMPORT_ALLOWED = false`
 - `ARCA_CALLS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`
+
+
+### PR02-P0-EXT1: Provisionamiento de una Autoridad Externa Independiente de Atestación (08/11/2026)
+
+**Contexto:**
+Tras preparar el servicio de atestación externa y el transporte HTTPS, correspondía formalizar el provisionamiento de frontera de la Autoridad de Atestación Independiente, asegurando la separación criptográfica estricta respecto del runtime fiscal y de la GO Authority, y acreditando con honestidad técnica que, si bien la infraestructura técnica local de test está disponible (`LOCAL_TEST_AUTHORITY_AVAILABLE = true`), la autoridad de producción real permanece no provisionada y no alcanzable (`AUTHORITY_REAL_WORLD_AVAILABLE = false`, `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`, `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`), manteniendo `P1_IMPORT_ALLOWED = false` y `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`.
+
+**Alternativas consideradas:**
+1. *Declarar la autoridad como disponible en el mundo real por el solo hecho de existir el servicio y adaptador*: Descartado tajantemente por deshonestidad técnica y riesgo de elevar privilegios sin una entidad de atestación física independiente operativa.
+2. *Permitir el uso de la clave de GO Authority para firmar atestaciones*: Descartado por violar la separación de poderes criptográficos (colapso de autoridades).
+3. *Implementar formalmente la evaluación de disponibilidad honesta (`evaluateExternalAuthorityReadiness`), prohibir la presencia de claves privadas en el runtime fiscal (`PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME`), e implementar la batería exhaustiva `EXT1-PROV-01` a `EXT1-PROV-15` (casos 172 a 186)*: Seleccionada por garantizar el máximo rigor de seguridad adversarial y trazabilidad inmutable.
+
+**Decisión:**
+1. **Separación Criptográfica y de Runtime**:
+   - Clave privada Ed25519 mantenida exclusivamente fuera del repositorio, fuera de `scripts/fiscal/` y de `src/`.
+   - `PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME` lanzado inmediatamente ante cualquier intento de suministrar clave privada o ejecutar firmas de producción en memoria del runtime.
+2. **Evaluador de Disponibilidad Honesta (`evaluateExternalAuthorityReadiness`)**:
+   - Expone con precisión técnica: `LOCAL_TEST_AUTHORITY_AVAILABLE = true`, `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = isConfigured`, `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`, `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`, `PRODUCTION_TRUST_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `ATTESTATION_TRUST_MODEL = 'SELF_ATTESTED'`.
+3. **Batería de Pruebas `EXT1-PROV-01` a `EXT1-PROV-15` (casos 172 a 186)**:
+   - 15 pruebas unitarias y adversariales nuevas añadidas a `src/test/fiscalPr02P0Collector.test.ts`.
+   - 186/186 tests PASS en `fiscalPr02P0Collector.test.ts` y 203/203 tests PR02 totales PASS.
+4. **Protección Anti-Replay Durable Host-Local**:
+   - Garantizada en nivel `HOST_LOCAL_DURABLE_ONE_TIME_USE` con consumo atómico y validación contra symlinks.
+
+**Consecuencias:**
+- `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = PASS` (arquitectura y frontera técnica probadas)
+- `LOCAL_TEST_AUTHORITY_AVAILABLE = true`
+- `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = false`
+- `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`
+- `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+- `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`
+- `PRODUCTION_TRUST_AVAILABLE = false`
+- `P1_IMPORT_ALLOWED = false`
+- `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+- `ARCA_CALLS_NEW = 0`, `STAGING_READS_NEW = 0`, `STAGING_WRITES_NEW = 0`, `PRODUCTION_MUTATIONS = 0`, `CAE_EMISSIONS_NEW = 0`

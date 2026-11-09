@@ -3671,6 +3671,32 @@ export function isAttestationEndpointConfigured(options = {}) {
   return Boolean(ep && typeof ep === 'string' && ep.trim().length > 0)
 }
 
+export const LOCAL_TEST_AUTHORITY_AVAILABLE = true
+export const EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false
+export const EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false
+export const PRODUCTION_TRUST_AVAILABLE = false
+
+/**
+ * Evalúa con honestidad técnica el estado de preparación y disponibilidad de la autoridad externa.
+ */
+export function evaluateExternalAuthorityReadiness(options = {}) {
+  const isConfigured = isAttestationEndpointConfigured(options)
+
+  return Object.freeze({
+    AUTHORITY_ADAPTER_IMPLEMENTED: true,
+    LOCAL_TEST_AUTHORITY_AVAILABLE: true,
+    EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: isConfigured,
+    EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false,
+    AUTHORITY_REAL_WORLD_AVAILABLE: false,
+    EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    PRODUCTION_TRUST_AVAILABLE: false,
+    INDEPENDENT_ATTESTATION_AVAILABLE: false,
+    P1_IMPORT_ALLOWED: false,
+    ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED',
+    BLOCK_REASON: 'NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT',
+  })
+}
+
 /**
  * Proveedor y abstracción de firma para la Autoridad de Atestación Independiente externa.
  * Mantiene estricto aislamiento: el runtime fiscal no contiene claves privadas ni capacidades de firma de producción.
@@ -3678,6 +3704,11 @@ export function isAttestationEndpointConfigured(options = {}) {
 export function createExternalAuthoritySigner(config = {}) {
   if (!config || typeof config !== 'object') {
     throw new Error('EXTERNAL_AUTHORITY_SIGNER_CONFIG_INVALID: Configuración inválida para proveedor de firma')
+  }
+
+  // Claves privadas estrictamente prohibidas en configuración de runtime fiscal
+  if (config.privateKey || config.privateKeyPem || config.privateKeyJwk || config.privateKeyRaw) {
+    throw new Error('PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME: Clave privada prohibida en configuración de runtime fiscal')
   }
 
   const signerType = config.signerType || (config.allowTestKeys || config.isTestSigner ? 'TEST_SIGNER' : 'PRODUCTION_EXTERNAL_SIGNER')
@@ -3721,7 +3752,7 @@ export function createExternalAuthoritySigner(config = {}) {
     isProductionReady: () => isCustodyAvailable,
     sign: (canonicalPayload) => {
       if (!isCustodyAvailable) {
-        throw new Error('EXTERNAL_PRODUCTION_SIGNER_UNAVAILABLE: No existe infraestructura de custodia externa para clave privada de producción')
+        throw new Error('PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME: No existe infraestructura de custodia externa para clave privada de producción')
       }
       return externalSignProvider.sign(canonicalPayload)
     },
@@ -4205,13 +4236,19 @@ export function createIndependentAttestationAuthorityAdapter(config = {}) {
     AUTHORITY_ADAPTER_IMPLEMENTED: true,
     EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
     EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: Boolean(endpoint),
+    LOCAL_TEST_AUTHORITY_AVAILABLE: true,
+    EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false,
     AUTHORITY_REAL_WORLD_AVAILABLE: false,
+    EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED: false,
+    PRODUCTION_TRUST_AVAILABLE: false,
     ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED',
     INDEPENDENT_ATTESTATION_AVAILABLE: false,
     P1_IMPORT_ALLOWED: false,
     antiReplayGuarantee: ATTESTATION_RESPONSE_ANTI_REPLAY_GUARANTEE_LEVEL,
     isConfigured: () => isConfigured,
     isEndpointConfigured: () => Boolean(endpoint),
+    isEndpointReachable: () => false,
+    isAuthorityCryptographicallyVerified: () => false,
     isAuthorityAvailable: () => false,
     createAttestationRequest: (params) => createAttestationRequest(params),
     validateAttestationRequest: (pkg) => validateAttestationRequest(pkg),
@@ -4374,9 +4411,14 @@ export const IndependentAttestationAuthorityAdapter = Object.freeze({
 export const IndependentAttestationAuthority = Object.freeze({
   AUTHORITY_ADAPTER_IMPLEMENTED: true,
   EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
+  LOCAL_TEST_AUTHORITY_AVAILABLE: true,
+  EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false,
   AUTHORITY_REAL_WORLD_AVAILABLE: false,
+  EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED: false,
+  PRODUCTION_TRUST_AVAILABLE: false,
   INDEPENDENT_ATTESTATION_AVAILABLE: false,
   P1_IMPORT_ALLOWED: false,
+  evaluateReadiness: evaluateExternalAuthorityReadiness,
   transportContract: IndependentAttestationAuthorityTransportContract,
   TRANSPORT_CONTRACT_VERSION: EXTERNAL_AUTHORITY_TRANSPORT_CONTRACT_VERSION,
   ENDPOINT_SPEC: EXTERNAL_AUTHORITY_ENDPOINT_SPEC,
@@ -4508,6 +4550,11 @@ export const AttestationAuthority = Object.freeze({
   createAdapter: createIndependentAttestationAuthorityAdapter,
   submitAttestationRequest,
   isAuthorityAvailable: IndependentAttestationAuthority.isAuthorityAvailable,
+  LOCAL_TEST_AUTHORITY_AVAILABLE,
+  EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE,
+  EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED,
+  PRODUCTION_TRUST_AVAILABLE,
+  evaluateReadiness: evaluateExternalAuthorityReadiness,
   isEndpointConfigured: isAttestationEndpointConfigured,
   executeHttpsTransport: executeHttpsAttestationTransport,
   createExternalAuthoritySigner,

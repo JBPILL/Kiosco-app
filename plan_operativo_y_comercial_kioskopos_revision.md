@@ -2730,3 +2730,37 @@ Tras el ensayo de ejecución controlada de PR03-B bajo FAIL-CLOSED:
     - `STAGING_WRITES_NEW = 0`
     - `PRODUCTION_MUTATIONS = 0`
     - `CAE_EMISSIONS_NEW = 0`
+
+
+- **Provisionamiento de una Autoridad Externa Independiente de Atestación PR02-P0-EXT1 (08/11/2026)**:
+  - **Frontera y Segregación Criptográfica**: Acreditada la separación rigurosa entre Runtime Fiscal, GO Authority y Autoridad de Atestación Independiente. Clave privada estrictamente excluida de Git, `scripts/fiscal/` y `src/` (`verifyRuntimeSigningIsolation = PASS`). Guarda `PRODUCTION_SIGNING_FORBIDDEN_IN_RUNTIME` bloquea cualquier inyección de clave privada o firma en runtime.
+  - **Evaluación de Disponibilidad Honesta**: Implementado `evaluateExternalAuthorityReadiness`, exponiendo `LOCAL_TEST_AUTHORITY_AVAILABLE = true`, `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`, `AUTHORITY_REAL_WORLD_AVAILABLE = false`, `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`, `PRODUCTION_TRUST_AVAILABLE = false`, `P1_IMPORT_ALLOWED = false`, `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`.
+  - **Batería de Pruebas `EXT1-PROV-01` a `EXT1-PROV-15`**: 15 nuevos casos adversariales (tests 172 a 186) en `src/test/fiscalPr02P0Collector.test.ts`.
+  - **Métricas de la Suite**:
+    - 186/186 tests PASS en `src/test/fiscalPr02P0Collector.test.ts`.
+    - 203/203 tests PR02 totales PASS (`src/test/fiscalPr02ParametersPlan.test.ts` 17/17 PASS).
+    - `npm run build` (`tsc -b && vite build`) PASS con código 0.
+    - `verifyRuntimeSigningIsolation()` PASS (`RUNTIME_SIGNING_ISOLATED`, `privateKeysDetected = 0`).
+  - **Estado Técnico y Restricciones Operativas**:
+    - `PR02_P0_EXTERNAL_AUTHORITY_PROVISIONING = PASS`
+    - `AUTHORITY_ADAPTER_IMPLEMENTED = true`
+    - `LOCAL_TEST_AUTHORITY_AVAILABLE = true`
+    - `EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED = false`
+    - `EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE = false`
+    - `AUTHORITY_REAL_WORLD_AVAILABLE = false`
+    - `EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED = false`
+    - `PRODUCTION_TRUST_AVAILABLE = false`
+    - `INDEPENDENT_ATTESTATION_AVAILABLE = false`
+    - `P1_IMPORT_ALLOWED = false`
+    - `ATTESTATION_TRUST_MODEL = SELF_ATTESTED`
+    - `OFFICIAL_PROVENANCE = UNVERIFIED`
+    - `P0_REMOTE_EXECUTED = false`
+    - `P1_REMOTE_EXECUTION_READY = false`
+    - `P2_REMOTE_EXECUTION_READY = false`
+    - `PR02_READY_FOR_EMISSION_GO = false`
+    - `REAL_PV2_ENABLED = false`
+    - `ARCA_CALLS_NEW = 0`
+    - `STAGING_READS_NEW = 0`
+    - `STAGING_WRITES_NEW = 0`
+    - `PRODUCTION_MUTATIONS = 0`
+    - `CAE_EMISSIONS_NEW = 0`
