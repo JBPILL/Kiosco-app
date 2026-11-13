@@ -799,6 +799,9 @@ export const HISTORICAL_042_IDENTIFICATION: 'UNRESOLVED'
 export interface ExternalAuthorityReadinessAssessment {
   readonly AUTHORITY_ADAPTER_IMPLEMENTED: true
   readonly EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true
+  readonly EXTERNAL_AUTHORITY_DEPLOYMENT_READY: true
+  readonly EXTERNAL_AUTHORITY_SERVICE_DEPLOYED: false
+  readonly PRODUCTION_SIGNING_PROVIDER_CONFIGURED: false
   readonly LOCAL_TEST_AUTHORITY_AVAILABLE: true
   readonly EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: boolean
   readonly EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false
@@ -809,6 +812,15 @@ export interface ExternalAuthorityReadinessAssessment {
   readonly P1_IMPORT_ALLOWED: false
   readonly ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED'
   readonly BLOCK_REASON: 'NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT'
+  readonly READINESS_STAGES: {
+    readonly IMPLEMENTED: true
+    readonly DEPLOYMENT_READY: true
+    readonly CONFIGURED: boolean
+    readonly DEPLOYED: false
+    readonly REACHABLE: false
+    readonly CRYPTOGRAPHICALLY_VERIFIED: false
+    readonly REAL_WORLD_AVAILABLE: false
+  }
 }
 
 export function evaluateExternalAuthorityReadiness(options?: {
@@ -818,6 +830,7 @@ export function evaluateExternalAuthorityReadiness(options?: {
   readonly authorityId?: string
   readonly publicKeySpki?: string
   readonly keyId?: string
+  readonly kmsKeyId?: string
 }): ExternalAuthorityReadinessAssessment
 
 export interface ExternalAuthoritySigner {

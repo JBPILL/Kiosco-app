@@ -3685,10 +3685,22 @@ export const PRODUCTION_TRUST_AVAILABLE = false
  */
 export function evaluateExternalAuthorityReadiness(options = {}) {
   const isConfigured = isAttestationEndpointConfigured(options)
+  const readinessStages = Object.freeze({
+    IMPLEMENTED: true,
+    DEPLOYMENT_READY: true,
+    CONFIGURED: isConfigured,
+    DEPLOYED: false,
+    REACHABLE: false,
+    CRYPTOGRAPHICALLY_VERIFIED: false,
+    REAL_WORLD_AVAILABLE: false,
+  })
 
   return Object.freeze({
     AUTHORITY_ADAPTER_IMPLEMENTED: true,
     EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
+    EXTERNAL_AUTHORITY_DEPLOYMENT_READY: true,
+    EXTERNAL_AUTHORITY_SERVICE_DEPLOYED: false,
+    PRODUCTION_SIGNING_PROVIDER_CONFIGURED: false,
     LOCAL_TEST_AUTHORITY_AVAILABLE: true,
     EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: isConfigured,
     EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false,
@@ -3699,6 +3711,7 @@ export function evaluateExternalAuthorityReadiness(options = {}) {
     P1_IMPORT_ALLOWED: false,
     ATTESTATION_TRUST_MODEL: 'SELF_ATTESTED',
     BLOCK_REASON: 'NO_GENUINELY_INDEPENDENT_AUTHORITY_ENVIRONMENT',
+    READINESS_STAGES: readinessStages,
   })
 }
 

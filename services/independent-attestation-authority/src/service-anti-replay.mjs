@@ -81,8 +81,27 @@ export class ServiceAntiReplayGuard {
     return 'HOST_LOCAL_SERVICE_IN_MEMORY_ONE_TIME_USE'
   }
 
+  get antiReplayTier() {
+    if (this._storageType === 'distributed') {
+      return 'DISTRIBUTED_MULTI_NODE'
+    }
+    if (this._storageType === 'file') {
+      return 'LOCAL_DURABLE'
+    }
+    return 'IN_MEMORY'
+  }
+
   get size() {
     return this._processedRequestIds.size
+  }
+
+  /**
+   * Fuerza sincronización segura en disco si el backend local durable está activo.
+   */
+  flush() {
+    if (this._storageType === 'file' && this._filePath && !this._storageCorrupted) {
+      this._persistToFile()
+    }
   }
 
   /**

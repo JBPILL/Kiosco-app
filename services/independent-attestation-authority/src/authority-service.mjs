@@ -148,13 +148,36 @@ export class IndependentAttestationAuthorityService {
 
   /**
    * Endpoint GET /health (liveness sin exponer secretos ni configuración sensible).
+   * Distingue explícitamente proceso/servidor HTTP iniciado vs proveedor de firma operativo
+   * y disponibilidad en el mundo real.
    */
   handleHealth() {
+    const signingProviderConfigured = Boolean(
+      this._signingProvider &&
+        (this._signingProvider.keyId || this._signingProvider.publicKeySpki)
+    )
+    const productionSigningReady = Boolean(
+      this._signingProvider &&
+        this._signingProvider.signerType === 'PRODUCTION_KMS_SIGNER' &&
+        typeof this._signingProvider.isProductionReady === 'function' &&
+        this._signingProvider.isProductionReady()
+    )
+    const signingProviderOperational =
+      this._signingProvider?.signerType === 'PRODUCTION_KMS_SIGNER'
+        ? productionSigningReady
+        : Boolean(this._signingProvider && this._signingProvider.keyId)
+
     return Object.freeze({
       status: 'HEALTHY',
       service: 'independent-attestation-authority',
       serviceVersion: this.serviceVersion,
       serviceEnvironment: this._serviceEnvironment,
+      processStarted: true,
+      httpServerRunning: true,
+      signingProviderConfigured,
+      signingProviderOperational,
+      productionSigningReady,
+      authorityRealWorldAvailable: false,
       timestamp: new Date().toISOString(),
     })
   }

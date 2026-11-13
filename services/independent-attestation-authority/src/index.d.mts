@@ -102,8 +102,10 @@ export class ServiceAntiReplayGuard {
     | 'HOST_LOCAL_SERVICE_IN_MEMORY_ONE_TIME_USE'
     | 'HOST_LOCAL_SERVICE_DURABLE_ONE_TIME_USE'
     | 'DISTRIBUTED_MULTI_NODE_ONE_TIME_USE'
+  readonly antiReplayTier: 'IN_MEMORY' | 'LOCAL_DURABLE' | 'DISTRIBUTED_MULTI_NODE'
 
   readonly size: number
+  flush(): void
   isHealthy(): Promise<boolean>
   check(request: { readonly requestId: string; readonly requestSha256?: string }): boolean
   checkAsync(request: { readonly requestId: string; readonly requestSha256?: string }): Promise<boolean>
@@ -170,6 +172,12 @@ export class IndependentAttestationAuthorityService {
     readonly service: 'independent-attestation-authority'
     readonly serviceVersion: '1.0'
     readonly serviceEnvironment: string
+    readonly processStarted: true
+    readonly httpServerRunning: true
+    readonly signingProviderConfigured: boolean
+    readonly signingProviderOperational: boolean
+    readonly productionSigningReady: boolean
+    readonly authorityRealWorldAvailable: false
     readonly timestamp: string
   }
 
@@ -207,6 +215,8 @@ export class IndependentAttestationHttpServer {
   })
 
   readonly isRunning: boolean
+  readonly isShuttingDown: boolean
+  readonly inFlightCount: number
   readonly address: unknown
   start(port?: number): Promise<{ port: number; url: string }>
   close(): Promise<void>
@@ -226,3 +236,9 @@ export function createConfiguredAuthorityFromEnv(
   readonly port: number
   readonly host: string
 }
+
+export function createGracefulShutdownHandler(options: {
+  readonly server: IndependentAttestationHttpServer
+  readonly logger?: { readonly info?: (event: string, meta: Record<string, unknown>) => void }
+  readonly onExit?: (code: number) => void
+}): (signal?: string) => Promise<{ readonly closed: boolean; readonly signal: string }>

@@ -86,6 +86,7 @@ export class IndependentAttestationHttpServer {
     this._logger = options.logger || null
     this._server = null
     this._isShuttingDown = false
+    this._inFlightResponses = new Set()
 
     const env = this._service.serviceEnvironment
     if (
@@ -104,6 +105,14 @@ export class IndependentAttestationHttpServer {
     return Boolean(this._server && this._server.listening)
   }
 
+  get isShuttingDown() {
+    return this._isShuttingDown
+  }
+
+  get inFlightCount() {
+    return this._inFlightResponses.size
+  }
+
   get address() {
     if (!this._server || !this._server.listening) return null
     return this._server.address()
@@ -120,7 +129,15 @@ export class IndependentAttestationHttpServer {
     }
     this._isShuttingDown = false
 
-    const requestHandler = (req, res) => this._handleHttpRequest(req, res)
+    const requestHandler = (req, res) => {
+      this._inFlightResponses.add(res)
+      const cleanup = () => {
+        this._inFlightResponses.delete(res)
+      }
+      res.once('finish', cleanup)
+      res.once('close', cleanup)
+      this._handleHttpRequest(req, res)
+    }
 
     if (this._requireHttps) {
       if (!this._tlsOptions || !this._tlsOptions.key || !this._tlsOptions.cert) {
@@ -159,22 +176,31 @@ export class IndependentAttestationHttpServer {
   }
 
   /**
-   * Detiene el servidor de forma segura cerrando conexiones inactivas.
+   * Detiene el servidor de forma segura rechazando nuevas solicitudes, aguardando
+   * solicitudes en curso y sincronizando el estado anti-replay.
    * @returns {Promise<void>}
    */
   async close() {
-    if (!this._server) return
     this._isShuttingDown = true
+    if (!this._server) return
     return new Promise((resolve, reject) => {
       if (typeof this._server.closeIdleConnections === 'function') {
         this._server.closeIdleConnections()
       }
       this._server.close((err) => {
-        if (err) reject(err)
-        else {
-          this._server = null
-          resolve()
+        try {
+          if (typeof this._service.antiReplayGuard?.flush === 'function') {
+            this._service.antiReplayGuard.flush()
+          }
+        } catch (flushErr) {
+          if (!err) {
+            reject(flushErr)
+            return
+          }
         }
+        this._server = null
+        if (err) reject(err)
+        else resolve()
       })
     })
   }
@@ -202,11 +228,18 @@ export class IndependentAttestationHttpServer {
    */
   async _handleHttpRequest(req, res) {
     if (this._isShuttingDown) {
-      this._sendError(
-        res,
-        503,
-        'SERVER_SHUTTING_DOWN',
-        'Servicio en proceso de apagado controlado'
+      res.writeHead(503, {
+        ...this._buildSecurityHeaders(),
+        Connection: 'close',
+      })
+      res.end(
+        JSON.stringify({
+          error: {
+            code: 'SERVER_SHUTTING_DOWN',
+            message: 'Servicio en proceso de apagado controlado',
+            timestamp: new Date().toISOString(),
+          },
+        })
       )
       return
     }

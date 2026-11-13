@@ -9,6 +9,7 @@ import {
   verifyAttestationResponse,
   validateAttestationEndpointUrl,
   executeHttpsAttestationTransport,
+  evaluateExternalAuthorityReadiness,
   PR02_P0_COLECTOR_IDENTIDAD,
 } from '../../scripts/fiscal/plan-pr02-parameters.mjs'
 
@@ -24,6 +25,7 @@ import {
   IndependentAttestationAuthorityService,
   IndependentAttestationHttpServer,
   createConfiguredAuthorityFromEnv,
+  createGracefulShutdownHandler,
 } from '../../services/independent-attestation-authority/src/index.mjs'
 
 const VALID_COMMIT_SHA = 'c56930d358f76e5a255292693b83fd709414f6e2'
@@ -837,6 +839,126 @@ describe('EXT-REAL-02: Independent Attestation Authority Deployment Readiness & 
       ).toThrow(/SERVICE_ANTI_REPLAY_DISTRIBUTED_STORE_REQUIRED/)
     } finally {
       fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('EXT-REAL-02-CFG-READINESS-1: valida puerto, body limit, backend anti-replay, config parcial y readiness honesto', () => {
+    expect(() =>
+      createConfiguredAuthorityFromEnv({
+        ATTESTATION_ENVIRONMENT: 'TEST',
+        ATTESTATION_SIGNING_PROVIDER: 'TEST_SIGNER',
+        ATTESTATION_SERVICE_PORT: 'abc',
+      })
+    ).toThrow(/ATTESTATION_PORT_INVALID/)
+
+    expect(() =>
+      createConfiguredAuthorityFromEnv({
+        ATTESTATION_ENVIRONMENT: 'TEST',
+        ATTESTATION_SIGNING_PROVIDER: 'TEST_SIGNER',
+        ATTESTATION_SERVICE_PORT: '70000',
+      })
+    ).toThrow(/ATTESTATION_PORT_INVALID/)
+
+    expect(() =>
+      createConfiguredAuthorityFromEnv({
+        ATTESTATION_ENVIRONMENT: 'TEST',
+        ATTESTATION_SIGNING_PROVIDER: 'TEST_SIGNER',
+        ATTESTATION_MAX_BODY_BYTES: '100',
+      })
+    ).toThrow(/ATTESTATION_MAX_BODY_BYTES_INVALID/)
+
+    expect(() =>
+      createConfiguredAuthorityFromEnv({
+        ATTESTATION_ENVIRONMENT: 'TEST',
+        ATTESTATION_SIGNING_PROVIDER: 'TEST_SIGNER',
+        ATTESTATION_ANTI_REPLAY_BACKEND: 'UNWIRED_REDIS',
+      })
+    ).toThrow(/ATTESTATION_ANTI_REPLAY_BACKEND_INVALID/)
+
+    expect(() =>
+      createConfiguredAuthorityFromEnv({
+        ATTESTATION_ENVIRONMENT: 'PRODUCTION',
+        ATTESTATION_SIGNING_PROVIDER: 'PRODUCTION_KMS_SIGNER',
+        ATTESTATION_KMS_KEY_ID: 'projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1',
+        ATTESTATION_KEY_ID: 'ed25519-spki-0000000000000000',
+      })
+    ).toThrow(/PRODUCTION_KMS_NOT_CONFIGURED/)
+
+    const readiness = evaluateExternalAuthorityReadiness({
+      endpoint: 'https://attestation.example.invalid/attestations',
+      kmsKeyId: 'projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1',
+      env: {
+        ATTESTATION_KMS_KEY_ID: 'projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1',
+      },
+    })
+    expect(readiness.EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED).toBe(true)
+    expect(readiness.EXTERNAL_AUTHORITY_DEPLOYMENT_READY).toBe(true)
+    expect(readiness.EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED).toBe(true)
+    expect(readiness.EXTERNAL_AUTHORITY_SERVICE_DEPLOYED).toBe(false)
+    expect(readiness.PRODUCTION_SIGNING_PROVIDER_CONFIGURED).toBe(false)
+    expect(readiness.EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE).toBe(false)
+    expect(readiness.EXTERNAL_AUTHORITY_CRYPTOGRAPHICALLY_VERIFIED).toBe(false)
+    expect(readiness.AUTHORITY_REAL_WORLD_AVAILABLE).toBe(false)
+    expect(readiness.P1_IMPORT_ALLOWED).toBe(false)
+    expect(readiness.READINESS_STAGES.DEPLOYMENT_READY).toBe(true)
+    expect(readiness.READINESS_STAGES.DEPLOYED).toBe(false)
+    expect(readiness.READINESS_STAGES.REAL_WORLD_AVAILABLE).toBe(false)
+  })
+
+  it('EXT-REAL-02-HEALTH-REPLAY-SHUTDOWN-1: distingue health vs autoridad real, rechaza attestationId duplicado y ejecuta graceful shutdown', async () => {
+    const server = new IndependentAttestationHttpServer({
+      service,
+      requireHttps: false,
+    })
+    const { url } = await server.start(0)
+
+    const guard = new ServiceAntiReplayGuard({ storageType: 'memory' })
+    expect(guard.antiReplayTier).toBe('IN_MEMORY')
+    const req1 = buildValidRequest()
+    const req2 = buildValidRequest()
+    guard.record(req1, { attestationId: 'att-dup-1' })
+    expect(() => guard.record(req2, { attestationId: 'att-dup-1' })).toThrow(
+      /SERVICE_ANTI_REPLAY_ATTESTATION_ID_DUPLICATED/
+    )
+
+    try {
+      const healthRes = await fetch(`${url}/health`)
+      expect(healthRes.status).toBe(200)
+      const healthJson = await healthRes.json()
+      expect(healthJson.status).toBe('HEALTHY')
+      expect(healthJson.processStarted).toBe(true)
+      expect(healthJson.httpServerRunning).toBe(true)
+      expect(healthJson.signingProviderConfigured).toBe(true)
+      expect(healthJson.productionSigningReady).toBe(false)
+      expect(healthJson.authorityRealWorldAvailable).toBe(false)
+
+      const shutdownEvents: string[] = []
+      const exitCodes: number[] = []
+      const handleShutdown = createGracefulShutdownHandler({
+        server,
+        logger: {
+          info(event: string) {
+            shutdownEvents.push(event)
+          },
+        },
+        onExit: (code: number) => exitCodes.push(code),
+      })
+
+      const [resA, resB] = await Promise.all([
+        handleShutdown('SIGTERM'),
+        handleShutdown('SIGINT'),
+      ])
+      expect(resA.closed).toBe(true)
+      expect(resB.closed).toBe(true)
+      expect(server.isShuttingDown).toBe(true)
+      expect(server.isRunning).toBe(false)
+      expect(exitCodes).toEqual([0])
+      expect(shutdownEvents).toEqual([
+        'SERVER_SHUTDOWN_INITIATED',
+        'SERVER_SHUTDOWN_COMPLETED',
+      ])
+    } finally {
+      if (server.isRunning) await server.close()
     }
   })
 })

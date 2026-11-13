@@ -37,4 +37,7 @@ export { IndependentAttestationAuthorityService } from './authority-service.mjs'
 
 export { IndependentAttestationHttpServer } from './http-server.mjs'
 
-export { createConfiguredAuthorityFromEnv } from './server.mjs'
+export {
+  createConfiguredAuthorityFromEnv,
+  createGracefulShutdownHandler,
+} from './server.mjs'
