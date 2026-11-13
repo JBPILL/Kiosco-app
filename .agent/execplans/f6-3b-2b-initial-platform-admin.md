@@ -71,3 +71,12 @@ Revisar y habilitar localmente el bootstrap de un SuperAdmin global nuevo y un p
 ## Resultado final
 
 PASS local (2026-10-14). El rehearsal terminó con Auth=2, kioscos=1, perfiles=2, SuperAdmins=1, Dueños=1; login de ambos; `provision-user/create_staff`, aislamiento RLS, rechazo de escalamiento y usuario sin perfil, `supervisor-pin` sin PIN configurado, checkout manual transaccional, reconciliación de venta/pago/stock/caja y replay bloqueado. Suite excluyendo `partialReturnPreparation.test.ts`: 183 archivos, 1715 aprobados, 1 omitido. Build, manifest y diff-check PASS. No hubo acceso remoto ni commit/push/deploy. La validación hosted permanece diferida.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR06, PR08, PR10 y PR11**.
+
+El bootstrap de identidad y sus smoke tests no cierran permisos fiscales ni transición productiva. Conservar las autorizaciones y el alcance exacto de la evidencia histórica.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

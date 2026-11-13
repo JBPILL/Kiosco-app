@@ -12,6 +12,10 @@
       "detalles_devolucion": "partial returns are out of pilot scope"
     },
     "rpcs": {
+      "capacidades_restauracion_backup": "Optional pilot-backup SQL module; integral restore UI remains blocked and engine requires complete installed capability before writes",
+      "restaurar_contacto_backup": "Optional supabase/pilot-backup/001_contacts_restore.sql; owner-only initial balances, integral UI gated",
+      "restaurar_producto_backup": "Optional supabase/pilot-backup/002_inventory_restore.sql; atomic product/provider/batches, integral UI gated",
+      "restaurar_lote_backup": "Optional supabase/pilot-backup/002_inventory_restore.sql; no additional physical stock, integral UI gated",
       "fn_renovar_suscripcion": "commercial subscriptions are blocked in strict pilot",
       "admin_eliminar_kiosco": "commercial superadmin is blocked in strict pilot",
       "fn_eliminar_kiosco": "commercial superadmin is blocked in strict pilot",

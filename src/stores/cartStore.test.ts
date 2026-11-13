@@ -25,6 +25,27 @@ function reiniciarCarrito() {
 
 const cart = () => useCartStore.getState()
 
+it('un crédito de envases compartidos no modifica vacíos locales al editar o cancelar el ticket', () => {
+  reiniciarCarrito()
+  const tipo = useEnvasesStore.getState().tiposEnvases[0]
+  useEnvasesStore.setState({ tiposEnvases: [{ ...tipo, stock_vacios: 10 }] })
+  cart().agregarDevolucionEnvase(tipo.nombre, 500, 2, tipo.id, true)
+  const virtual = cart().items[0].producto.id
+  expect(cart().items[0]).toMatchObject({ envase_compartido: true, subtotal: -1000 })
+  cart().actualizarCantidad(virtual, 3)
+  cart().quitarProducto(virtual)
+  expect(useEnvasesStore.getState().tiposEnvases[0].stock_vacios).toBe(10)
+  cart().agregarDevolucionEnvase(tipo.nombre, 500, 2, tipo.id, true)
+  cart().vaciarCarrito()
+  expect(useEnvasesStore.getState().tiposEnvases[0].stock_vacios).toBe(10)
+})
+
+it('no redondea silenciosamente el precio de un envase compartido', () => {
+  reiniciarCarrito()
+  expect(() => cart().agregarDevolucionEnvase('Vidrio', 500.25, 1, 'vidrio', true)).toThrow('incompatible')
+  expect(cart().items).toHaveLength(0)
+})
+
 it('un ticket con cobro guardado conserva artículos y ajuste hasta recuperar el cierre', () => {
   reiniciarCarrito()
   cart().agregarProducto(crearProducto(), 2)
@@ -108,6 +129,24 @@ describe('cartStore: productos y cantidades', () => {
     cart().agregarProducto(p)
     cart().agregarProducto(p)
     expect(cart().items[0].cantidad).toBe(2)
+  })
+
+  it.each(['agregar', 'sumar', 'editar'])('mantiene unidades enteras con stock histórico fraccionario al %s', (accion) => {
+    const p = crearProducto({ stock_actual: 5.013, precio_venta: 200 })
+    if (accion === 'agregar') cart().agregarProducto(p, 6)
+    else {
+      cart().agregarProducto(p, 5)
+      if (accion === 'sumar') cart().agregarProducto(p)
+      else cart().actualizarCantidad(p.id, 6)
+    }
+    expect(cart().items[0].cantidad).toBe(5)
+    expect(cart().items[0].subtotal).toBe(1000)
+    expect(cart().items[0].producto.stock_actual).toBe(5.013)
+  })
+
+  it('no convierte un remanente menor que una unidad en una unidad vendible', () => {
+    cart().agregarProducto(crearProducto({ stock_actual: 0.987 }))
+    expect(cart().items).toHaveLength(0)
   })
 
   it('permite vender con stock 0 o negativo (stock negativo controlado)', () => {

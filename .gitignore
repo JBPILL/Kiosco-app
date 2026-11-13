@@ -33,3 +33,26 @@ dist-ssr
 !.env.example
 /supabase/.temp/
 /supabase/.branches/
+
+# Material criptográfico y tickets de autenticación: nunca versionar.
+*.key
+*.pem
+*.p12
+*.pfx
+*.dpapi
+*.cms
+*LoginTicketResponse*.xml
+*loginTicketResponse*.xml
+*TRA*.cms*
+.fiscal-evidence/
+.fiscal-evidence-pr02/
+private/fiscal-evidence/
+
+# Autoridad Externa de Atestación: secretos KMS y estado anti-replay local
+!services/independent-attestation-authority/.env.example
+services/independent-attestation-authority/.env*
+!services/independent-attestation-authority/.env.example
+*.kms.json
+service-account*.json
+.attestation-replay/
+services/independent-attestation-authority/var/

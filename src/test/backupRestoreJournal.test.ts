@@ -1,0 +1,229 @@
+// @vitest-environment node
+import { afterEach, beforeEach, expect, it } from 'vitest'
+import { mkdtempSync, readFileSync, writeFileSync, rmSync, existsSync, linkSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join, resolve, dirname, basename } from 'node:path'
+import { pathToFileURL } from 'node:url'
+import { spawnSync } from 'node:child_process'
+import { createRestoreJournal, RestoreJournal, inspectRestoreJournal, executeNextRestoreAction, inspectUncertainRestoreAction, loadRestorePlan, valueHash, prepareRestoreRecoveryReview, settleReviewedRestoreRecovery } from '../../scripts/backup/restore-acceptance-engine.mjs'
+
+const plan=loadRestorePlan(), actors={OWNER:'11111111-1111-4111-8111-111111111111',CASHIER:'22222222-2222-4222-8222-222222222222'}
+const secret='SYNTHETIC_PRIVATE_WIRE_JWT_PASSWORD_BODY'
+let root:string, file:string, journal:RestoreJournal
+beforeEach(()=>{root=mkdtempSync(join(tmpdir(),'kiosko-restore-journal-'));file=join(root,'journal.jsonl');journal=createRestoreJournal(file,actors)})
+afterEach(()=>{if(dirname(root)!==resolve(tmpdir())||!basename(root).startsWith('kiosko-restore-journal-'))throw Error('Unsafe cleanup');rmSync(root,{recursive:true,force:true})})
+const actor=(role='OWNER')=>({role,authId:actors[role as keyof typeof actors],kioskId:plan.kioskId})
+it('rejects a hard-linked journal before reading or dispatching',()=>{
+  linkSync(file,join(root,'second-link'))
+  expect(()=>inspectRestoreJournal(journal)).toThrow('RESTORE_JOURNAL_FILE_INVALID')
+})
+function ack(rpc:string,p:Record<string,unknown>) {
+  const data=p.p_datos as Record<string,unknown>
+  if(rpc==='restaurar_producto_backup')return {producto:{...data,id:p.p_producto_id,kiosco_id:plan.kioskId},lotes:(data.lotes_backup as Record<string,unknown>[]).map(l=>({...l,kiosco_id:plan.kioskId}))}
+  const id=p.p_registro_id??p.p_lote_id
+  return {id,kiosco_id:plan.kioskId,creado:!String(data.nombre).includes('ACTUALIZADO'),saldo_conservado:String(data.nombre).includes('ACTUALIZADO'),registro:{...data,id,kiosco_id:plan.kioskId,saldo_deudor:0,saldo_pendiente:0}}
+}
+it('completes only the fixed 21 actions with explicit replay and correct role pins',async()=>{
+  const saved=new Map<string,{hash:string;data:ReturnType<typeof ack>}>()
+  const calls:string[]=[]
+  while(!inspectRestoreJournal(journal).complete){
+    const role=inspectRestoreJournal(journal).cursor>=18?'CASHIER':'OWNER'
+    await executeNextRestoreAction(journal,actor(role),async(rpc:string,p:Record<string,unknown>)=>{
+      calls.push(rpc)
+      if(role==='CASHIER')return {status:403,data:{code:'42501',message:secret}}
+      const key=String(p.p_operacion_id),hash=valueHash(p),prior=saved.get(key)
+      if(prior)return prior.hash===hash?{status:200,data:prior.data}:{status:400,data:{code:'22023',message:secret}}
+      const d=p.p_datos as {stock_actual?:number;lotes_backup?:{cantidad_actual:number}[]}
+      if(d.lotes_backup?.some(l=>l.cantidad_actual>(d.stock_actual??0)))return {status:400,data:{code:'22023',message:secret}}
+      const data=ack(rpc,p);saved.set(key,{hash,data});return {status:200,data}
+    })
+  }
+  expect(calls).toHaveLength(21);expect(saved.size).toBe(8)
+  expect(inspectRestoreJournal(new RestoreJournal(file))).toMatchObject({cursor:21,complete:true,pending:null})
+  expect(readFileSync(file,'utf8')).not.toContain(secret)
+  await expect(executeNextRestoreAction(journal,actor('CASHIER'),()=>{throw Error('must not dispatch')})).rejects.toThrow('RESTORE_PLAN_COMPLETE')
+})
+it('fsync intent precedes dispatch, ACK loss survives reload, reconciliation never resends',async()=>{
+  let calls=0,observed:Record<string,unknown>|null=null
+  await expect(executeNextRestoreAction(journal,actor(),async(rpc:string,p:Record<string,unknown>)=>{
+    calls++;const state=inspectRestoreJournal(new RestoreJournal(file));expect(state.pending).not.toBeNull()
+    observed={operationId:p.p_operacion_id,kioskId:plan.kioskId,actorAuthId:actors.OWNER,requestHash:state.pending!.requestHash,ack:ack(rpc,p)}
+    throw Error(secret)
+  })).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+  const reopened=new RestoreJournal(file)
+  expect(await inspectUncertainRestoreAction(reopened,async()=>observed)).toEqual({outcome:'ACK_MATCH_REQUIRES_REVIEW',mayResend:false,mayAdvance:false})
+  await expect(executeNextRestoreAction(reopened,actor(),async()=>{calls++;throw Error(secret)})).rejects.toThrow('RESTORE_RECONCILIATION_REQUIRED')
+  expect(calls).toBe(1);expect(readFileSync(file,'utf8')).not.toContain(secret)
+})
+it.each(['absent','wrong-actor','wrong-body','wrong-kiosk','wrong-ack','read-failed'])('uncertain outcome %s cannot advance',async mode=>{
+  await expect(executeNextRestoreAction(journal,actor(),async()=>{throw Error(secret)})).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+  const pending=inspectRestoreJournal(journal).pending!
+  const p=plan.steps[0].params
+  const observed={operationId:p.p_operacion_id,kioskId:plan.kioskId,actorAuthId:actors.OWNER,requestHash:pending.requestHash,ack:ack(plan.steps[0].rpc,p)}
+  if(mode==='wrong-actor')observed.actorAuthId=actors.CASHIER
+  if(mode==='wrong-body')observed.requestHash='0'.repeat(64)
+  if(mode==='wrong-kiosk')observed.kioskId='00000000-0000-0000-0000-000000000000'
+  if(mode==='wrong-ack')observed.ack.registro!.id='00000000-0000-0000-0000-000000000000'
+  const read=()=>{if(mode==='read-failed')throw Error(secret);return Promise.resolve(mode==='absent'?null:observed)}
+  if(mode==='read-failed')await expect(inspectUncertainRestoreAction(journal,read)).rejects.toThrow('RESTORE_RECONCILIATION_READ_FAILED')
+  else expect(await inspectUncertainRestoreAction(journal,read)).toMatchObject({outcome:mode==='absent'?'ABSENCE_NOT_PROOF_OF_NONEXECUTION':'CONFLICT_STOP',mayAdvance:false,mayResend:false})
+  expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+})
+it('disk failure before intent prevents dispatch; after ACK retains pending',async()=>{
+  const append=journal.append.bind(journal);let calls=0
+  journal.append=()=>{throw Error(secret)}
+  await expect(executeNextRestoreAction(journal,actor(),async()=>{calls++;return {}})).rejects.toThrow('RESTORE_JOURNAL_WRITE_FAILED')
+  expect(calls).toBe(0)
+  journal.append=(event:Record<string,unknown>)=>{if(event.kind==='CONFIRMED')throw Error(secret);append(event)}
+  await expect(executeNextRestoreAction(journal,actor(),async(rpc:string,p:Record<string,unknown>)=>{calls++;return {status:200,data:ack(rpc,p)}})).rejects.toThrow('RESTORE_JOURNAL_WRITE_FAILED')
+  expect(calls).toBe(1);expect(inspectRestoreJournal(new RestoreJournal(file)).pending).not.toBeNull()
+})
+it('concurrent click cannot dispatch a second action',async()=>{
+  let calls=0,release:((v:{status:number;data:ReturnType<typeof ack>})=>void)|undefined
+  const p=plan.steps[0].params
+  const first=executeNextRestoreAction(journal,actor(),()=>{calls++;return new Promise(done=>{release=done})})
+  await expect(executeNextRestoreAction(journal,actor(),async()=>{calls++;return {}})).rejects.toThrow('RESTORE_JOURNAL_BUSY')
+  release!({status:200,data:ack(plan.steps[0].rpc,p)});await first;expect(calls).toBe(1)
+})
+it.each(['wrong-role','wrong-auth','wrong-kiosk'])('rejects %s before intent or network',async mode=>{
+  const a=actor();if(mode==='wrong-role')a.role='CASHIER';if(mode==='wrong-auth')a.authId=actors.CASHIER;if(mode==='wrong-kiosk')a.kioskId='00000000-0000-0000-0000-000000000000'
+  await expect(executeNextRestoreAction(journal,a,()=>{throw Error(secret)})).rejects.toThrow('RESTORE_ACTOR_CHANGED')
+  expect(journal.records()).toHaveLength(1)
+})
+it.each(['truncated','changed-byte','blank-tail'])('journal damage %s fails closed',mode=>{
+  const data=readFileSync(file,'utf8');writeFileSync(file,mode==='truncated'?data.slice(0,-1):mode==='blank-tail'?data+'\n':data.replace(actors.OWNER,actors.CASHIER))
+  expect(()=>inspectRestoreJournal(journal)).toThrow(/RESTORE_JOURNAL_/)
+})
+it.each([
+  ['absent','RESTORE_JOURNAL_FILE_INVALID'],
+  ['empty','RESTORE_JOURNAL_TRUNCATED'],
+  ['invalid-json','RESTORE_JOURNAL_INVALID'],
+  ['invalid-hash','RESTORE_JOURNAL_CHAIN_INVALID'],
+  ['wrong-version','RESTORE_JOURNAL_HEADER_INVALID'],
+  ['wrong-plan','RESTORE_JOURNAL_HEADER_INVALID'],
+  ['wrong-uuid','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['wrong-actor','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['wrong-body-hash','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['impossible-state','RESTORE_JOURNAL_INTENT_INVALID'],
+  ['invalid-transition-no-intent','RESTORE_JOURNAL_ORDER_INVALID'],
+  ['invalid-transition-after-stop','RESTORE_JOURNAL_STOPPED']
+] as const)('journal state or corruption %s fails closed with %s', (mode, expectedError) => {
+  const initRecord=journal.records()[0]
+  const step0=plan.steps[0],p0=step0.params
+  const intentEvent={
+    kind:'INTENT',
+    index:0,
+    actorAuthId:actors.OWNER,
+    operationId:p0.p_operacion_id,
+    rpc:step0.rpc,
+    paramsHash:valueHash(p0),
+    requestHash:valueHash({tabla:p0.p_tabla,registro_id:p0.p_registro_id,datos:p0.p_datos,actor_auth_id:actors.OWNER})
+  }
+  const appendRaw=(events:Record<string,unknown>[])=>{
+    let previous='0'.repeat(64)
+    const lines=events.map((ev,sequence)=>{
+      const body={...ev,recordedAt:'2026-10-31T00:00:00.000Z',sequence,previous}
+      const hash=valueHash(body)
+      previous=hash
+      return JSON.stringify({...body,hash})
+    })
+    writeFileSync(file,lines.join('\n')+'\n')
+  }
+  const {sequence:_s,previous:_p,recordedAt:_a,hash:_h,...initEv}=initRecord
+  if(mode==='absent')rmSync(file)
+  else if(mode==='empty')writeFileSync(file,'')
+  else if(mode==='invalid-json')writeFileSync(file,'{not-json}\n')
+  else if(mode==='invalid-hash')writeFileSync(file,JSON.stringify({...initRecord,hash:'0'.repeat(64)})+'\n')
+  else if(mode==='wrong-version')appendRaw([{...initEv,version:2}])
+  else if(mode==='wrong-plan')appendRaw([{...initEv,planHash:'0'.repeat(64)}])
+  else if(mode==='wrong-uuid')appendRaw([initEv,{...intentEvent,operationId:'00000000-0000-4000-8000-000000000000'}])
+  else if(mode==='wrong-actor')appendRaw([initEv,{...intentEvent,actorAuthId:actors.CASHIER}])
+  else if(mode==='wrong-body-hash')appendRaw([initEv,{...intentEvent,requestHash:'0'.repeat(64)}])
+  else if(mode==='impossible-state')appendRaw([initEv,intentEvent,intentEvent])
+  else if(mode==='invalid-transition-no-intent')appendRaw([initEv,{kind:'CONFIRMED',index:0,operationId:p0.p_operacion_id,ackHash:'a'.repeat(64)}])
+  else if(mode==='invalid-transition-after-stop')appendRaw([initEv,intentEvent,{kind:'RECOVERED_CONFIRMED',index:0,operationId:p0.p_operacion_id,ackHash:'a'.repeat(64),reviewerAuthId:actors.OWNER,reviewHash:'b'.repeat(64)},{...intentEvent,index:1}])
+  expect(()=>inspectRestoreJournal(new RestoreJournal(file))).toThrow(expectedError)
+})
+it('observed conflict cannot prepare recovery review or transition to confirmed',async()=>{
+  await expect(executeNextRestoreAction(journal,actor(),async()=>{throw Error(secret)})).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+  const pending=inspectRestoreJournal(journal).pending!,p=plan.steps[0].params
+  const conflictObserved={operationId:pending.operationId,kioskId:plan.kioskId,actorAuthId:actors.CASHIER,requestHash:pending.requestHash,ack:ack(plan.steps[0].rpc,p)}
+  expect(await inspectUncertainRestoreAction(journal,async()=>conflictObserved)).toEqual({outcome:'CONFLICT_STOP',mayResend:false,mayAdvance:false})
+  await expect(prepareRestoreRecoveryReview(journal,async()=>conflictObserved)).rejects.toThrow('RESTORE_RECOVERY_NOT_CONFIRMED')
+  const validObserved={...conflictObserved,actorAuthId:actors.OWNER}
+  const review=await prepareRestoreRecoveryReview(journal,async()=>validObserved)
+  await expect(settleReviewedRestoreRecovery(journal,review,actor(),async()=>conflictObserved)).rejects.toThrow('RESTORE_RECOVERY_NOT_CONFIRMED')
+  expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+})
+it('real child exit after fsynced intent leaves a lock and cannot be restarted automatically',()=>{
+  const moduleUrl=pathToFileURL(resolve('scripts/backup/restore-acceptance-engine.mjs')).href
+  const code=`import {RestoreJournal,executeNextRestoreAction} from ${JSON.stringify(moduleUrl)};await executeNextRestoreAction(new RestoreJournal(${JSON.stringify(file)}),${JSON.stringify(actor())},async()=>{process.exit(71)});`
+  const child=spawnSync(process.execPath,['--input-type=module','-e',code],{encoding:'utf8',timeout:15000,windowsHide:true})
+  expect(child.status,child.stderr).toBe(71)
+  expect(existsSync(file+'.lock')).toBe(true)
+  expect(inspectRestoreJournal(new RestoreJournal(file)).pending).not.toBeNull()
+  expect(child.stdout+child.stderr).not.toContain(secret)
+})
+
+it('a changed ACK on the explicitly planned replay blocks all further actions',async()=>{
+  const p=plan.steps[0].params,reply=ack(plan.steps[0].rpc,p)
+  await executeNextRestoreAction(journal,actor(),async()=>({status:200,data:reply}))
+  await expect(executeNextRestoreAction(journal,actor(),async()=>({status:200,data:{...reply,untrusted:secret}}))).rejects.toThrow('RESTORE_REPLAY_ACK_MISMATCH')
+  expect(inspectRestoreJournal(new RestoreJournal(file))).toMatchObject({cursor:1})
+  expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+  expect(readFileSync(file,'utf8')).not.toContain(secret)
+})
+it.each([401,403,500,200])('unexpected HTTP/body %s leaves intent pending without leaking response',async status=>{
+  await expect(executeNextRestoreAction(journal,actor(),async()=>({status,data:{message:secret}}))).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+  expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+  expect(readFileSync(file,'utf8')).not.toContain(secret)
+})
+
+async function uncertainReviewFixture() {
+  await expect(executeNextRestoreAction(journal,actor(),async()=>{throw Error(secret)})).rejects.toThrow('RESTORE_OUTCOME_UNCERTAIN')
+  const pending=inspectRestoreJournal(journal).pending!,p=plan.steps[0].params
+  const observed={operationId:pending.operationId,kioskId:plan.kioskId,actorAuthId:actors.OWNER,requestHash:pending.requestHash,ack:ack(plan.steps[0].rpc,p)}
+  return {observed,review:await prepareRestoreRecoveryReview(journal,async()=>observed)}
+}
+it('reviewed recovery persists a confirmed ACK but stops all dispatch including planned replay after reload',async()=>{
+  const {observed,review}=await uncertainReviewFixture()
+  expect(JSON.stringify(review)).not.toContain('registro')
+  expect(await settleReviewedRestoreRecovery(journal,review,actor(),async()=>observed)).toEqual({confirmedIndex:0,stopped:true,mayResend:false,mayAdvance:false})
+  const reopened=new RestoreJournal(file)
+  expect(inspectRestoreJournal(reopened)).toMatchObject({cursor:1,pending:null,complete:false,stopped:true})
+  let calls=0
+  await expect(executeNextRestoreAction(reopened,actor(),async()=>{calls++;return {}})).rejects.toThrow('RESTORE_REVIEWED_RECOVERY_STOP')
+  await expect(settleReviewedRestoreRecovery(reopened,review,actor(),async()=>observed)).rejects.toThrow('RESTORE_NO_PENDING_INTENT')
+  expect(calls).toBe(0);expect(readFileSync(file,'utf8')).not.toContain(secret)
+})
+it.each(['hash','actor','expired','tip','changed-ack','absent','network','disk'])('reviewed recovery %s fails without advancement',async mode=>{
+  const fixture=await uncertainReviewFixture(),observed=fixture.observed,review={...fixture.review},reviewer=actor(),before=readFileSync(file,'utf8')
+  if(mode==='hash')review.ackHash='0'.repeat(64)
+  if(mode==='actor')reviewer.authId=actors.CASHIER
+  if(mode==='expired'||mode==='tip'){
+    const {reviewHash:_prior,...body}=review
+    if(mode==='expired')body.expiresAt='2000-01-01T00:00:00.000Z'
+    else body.journalTip='0'.repeat(64)
+    Object.assign(review,body,{reviewHash:valueHash(body)})
+  }
+  if(mode==='changed-ack')Object.assign(observed.ack,{extra:secret})
+  if(mode==='disk')journal.append=()=>{throw Error(secret)}
+  await expect(settleReviewedRestoreRecovery(journal,review,reviewer,async()=>{
+    if(mode==='network')throw Error(secret)
+    return mode==='absent'?null:observed
+  })).rejects.toThrow(/RESTORE_/)
+  expect(readFileSync(file,'utf8')).toBe(before)
+  expect(inspectRestoreJournal(journal)).toMatchObject({cursor:0,stopped:false})
+  expect(inspectRestoreJournal(journal).pending).not.toBeNull()
+})
+
+it('child crash after durable reviewed settlement reloads stopped and preserves lock for manual handling',async()=>{
+  const {observed,review}=await uncertainReviewFixture()
+  const moduleUrl=pathToFileURL(resolve('scripts/backup/restore-acceptance-engine.mjs')).href
+  const code=`import {RestoreJournal,settleReviewedRestoreRecovery} from ${JSON.stringify(moduleUrl)};const journal=new RestoreJournal(${JSON.stringify(file)});const append=journal.append.bind(journal);journal.append=event=>{append(event);process.exit(72)};await settleReviewedRestoreRecovery(journal,${JSON.stringify(review)},${JSON.stringify(actor())},async()=>(${JSON.stringify(observed)}));`
+  const child=spawnSync(process.execPath,['--input-type=module','-e',code],{encoding:'utf8',timeout:15000,windowsHide:true})
+  expect(child.status,child.stderr).toBe(72)
+  expect(inspectRestoreJournal(new RestoreJournal(file))).toMatchObject({pending:null,stopped:true,complete:false})
+  expect(existsSync(file+'.lock')).toBe(true)
+  expect(child.stdout+child.stderr+readFileSync(file,'utf8')).not.toContain(secret)
+})

@@ -1,0 +1,36 @@
+import { it,expect,vi } from 'vitest'
+import { createFiscalCreditTransportClient } from '../lib/fiscalCreditTransportClient'
+function fixture(){
+ const identity={authId:crypto.randomUUID(),kioskId:crypto.randomUUID(),saleId:crypto.randomUUID()},scope={saleId:identity.saleId,operationId:crypto.randomUUID(),requestId:crypto.randomUUID(),sha256:'a'.repeat(64)},body='b'.repeat(64),review=crypto.randomUUID()
+ const data=new Map<string,string>(),storage={getItem:(k:string)=>data.get(k)??null,setItem:(k:string,v:string)=>{data.set(k,v)}}
+ let state:Record<string,unknown>={version:1,venta_id:scope.saleId,operacion_origen_id:scope.operationId,solicitud_id:scope.requestId,propuesta_sha256:scope.sha256,cuerpo_sha256:body,estado:'SIN_INTENCION',incidencia:null,intento_id:null,revision_id:null,consulta_id:null,cae:null,vencimiento:null,codigos:[],resolucion_registrada:false,emision_habilitada:false,reintegro_habilitado:false,reposicion_habilitada:false}
+ let lock:Promise<unknown>=Promise.resolve();const exclusive=<T,>(work:()=>Promise<T>)=>{const result=lock.then(work);lock=result.catch(()=>{});return result}
+ const invoke=vi.fn<(command:Record<string,unknown>)=>Promise<unknown>>(async(command)=>{if(command.accion==='ESTADO_ENVIO_NC')return structuredClone(state);if(command.accion==='ENVIAR_NC'){state={...state,estado:'ENVIO_INCIERTO',intento_id:command.intento_id,revision_id:command.revision_id};throw new Error('ACK_LOST')}if(command.accion==='CONCILIAR_NC'){state={...state,consulta_id:command.consulta_id};throw new Error('QUERY_ACK_LOST')}throw new Error('UNEXPECTED_COMMAND')})
+ const blocked=vi.fn(()=>false),deps={storage,invoke,exclusive},client=createFiscalCreditTransportClient(identity,deps,blocked)
+ return {identity,scope,body,review,data,storage,invoke,blocked,deps,client,get:()=>state,set:(patch:Record<string,unknown>)=>{state={...state,...patch}}}
+}
+it('ACK perdido confirma intención por GET sin presentar CAE ni duplicar envío',async()=>{const f=fixture();expect(await f.client.send(f.scope,f.body,f.review)).toMatchObject({estado:'ENVIO_INCIERTO',cae:null});expect(f.client.pending()).toBeNull();await f.client.send(f.scope,f.body,f.review);expect(f.invoke.mock.calls.filter(([c])=>c.accion==='ENVIAR_NC')).toHaveLength(1)})
+it('POST positivo sin intención durable conserva identidad y falla cerrado',async()=>{const f=fixture();f.invoke.mockImplementation(async c=>c.accion==='ESTADO_ENVIO_NC'?structuredClone(f.get()):{estado:'AUTORIZADA',cae:'12345678901234'});await expect(f.client.send(f.scope,f.body,f.review)).rejects.toThrow();const saved=f.client.pending();expect(saved?.kind).toBe('ENVIAR');await expect(f.client.send(f.scope,f.body,f.review)).rejects.toThrow();expect(f.client.pending()).toEqual(saved);expect(f.invoke.mock.calls.filter(([c])=>c.accion==='ENVIAR_NC')).toHaveLength(1)})
+it('recuperación después de reload consulta solamente la identidad original',async()=>{const f=fixture();f.invoke.mockImplementation(async c=>c.accion==='ESTADO_ENVIO_NC'?structuredClone(f.get()):null);await expect(f.client.send(f.scope,f.body,f.review)).rejects.toThrow();const saved=f.client.pending()!;f.set({estado:'ENVIO_INCIERTO',intento_id:saved.attemptId,revision_id:saved.reviewId});const reloaded=createFiscalCreditTransportClient(f.identity,f.deps,f.blocked);f.invoke.mockClear();expect(await reloaded.recover()).toMatchObject({estado:'ENVIO_INCIERTO'});expect(f.invoke.mock.calls.every(([c])=>c.accion==='ESTADO_ENVIO_NC')).toBe(true);expect(reloaded.pending()).toBeNull()})
+it('consulta con ACK perdido recupera recibo no autorizante sin reenviar NC',async()=>{const f=fixture();await f.client.send(f.scope,f.body,f.review);f.invoke.mockClear();expect(await f.client.consult(f.scope)).toMatchObject({estado:'ENVIO_INCIERTO',cae:null});expect(f.client.pending()).toBeNull();expect(f.invoke.mock.calls.filter(([c])=>c.accion==='CONCILIAR_NC')).toHaveLength(1);expect(f.invoke.mock.calls.some(([c])=>c.accion==='ENVIAR_NC')).toBe(false)})
+it('doble click con exclusión compartida realiza un solo envío',async()=>{const f=fixture();const second=createFiscalCreditTransportClient(f.identity,f.deps,f.blocked);await Promise.all([f.client.send(f.scope,f.body,f.review),second.send(f.scope,f.body,f.review)]);expect(f.invoke.mock.calls.filter(([c])=>c.accion==='ENVIAR_NC')).toHaveLength(1)})
+it('otra operación no reemplaza pendiente y la consulta sin intención no muta',async()=>{const f=fixture();await expect(f.client.consult(f.scope)).rejects.toThrow();expect(f.invoke.mock.calls.every(([c])=>c.accion==='ESTADO_ENVIO_NC')).toBe(true);f.invoke.mockImplementation(async c=>c.accion==='ESTADO_ENVIO_NC'?structuredClone(f.get()):null);await expect(f.client.send(f.scope,f.body,f.review)).rejects.toThrow();const saved=f.client.pending();await expect(f.client.send({...f.scope,requestId:crypto.randomUUID()},f.body,f.review)).rejects.toThrow();expect(f.client.pending()).toEqual(saved)})
+it('fallo de persistencia impide POST y ningún identificador secreto se almacena',async()=>{const f=fixture();f.storage.setItem=()=>{};await expect(f.client.send(f.scope,f.body,f.review)).rejects.toThrow();expect(f.invoke.mock.calls.every(([c])=>c.accion==='ESTADO_ENVIO_NC')).toBe(true)})
+it('bloqueo de otra operación impide envío y retry',async()=>{const f=fixture();f.blocked.mockReturnValue(true);await expect(f.client.send(f.scope,f.body,f.review)).rejects.toThrow();await expect(f.client.retry()).rejects.toThrow();expect(f.invoke).not.toHaveBeenCalled()})
+it('renovar revisión para retry conserva cuerpo, intento y consulta originales',async()=>{
+ const f=fixture();f.invoke.mockImplementation(async c=>c.accion==='ESTADO_ENVIO_NC'?structuredClone(f.get()):null)
+ await expect(f.client.send(f.scope,f.body,f.review)).rejects.toThrow();const original=f.client.pending()!,renewed=crypto.randomUUID()
+ f.invoke.mockImplementation(async c=>{if(c.accion==='ESTADO_ENVIO_NC')return structuredClone(f.get());f.set({estado:'ENVIO_INCIERTO',intento_id:c.intento_id,revision_id:c.revision_id});return null})
+ await f.client.retry(renewed)
+ const commands=f.invoke.mock.calls.filter(([c])=>c.accion==='ENVIAR_NC').map(([c])=>c)
+ expect(commands).toHaveLength(2);expect(commands[1]).toMatchObject({intento_id:original.attemptId,consulta_id:original.queryId,revision_id:renewed,solicitud_id:original.requestId,propuesta_sha256:original.proposalSha})
+ expect(f.client.pending()).toBeNull()
+})
+it('retry de consulta conserva UUID y no puede convertirse en envío',async()=>{
+ const f=fixture();await f.client.send(f.scope,f.body,f.review)
+ f.invoke.mockImplementation(async c=>c.accion==='ESTADO_ENVIO_NC'?structuredClone(f.get()):null)
+ await expect(f.client.consult(f.scope)).rejects.toThrow();const original=f.client.pending()!;expect(original.kind).toBe('CONSULTAR')
+ await expect(f.client.retry(crypto.randomUUID())).rejects.toThrow();expect(f.client.pending()).toEqual(original)
+ f.invoke.mockClear();f.invoke.mockImplementation(async c=>{if(c.accion==='ESTADO_ENVIO_NC')return structuredClone(f.get());f.set({consulta_id:c.consulta_id});return null})
+ await f.client.retry();expect(f.invoke.mock.calls.filter(([c])=>c.accion==='CONCILIAR_NC')[0][0].consulta_id).toBe(original.queryId);expect(f.invoke.mock.calls.some(([c])=>c.accion==='ENVIAR_NC')).toBe(false)
+})

@@ -145,6 +145,7 @@ export interface Venta {
 }
 
 export interface DetalleVenta {
+  es_devolucion_envase?: boolean
   id: string
   venta_id: string
   producto_id: string
@@ -285,6 +286,7 @@ export interface ItemCarrito {
   precio_envase_unitario?: number
   es_devolucion_envase?: boolean
   tipo_envase_id?: string
+  envase_compartido?: boolean
 }
 
 // --- Promociones Automáticas (NxM, Volumen, Porcentaje) ---
