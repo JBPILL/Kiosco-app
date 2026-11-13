@@ -1,0 +1,14 @@
+{
+  "name": "kioskopos-independent-attestation-authority",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Isolated Independent Attestation Authority microservice for PR02-P0 cryptographic evidence verification.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "start": "node src/server.mjs"
+  },
+  "dependencies": {}
+}

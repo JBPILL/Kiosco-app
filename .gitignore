@@ -47,3 +47,12 @@ dist-ssr
 .fiscal-evidence/
 .fiscal-evidence-pr02/
 private/fiscal-evidence/
+
+# Autoridad Externa de Atestación: secretos KMS y estado anti-replay local
+!services/independent-attestation-authority/.env.example
+services/independent-attestation-authority/.env*
+!services/independent-attestation-authority/.env.example
+*.kms.json
+service-account*.json
+.attestation-replay/
+services/independent-attestation-authority/var/

@@ -3688,6 +3688,7 @@ export function evaluateExternalAuthorityReadiness(options = {}) {
 
   return Object.freeze({
     AUTHORITY_ADAPTER_IMPLEMENTED: true,
+    EXTERNAL_AUTHORITY_SERVICE_IMPLEMENTED: true,
     LOCAL_TEST_AUTHORITY_AVAILABLE: true,
     EXTERNAL_AUTHORITY_ENDPOINT_CONFIGURED: isConfigured,
     EXTERNAL_AUTHORITY_ENDPOINT_REACHABLE: false,
