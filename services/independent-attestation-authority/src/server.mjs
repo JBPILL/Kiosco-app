@@ -5,12 +5,47 @@ import {
   SERVICE_ENVIRONMENTS,
 } from './attestation-policy.mjs'
 import {
+  AwsKmsSigningProvider,
+  GcpKmsSigningProvider,
   ProductionKmsSigningProvider,
   TestSigningProvider,
 } from './signing-providers.mjs'
 import { ServiceAntiReplayGuard } from './service-anti-replay.mjs'
 import { IndependentAttestationAuthorityService } from './authority-service.mjs'
 import { IndependentAttestationHttpServer } from './http-server.mjs'
+import {
+  createMtlsClientAuthVerifier,
+  createOidcJwtClientAuthVerifier,
+  createSimulatedClientAuthVerifier,
+} from './client-auth.mjs'
+import {
+  isRealIntegrationDryRun,
+  isRealIntegrationEnabled,
+  resolveKmsEnvConfig,
+} from './real-integration.mjs'
+import { safeParseStrictJson } from './contract.mjs'
+
+function parseStrictJsonArray(rawValue) {
+  const wrapped = safeParseStrictJson(`{"items":${String(rawValue).trim()}}`)
+  return wrapped.items
+}
+
+function parseListEnv(rawValue, fallback = undefined) {
+  if (rawValue === undefined || rawValue === null) return fallback
+  const trimmed = String(rawValue).trim()
+  if (!trimmed) return fallback
+  if (trimmed.startsWith('[')) {
+    const parsed = parseStrictJsonArray(trimmed)
+    if (!Array.isArray(parsed)) {
+      throw new Error('ATTESTATION_ENV_LIST_INVALID: Se esperaba un arreglo JSON válido')
+    }
+    return parsed.map((item) => String(item).trim()).filter(Boolean)
+  }
+  return trimmed
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
 
 const ANTI_REPLAY_MODE_ALIASES = Object.freeze({
   memory: 'memory',
@@ -82,9 +117,17 @@ function normalizeAntiReplayStorage(env, serviceEnvironment) {
 
 /**
  * Construye el servicio y servidor HTTP a partir de variables de entorno explícitas.
- * Falla cerrado ante configuraciones ambiguas, inválidas o intentos de usar TEST_SIGNER en STAGING/PRODUCTION.
+ * Falla cerrado ante configuraciones ambiguas, inválidas, ausencia de clientAuthVerifier en modo protegido,
+ * o intentos de usar TEST_SIGNER / auth simulada en STAGING/PRODUCTION.
  * @param {Record<string, string | undefined>} [env=process.env]
- * @param {{ kmsClient?: object, distributedStore?: object, tlsOptions?: object, logger?: object }} [deps={}]
+ * @param {{
+ *   kmsClient?: object,
+ *   distributedStore?: object,
+ *   clientAuthVerifier?: unknown,
+ *   tlsOptions?: object,
+ *   logger?: object,
+ *   now?: (() => number | string | Date) | number | string | Date
+ * }} [deps={}]
  */
 export function createConfiguredAuthorityFromEnv(env = process.env, deps = {}) {
   const serviceEnvironment = env.ATTESTATION_ENVIRONMENT
@@ -113,24 +156,73 @@ export function createConfiguredAuthorityFromEnv(env = process.env, deps = {}) {
       ? 'kioskopos-independent-attestation-authority-prod'
       : 'test-independent-attestation-authority-v1')
 
-  const configuredKeyId = env.ATTESTATION_PUBLIC_KEY_ID || env.ATTESTATION_KEY_ID
-  const configuredKeyVersion =
-    env.ATTESTATION_KMS_KEY_VERSION || env.ATTESTATION_KMS_KEY_ID
+  const kmsCfg = resolveKmsEnvConfig(env)
+  const configuredKeyId = kmsCfg.keyId
+  const configuredKeyVersion = kmsCfg.keyVersionName
+  const configuredKmsPublicKeySpki = kmsCfg.publicKeySpki
+  const configuredKmsProviderKind = kmsCfg.cloudProvider
+  const configuredKmsEndpoint = kmsCfg.kmsEndpoint || undefined
 
-  const signingProvider =
-    providerKind === 'PRODUCTION_KMS_SIGNER'
-      ? new ProductionKmsSigningProvider({
-          authorityId,
-          keyId: configuredKeyId,
-          publicKeySpki: env.ATTESTATION_PUBLIC_KEY_SPKI,
-          keyVersionName: configuredKeyVersion,
-          kmsClient: deps.kmsClient,
-        })
-      : new TestSigningProvider({
-          authorityId,
-        })
+  let signingProvider
+  if (providerKind === 'PRODUCTION_KMS_SIGNER') {
+    if (configuredKmsProviderKind === 'AWS_KMS') {
+      signingProvider = new AwsKmsSigningProvider({
+        authorityId,
+        keyId: configuredKeyId,
+        publicKeySpki: configuredKmsPublicKeySpki,
+        kmsKeyArn: configuredKeyVersion,
+        region: kmsCfg.region || undefined,
+        awsSigningAlgorithm: kmsCfg.awsSigningAlgorithm,
+        kmsEndpoint: configuredKmsEndpoint,
+        awsKmsClient: /** @type {any} */ (deps).awsKmsClient,
+        kmsClient: /** @type {any} */ (deps.kmsClient),
+      })
+    } else if (configuredKmsProviderKind === 'GCP_KMS') {
+      signingProvider = new GcpKmsSigningProvider({
+        authorityId,
+        keyId: configuredKeyId,
+        publicKeySpki: configuredKmsPublicKeySpki,
+        keyVersionName: configuredKeyVersion,
+        kmsEndpoint: configuredKmsEndpoint,
+        gcpKmsClient: /** @type {any} */ (deps).gcpKmsClient,
+        kmsClient: /** @type {any} */ (deps.kmsClient),
+      })
+    } else if (
+      configuredKmsProviderKind === '' ||
+      configuredKmsProviderKind === 'EXTERNAL_KMS' ||
+      configuredKmsProviderKind === 'GENERIC_KMS'
+    ) {
+      signingProvider = new ProductionKmsSigningProvider({
+        authorityId,
+        keyId: configuredKeyId,
+        publicKeySpki: configuredKmsPublicKeySpki,
+        keyVersionName: configuredKeyVersion,
+        kmsEndpoint: configuredKmsEndpoint,
+        kmsClient: deps.kmsClient,
+      })
+    } else {
+      throw new Error(
+        `ATTESTATION_KMS_PROVIDER_INVALID: Proveedor KMS '${configuredKmsProviderKind}' no soportado`
+      )
+    }
+  } else {
+    signingProvider = new TestSigningProvider({
+      authorityId,
+    })
+  }
 
   const storageType = normalizeAntiReplayStorage(env, serviceEnvironment)
+  const rawLeaseTtl = env.ATTESTATION_RESERVATION_LEASE_TTL_MS
+  let leaseTtlMs
+  if (rawLeaseTtl !== undefined && rawLeaseTtl !== '') {
+    const n = Number(rawLeaseTtl)
+    if (!Number.isSafeInteger(n) || n <= 0) {
+      throw new Error(
+        `ATTESTATION_LEASE_TTL_INVALID: ATTESTATION_RESERVATION_LEASE_TTL_MS inválido '${rawLeaseTtl}'`
+      )
+    }
+    leaseTtlMs = n
+  }
 
   const antiReplayGuard = new ServiceAntiReplayGuard({
     storageType,
@@ -139,15 +231,163 @@ export function createConfiguredAuthorityFromEnv(env = process.env, deps = {}) {
         ? env.ATTESTATION_ANTI_REPLAY_FILE ||
           '/var/run/attestation/anti-replay.json'
         : undefined,
-    distributedStore: deps.distributedStore,
+    nodeId: env.ATTESTATION_NODE_ID || undefined,
+    leaseTtlMs,
+    distributedStore: /** @type {any} */ (deps.distributedStore),
+    now: deps.now,
   })
+
+  // Resolución estricta de clientAuthVerifier (cableado explícito, sin fallback silencioso en modo protegido)
+  let resolvedClientAuthVerifier = deps.clientAuthVerifier || undefined
+  const authMode = (env.ATTESTATION_CLIENT_AUTH_MODE || '').trim()
+  let resolvedTlsOptions = deps.tlsOptions ? { ...deps.tlsOptions } : undefined
+
+  if (!resolvedClientAuthVerifier && authMode === 'SIMULATED_TEST_ONLY') {
+    if (
+      serviceEnvironment === SERVICE_ENVIRONMENTS.PRODUCTION ||
+      serviceEnvironment === SERVICE_ENVIRONMENTS.STAGING
+    ) {
+      throw new Error(
+        `SIMULATED_CLIENT_AUTH_FORBIDDEN_IN_${serviceEnvironment}: Prohibido usar ATTESTATION_CLIENT_AUTH_MODE=SIMULATED_TEST_ONLY en '${serviceEnvironment}'`
+      )
+    }
+    let parsedTokens = {}
+    if (env.ATTESTATION_SIMULATED_CLIENT_TOKENS_JSON) {
+      try {
+        parsedTokens = safeParseStrictJson(env.ATTESTATION_SIMULATED_CLIENT_TOKENS_JSON)
+      } catch {
+        throw new Error(
+          'ATTESTATION_SIMULATED_CLIENT_TOKENS_INVALID: JSON inválido en ATTESTATION_SIMULATED_CLIENT_TOKENS_JSON'
+        )
+      }
+    }
+    resolvedClientAuthVerifier = createSimulatedClientAuthVerifier({
+      validTokens: parsedTokens,
+    })
+  } else if (!resolvedClientAuthVerifier && authMode === 'OIDC_JWT') {
+    const issuers = parseListEnv(env.ATTESTATION_OIDC_ISSUER, [])
+    const audiences = parseListEnv(env.ATTESTATION_OIDC_AUDIENCE, [])
+    const allowedAlgorithms = parseListEnv(
+      env.ATTESTATION_OIDC_ALLOWED_ALGORITHMS
+    )
+    const allowedClientIds = parseListEnv(
+      env.ATTESTATION_OIDC_ALLOWED_CLIENT_IDS
+    )
+    const jwks = env.ATTESTATION_OIDC_JWKS_JSON
+      ? safeParseStrictJson(env.ATTESTATION_OIDC_JWKS_JSON)
+      : undefined
+    const allowInsecureLocalhostHttp = parseStrictBooleanEnv(
+      env.ATTESTATION_OIDC_ALLOW_INSECURE_LOCALHOST,
+      'ATTESTATION_OIDC_ALLOW_INSECURE_LOCALHOST'
+    )
+    const realIntegration = isRealIntegrationEnabled(env)
+    const dryRun = isRealIntegrationDryRun(env)
+    const allowedJwksHosts =
+      typeof env.ATTESTATION_OIDC_ALLOWED_JWKS_HOSTS === 'string'
+        ? env.ATTESTATION_OIDC_ALLOWED_JWKS_HOSTS.split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+        : undefined
+    resolvedClientAuthVerifier = createOidcJwtClientAuthVerifier({
+      issuer: issuers,
+      audience: audiences,
+      jwksUri: env.ATTESTATION_OIDC_JWKS_URI || undefined,
+      allowedJwksHosts,
+      jwks,
+      jwksFetcher: deps.oidcJwksFetcher,
+      allowedAlgorithms,
+      allowedClientIds,
+      allowInsecureLocalhostHttp,
+      allowNetworkFetch:
+        !dryRun &&
+        (deps.oidcAllowNetworkFetch !== undefined
+          ? Boolean(deps.oidcAllowNetworkFetch)
+          : realIntegration),
+      realOidcEnabled: realIntegration && !dryRun,
+      dryRun,
+      now: deps.now,
+    })
+  } else if (!resolvedClientAuthVerifier && authMode === 'MTLS') {
+    const trustedCaPem = String(
+      env.ATTESTATION_MTLS_TRUSTED_CA_PEM || ''
+    ).replace(/\\n/g, '\n')
+    let trustedClients = []
+    if (env.ATTESTATION_MTLS_TRUSTED_CLIENTS_JSON) {
+      try {
+        trustedClients = parseStrictJsonArray(
+          env.ATTESTATION_MTLS_TRUSTED_CLIENTS_JSON
+        )
+      } catch {
+        throw new Error(
+          'CLIENT_AUTH_MTLS_CONFIG_INVALID: JSON inválido en ATTESTATION_MTLS_TRUSTED_CLIENTS_JSON'
+        )
+      }
+    }
+    resolvedClientAuthVerifier = createMtlsClientAuthVerifier({
+      trustedCaPem,
+      trustedClients,
+      now: deps.now,
+    })
+    if (resolvedTlsOptions) {
+      if (resolvedTlsOptions.requestCert === false) {
+        throw new Error(
+          'CLIENT_AUTH_MTLS_CONFIG_INVALID: En modo MTLS no se puede deshabilitar tlsOptions.requestCert'
+        )
+      }
+      resolvedTlsOptions = {
+        ...resolvedTlsOptions,
+        ca: resolvedTlsOptions.ca || trustedCaPem,
+        requestCert: true,
+        // Mantiene default fail-closed en socket TLS; si el llamador pasa `rejectUnauthorized: false`
+        // para devolver respuestas HTTP 401/403 JSON estructuradas, `createMtlsClientAuthVerifier` igualmente
+        // exige `ts.clientCertificateAuthorized === true` y rechaza todo certificado no confiable.
+        rejectUnauthorized:
+          resolvedTlsOptions.rejectUnauthorized !== undefined
+            ? resolvedTlsOptions.rejectUnauthorized
+            : true,
+      }
+    }
+  } else if (
+    authMode &&
+    authMode !== 'SIMULATED_TEST_ONLY' &&
+    authMode !== 'INJECTED_VERIFIER' &&
+    authMode !== 'OIDC_JWT' &&
+    authMode !== 'MTLS'
+  ) {
+    throw new Error(
+      `ATTESTATION_CLIENT_AUTH_MODE_INVALID: Modo '${authMode}' no soportado en esta fase`
+    )
+  }
 
   assertServiceEnvironmentIsolation({
     serviceEnvironment,
     signingProvider,
     antiReplayGuard,
+    clientAuthVerifier:
+      /** @type {any} */ (resolvedClientAuthVerifier) || undefined,
     env,
   })
+
+  const protectedModeEnv =
+    env.ATTESTATION_PROTECTED_MODE !== undefined &&
+    env.ATTESTATION_PROTECTED_MODE !== ''
+      ? parseStrictBooleanEnv(
+          env.ATTESTATION_PROTECTED_MODE,
+          'ATTESTATION_PROTECTED_MODE'
+        )
+      : undefined
+
+  const requireSignedGoGrant =
+    env.ATTESTATION_REQUIRE_SIGNED_GO_GRANT !== undefined &&
+    env.ATTESTATION_REQUIRE_SIGNED_GO_GRANT !== ''
+      ? parseStrictBooleanEnv(
+          env.ATTESTATION_REQUIRE_SIGNED_GO_GRANT,
+          'ATTESTATION_REQUIRE_SIGNED_GO_GRANT'
+        )
+      : undefined
+
+  const attestationResponseVersion =
+    env.ATTESTATION_RESPONSE_VERSION === '1.1' ? '1.1' : '1.0'
 
   const safeLogger =
     deps.logger ||
@@ -164,9 +404,17 @@ export function createConfiguredAuthorityFromEnv(env = process.env, deps = {}) {
       /** @type {'TEST' | 'DEVELOPMENT' | 'STAGING' | 'PRODUCTION'} */ (
         serviceEnvironment
       ),
+    protectedMode: protectedModeEnv,
+    requireSignedGoGrant,
     authorityId,
+    trustedGoAuthorityId: env.ATTESTATION_GO_AUTHORITY_ID || undefined,
     trustedGoKeyId: env.ATTESTATION_GO_KEY_ID || undefined,
     trustedGoPublicKeySpki: env.ATTESTATION_GO_PUBLIC_KEY_SPKI || undefined,
+    expectedProjectRef: env.ATTESTATION_ALLOWED_PROJECT_REF || undefined,
+    expectedCommitSha: env.ATTESTATION_ALLOWED_COMMIT_SHA || undefined,
+    attestationResponseVersion,
+    clientAuthVerifier: resolvedClientAuthVerifier,
+    now: deps.now,
     env,
     logger: safeLogger,
   })
@@ -184,6 +432,13 @@ export function createConfiguredAuthorityFromEnv(env = process.env, deps = {}) {
     env.ATTESTATION_MAX_BODY_BYTES,
     1048576
   )
+  const allowedHosts =
+    typeof env.ATTESTATION_ALLOWED_HOSTS === 'string' &&
+    env.ATTESTATION_ALLOWED_HOSTS.trim().length > 0
+      ? env.ATTESTATION_ALLOWED_HOSTS.split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : undefined
 
   const server = new IndependentAttestationHttpServer({
     service,
@@ -191,7 +446,8 @@ export function createConfiguredAuthorityFromEnv(env = process.env, deps = {}) {
     requireHttps,
     trustProxyHttps,
     maxBodySizeBytes,
-    tlsOptions: deps.tlsOptions,
+    allowedHosts,
+    tlsOptions: resolvedTlsOptions,
     logger: safeLogger,
   })
 

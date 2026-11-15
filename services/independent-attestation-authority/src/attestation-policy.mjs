@@ -7,8 +7,10 @@ export const SERVICE_ENVIRONMENTS = Object.freeze({
   PRODUCTION: 'PRODUCTION',
 })
 
+const PR02_P0_SCOPE_VALUE = 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
+
 export const ALLOWED_EXECUTION_SCOPES = Object.freeze([
-  'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION',
+  PR02_P0_SCOPE_VALUE,
 ])
 
 export const ALLOWED_ENVIRONMENTS = Object.freeze(['HOMOLOGACION'])
@@ -42,6 +44,7 @@ export function assertServiceEnvironmentIsolation(params) {
     serviceEnvironment,
     signingProvider,
     antiReplayGuard,
+    clientAuthVerifier,
     env = process.env,
   } = params || {}
 
@@ -67,7 +70,7 @@ export function assertServiceEnvironmentIsolation(params) {
     )
   }
 
-  // En STAGING o PRODUCTION se exige configuración explícita de KMS y almacenamiento durable
+  // En STAGING o PRODUCTION se exige configuración explícita de KMS, almacenamiento durable y auth no simulada
   if (
     serviceEnvironment === SERVICE_ENVIRONMENTS.PRODUCTION ||
     serviceEnvironment === SERVICE_ENVIRONMENTS.STAGING
@@ -102,6 +105,19 @@ export function assertServiceEnvironmentIsolation(params) {
         `DURABLE_ANTI_REPLAY_REQUIRED: El entorno '${serviceEnvironment}' prohíbe anti-replay en memoria volátil`
       )
     }
+
+    if (
+      clientAuthVerifier &&
+      (clientAuthVerifier.simulated === true ||
+        clientAuthVerifier.trustScope === 'TEST_ONLY' ||
+        clientAuthVerifier.verifierKind === 'SIMULATED_TEST_AUTH_VERIFIER' ||
+        (typeof clientAuthVerifier.isProductionAuthVerifier === 'function' &&
+          !clientAuthVerifier.isProductionAuthVerifier()))
+    ) {
+      throw new Error(
+        `SIMULATED_CLIENT_AUTH_FORBIDDEN_IN_${serviceEnvironment}: El entorno '${serviceEnvironment}' prohíbe verificadores de autenticación simulados o no aptos para producción`
+      )
+    }
   }
 
   return serviceEnvironment
@@ -112,45 +128,83 @@ export function assertServiceEnvironmentIsolation(params) {
  * La autoridad externa rechaza atestar cualquier alcance que no sea exclusivamente
  * la recolección oficial de evidencia P0 en homologación.
  * @param {Record<string, any>} requestPkg
+ * @param {{ expectedProjectRef?: string | null, expectedCommitSha?: string | null }} [policyOptions={}]
  * @returns {true}
  */
-export function validateAttestationPolicy(requestPkg) {
-  if (!requestPkg || typeof requestPkg !== 'object') {
+export function validateAttestationPolicy(requestPkg, policyOptions = {}) {
+  if (!requestPkg || typeof requestPkg !== 'object' || Array.isArray(requestPkg)) {
     throw new Error('ATTESTATION_POLICY_ERROR: Request nulo o no estructurado')
   }
 
   const scope = requestPkg.executionScope
+  if (typeof scope === 'string' && scope !== PR02_P0_SCOPE_VALUE) {
+    for (const token of FORBIDDEN_SCOPE_TOKENS) {
+      if (scope.toUpperCase().includes(token)) {
+        throw new Error(
+          `ATTESTATION_POLICY_FORBIDDEN_SCOPE: Scope '${scope}' contiene token prohibido '${token}'`
+        )
+      }
+    }
+  }
+
   if (!ALLOWED_EXECUTION_SCOPES.includes(scope)) {
     throw new Error(
       `ATTESTATION_POLICY_SCOPE_REJECTED: executionScope '${scope}' no está permitido. Solo se autoriza '${ALLOWED_EXECUTION_SCOPES.join(', ')}'`
     )
   }
 
-  for (const token of FORBIDDEN_SCOPE_TOKENS) {
-    if (
-      typeof scope === 'string' &&
-      scope.toUpperCase().includes(token) &&
-      scope !== 'PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'
-    ) {
-      throw new Error(
-        `ATTESTATION_POLICY_FORBIDDEN_SCOPE: Scope contiene token prohibido '${token}'`
-      )
-    }
-  }
-
   const env = requestPkg.environment
-  if (!ALLOWED_ENVIRONMENTS.includes(env)) {
-    throw new Error(
-      `ATTESTATION_POLICY_ENVIRONMENT_REJECTED: environment '${env}' no está permitido. Solo se autoriza '${ALLOWED_ENVIRONMENTS.join(', ')}'`
-    )
-  }
-
   if (
     typeof env === 'string' &&
     (env.toUpperCase() === 'PRODUCTION' || env.toUpperCase() === 'PRODUCCION')
   ) {
     throw new Error(
       'ATTESTATION_POLICY_ENVIRONMENT_REJECTED: La autoridad independiente rechaza atestar entorno de PRODUCCION en esta fase'
+    )
+  }
+
+  if (!ALLOWED_ENVIRONMENTS.includes(env)) {
+    throw new Error(
+      `ATTESTATION_POLICY_ENVIRONMENT_REJECTED: environment '${env}' no está permitido. Solo se autoriza '${ALLOWED_ENVIRONMENTS.join(', ')}'`
+    )
+  }
+
+  // Rechazar identificadores ambiguos (espacios extremos, saltos de línea, no NFC)
+  for (const field of ['requestId', 'processId', 'authorizationId', 'projectRef']) {
+    const val = requestPkg[field]
+    if (val !== undefined) {
+      if (
+        typeof val !== 'string' ||
+        val.trim().length === 0 ||
+        val !== val.trim() ||
+        /[\r\n\t\x00-\x1f\x7f]/.test(val) ||
+        val.normalize('NFC') !== val
+      ) {
+        throw new Error(
+          `ATTESTATION_POLICY_AMBIGUOUS_IDENTIFIER: Campo '${field}' inválido o con caracteres/espacios ambiguos`
+        )
+      }
+    }
+  }
+
+  if (
+    policyOptions.expectedProjectRef &&
+    requestPkg.projectRef !== undefined &&
+    requestPkg.projectRef !== policyOptions.expectedProjectRef
+  ) {
+    throw new Error(
+      `ATTESTATION_POLICY_PROJECT_MISMATCH: projectRef '${requestPkg.projectRef}' no coincide con '${policyOptions.expectedProjectRef}'`
+    )
+  }
+
+  if (
+    policyOptions.expectedCommitSha &&
+    typeof requestPkg.commitSha === 'string' &&
+    requestPkg.commitSha.toLowerCase() !==
+      String(policyOptions.expectedCommitSha).toLowerCase()
+  ) {
+    throw new Error(
+      `ATTESTATION_POLICY_COMMIT_MISMATCH: commitSha '${requestPkg.commitSha}' no coincide con '${policyOptions.expectedCommitSha}'`
     )
   }
 

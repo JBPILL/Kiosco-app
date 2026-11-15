@@ -1,5 +1,6 @@
 // @ts-check
 import crypto from 'node:crypto'
+import { assertNoClientEvidenceElevation } from './evidence-integrity.mjs'
 
 export const CONTRACT_VERSION = '1.0'
 export const SCHEMA_VERSION = '1.0'
@@ -37,8 +38,10 @@ export const ATTESTATION_REQUEST_ALLOWED_KEYS = new Set([
   'executionScope',
   'commitSha',
   'environment',
+  'projectRef',
   'authorizationId',
   'goAuthorizationDocumentSha256',
+  'goAuthorizationGrant',
   'manifestSha256',
   'rawSoapArtifacts',
   'normalizedArtifacts',
@@ -47,6 +50,44 @@ export const ATTESTATION_REQUEST_ALLOWED_KEYS = new Set([
   'collectorIdentity',
   'requestSha256',
   'canonicalPayloadSha256',
+])
+
+export const ATTESTATION_RESPONSE_ALLOWED_KEYS_V1_0 = new Set([
+  'schemaVersion',
+  'responseId',
+  'attestationId',
+  'authorityType',
+  'authorityId',
+  'keyId',
+  'algorithm',
+  'requestId',
+  'requestSha256',
+  'manifestSha256',
+  'processId',
+  'executionScope',
+  'commitSha',
+  'environment',
+  'authorizationId',
+  'goAuthorizationDocumentSha256',
+  'rawSoapArtifacts',
+  'normalizedArtifacts',
+  'consultadoEn',
+  'issuedAt',
+  'expiresAt',
+  'signerOrigin',
+  'attestationPayloadSha256',
+  'signature',
+])
+
+export const ATTESTATION_RESPONSE_ALLOWED_KEYS_V1_1 = new Set([
+  ...ATTESTATION_RESPONSE_ALLOWED_KEYS_V1_0,
+  'projectRef',
+  'goIssuerKeyId',
+  'goGrantSha256',
+  'authenticatedClientId',
+  'evidenceLevel',
+  'rawSoapVerified',
+  'arcaOriginVerified',
 ])
 
 export const ARTIFACT_ALLOWED_KEYS = new Set(['name', 'sha256'])
@@ -306,6 +347,12 @@ export function assertNoPrototypePollution(
         `PROTOTYPE_POLLUTION_REJECTED: Propiedad prohibida '${key}' detectada en objeto`
       )
     }
+    const desc = Object.getOwnPropertyDescriptor(value, key)
+    if (desc && (typeof desc.get === 'function' || typeof desc.set === 'function')) {
+      throw new Error(
+        `PROTOTYPE_POLLUTION_REJECTED: Propiedad accessor (getter/setter) prohibida '${key}'`
+      )
+    }
     assertNoPrototypePollution(
       /** @type {Record<string, unknown>} */ (value)[key],
       depth + 1,
@@ -394,10 +441,29 @@ export function serializeCanonicalAttestationResponsePayload(res) {
     executionScope: res.executionScope,
     commitSha: res.commitSha ? String(res.commitSha) : '',
     environment: res.environment,
+    ...(res.schemaVersion === '1.1' && res.projectRef !== undefined
+      ? { projectRef: res.projectRef }
+      : {}),
     authorizationId: res.authorizationId,
     goAuthorizationDocumentSha256: res.goAuthorizationDocumentSha256
       ? String(res.goAuthorizationDocumentSha256)
       : '',
+    ...(res.schemaVersion === '1.1'
+      ? {
+          ...(res.goIssuerKeyId !== undefined
+            ? { goIssuerKeyId: res.goIssuerKeyId }
+            : {}),
+          ...(res.goGrantSha256 !== undefined
+            ? { goGrantSha256: res.goGrantSha256 }
+            : {}),
+          ...(res.authenticatedClientId !== undefined
+            ? { authenticatedClientId: res.authenticatedClientId }
+            : {}),
+          evidenceLevel: res.evidenceLevel,
+          rawSoapVerified: res.rawSoapVerified,
+          arcaOriginVerified: res.arcaOriginVerified,
+        }
+      : {}),
     rawSoapArtifacts: Array.isArray(res.rawSoapArtifacts)
       ? res.rawSoapArtifacts.map((a) => ({
           name: a && a.name ? String(a.name) : '',
@@ -456,6 +522,7 @@ export function validateAttestationRequestStrict(pkg) {
   }
 
   assertNoPrototypePollution(pkg)
+  assertNoClientEvidenceElevation(pkg)
 
   // Allowlist estricta de propiedades de nivel superior
   for (const key of Object.keys(pkg)) {
@@ -476,19 +543,21 @@ export function validateAttestationRequestStrict(pkg) {
   if (
     !pkg.requestId ||
     typeof pkg.requestId !== 'string' ||
-    pkg.requestId.trim().length === 0
+    pkg.requestId.trim().length === 0 ||
+    pkg.requestId !== pkg.requestId.trim()
   ) {
     throw new Error(
-      'ATTESTATION_REQUEST_ID_REQUIRED: Se requiere requestId no vacío'
+      'ATTESTATION_REQUEST_ID_REQUIRED: Se requiere requestId no vacío y sin espacios extremos'
     )
   }
   if (
     !pkg.processId ||
     typeof pkg.processId !== 'string' ||
-    pkg.processId.trim().length === 0
+    pkg.processId.trim().length === 0 ||
+    pkg.processId !== pkg.processId.trim()
   ) {
     throw new Error(
-      'ATTESTATION_REQUEST_PROCESS_ID_REQUIRED: Se requiere processId no vacío'
+      'ATTESTATION_REQUEST_PROCESS_ID_REQUIRED: Se requiere processId no vacío y sin espacios extremos'
     )
   }
   if (pkg.executionScope !== PR02_P0_SCOPE) {
@@ -511,12 +580,33 @@ export function validateAttestationRequestStrict(pkg) {
     )
   }
   if (
-    !pkg.authorizationId ||
-    typeof pkg.authorizationId !== 'string' ||
-    pkg.authorizationId.trim().length === 0
+    pkg.projectRef !== undefined &&
+    (typeof pkg.projectRef !== 'string' ||
+      pkg.projectRef.trim().length === 0 ||
+      pkg.projectRef !== pkg.projectRef.trim())
   ) {
     throw new Error(
-      'ATTESTATION_REQUEST_AUTH_ID_REQUIRED: Se requiere authorizationId vinculado al GO'
+      'ATTESTATION_REQUEST_PROJECT_INVALID: projectRef debe ser string no vacío sin espacios extremos'
+    )
+  }
+  if (
+    !pkg.authorizationId ||
+    typeof pkg.authorizationId !== 'string' ||
+    pkg.authorizationId.trim().length === 0 ||
+    pkg.authorizationId !== pkg.authorizationId.trim()
+  ) {
+    throw new Error(
+      'ATTESTATION_REQUEST_AUTH_ID_REQUIRED: Se requiere authorizationId vinculado al GO sin espacios extremos'
+    )
+  }
+  if (
+    pkg.goAuthorizationGrant !== undefined &&
+    (!pkg.goAuthorizationGrant ||
+      typeof pkg.goAuthorizationGrant !== 'object' ||
+      Array.isArray(pkg.goAuthorizationGrant))
+  ) {
+    throw new Error(
+      'GO_GRANT_INVALID_FORMAT: goAuthorizationGrant debe ser un objeto estructurado'
     )
   }
   if (
@@ -632,5 +722,140 @@ export function validateAttestationRequestStrict(pkg) {
   return Object.freeze({
     valid: true,
     requestSha256: expectedDigest,
+  })
+}
+
+/**
+ * Verificador fail-closed del contrato de respuesta emitido por este servicio (`1.0` y `1.1`).
+ * Comprueba allowlist de campos, huella de clave pública pineada, hash de payload y firma Ed25519
+ * sin separación de dominio GO (impide que una firma GO se utilice como firma de atestación).
+ *
+ * @param {Record<string, any>} response
+ * @param {{ trustedAttestationPublicKey: string | crypto.KeyObject, pinnedKeyId?: string | null }} options
+ */
+export function verifyServiceAttestationResponse(response, options) {
+  if (!response || typeof response !== 'object' || Array.isArray(response)) {
+    throw new Error(
+      'ATTESTATION_RESPONSE_INVALID: La respuesta de atestación debe ser un objeto estructurado'
+    )
+  }
+  if (!options || !options.trustedAttestationPublicKey) {
+    throw new Error(
+      'ATTESTATION_TRUST_ANCHOR_REQUIRED: Se requiere clave pública SPKI confiable de la autoridad de atestación'
+    )
+  }
+
+  const allowedKeys =
+    response.schemaVersion === '1.1'
+      ? ATTESTATION_RESPONSE_ALLOWED_KEYS_V1_1
+      : response.schemaVersion === '1.0'
+        ? ATTESTATION_RESPONSE_ALLOWED_KEYS_V1_0
+        : null
+  if (!allowedKeys) {
+    throw new Error(
+      `ATTESTATION_RESPONSE_SCHEMA_INVALID: schemaVersion '${response.schemaVersion}' no soportada`
+    )
+  }
+
+  for (const key of Object.keys(response)) {
+    if (!allowedKeys.has(key)) {
+      throw new Error(
+        `UNEXPECTED_RESPONSE_FIELD: Campo inesperado en respuesta de atestación: '${key}'`
+      )
+    }
+  }
+
+  if (response.algorithm !== 'Ed25519') {
+    throw new Error(
+      `ATTESTATION_ALGORITHM_INVALID: Se requiere algoritmo 'Ed25519', recibido '${response.algorithm}'`
+    )
+  }
+
+  if (response.schemaVersion === '1.1') {
+    if (
+      typeof response.attestationId !== 'string' ||
+      typeof response.responseId !== 'string' ||
+      response.attestationId.trim().length === 0 ||
+      response.attestationId !== response.responseId
+    ) {
+      throw new Error(
+        'ATTESTATION_RESPONSE_ID_MISMATCH: En esquema v1.1 attestationId y responseId deben coincidir'
+      )
+    }
+    if (response.evidenceLevel !== 'LEVEL_1_DIGEST_ONLY') {
+      throw new Error(
+        `ATTESTATION_RESPONSE_EVIDENCE_LEVEL_INVALID: Nivel '${response.evidenceLevel}' no permitido`
+      )
+    }
+    if (response.rawSoapVerified !== false || response.arcaOriginVerified !== false) {
+      throw new Error(
+        'ATTESTATION_RESPONSE_EVIDENCE_CLAIM_INVALID: La atestación Nivel 1 no puede declarar rawSoapVerified ni arcaOriginVerified = true'
+      )
+    }
+  }
+
+  const pubKeyObj =
+    typeof options.trustedAttestationPublicKey === 'string'
+      ? crypto.createPublicKey(options.trustedAttestationPublicKey)
+      : options.trustedAttestationPublicKey
+
+  if (pubKeyObj.asymmetricKeyType !== 'ed25519') {
+    throw new Error(
+      `ATTESTATION_KEY_TYPE_INVALID: Se requiere clave pública Ed25519, recibido '${pubKeyObj.asymmetricKeyType}'`
+    )
+  }
+
+  const der = pubKeyObj.export({ format: 'der', type: 'spki' })
+  const derivedKeyId = `ed25519-spki-${crypto.createHash('sha256').update(der).digest('hex').slice(0, 16)}`
+  if (options.pinnedKeyId && response.keyId !== options.pinnedKeyId) {
+    throw new Error(
+      `PUBLIC_KEY_SUBSTITUTION_REJECTED: keyId '${response.keyId}' no coincide con pineado '${options.pinnedKeyId}'`
+    )
+  }
+  if (
+    typeof response.keyId === 'string' &&
+    response.keyId.startsWith('ed25519-spki-') &&
+    response.keyId !== derivedKeyId
+  ) {
+    throw new Error(
+      `ATTESTATION_KEY_ID_MISMATCH: keyId '${response.keyId}' no corresponde al SPKI confiable (${derivedKeyId})`
+    )
+  }
+
+  const canonical = serializeCanonicalAttestationResponsePayload(response)
+  const expectedDigest = sha256(canonical)
+  if (response.attestationPayloadSha256 !== expectedDigest) {
+    throw new Error(
+      'ATTESTATION_PAYLOAD_MISMATCH: attestationPayloadSha256 no coincide con el payload canónico'
+    )
+  }
+
+  if (
+    typeof response.signature !== 'string' ||
+    !/^[0-9a-f]{128}$/.test(response.signature)
+  ) {
+    throw new Error(
+      'ATTESTATION_SIGNATURE_INVALID: Formato de firma Ed25519 inválido'
+    )
+  }
+
+  const validSig = crypto.verify(
+    null,
+    Buffer.from(canonical, 'utf8'),
+    pubKeyObj,
+    Buffer.from(response.signature, 'hex')
+  )
+  if (!validSig) {
+    throw new Error(
+      'ATTESTATION_SIGNATURE_INVALID: Firma Ed25519 inválida para el payload de atestación'
+    )
+  }
+
+  return Object.freeze({
+    valid: true,
+    schemaVersion: response.schemaVersion,
+    keyId: response.keyId,
+    derivedKeyId,
+    attestationPayloadSha256: expectedDigest,
   })
 }

@@ -26,7 +26,40 @@ import {
   IndependentAttestationHttpServer,
   createConfiguredAuthorityFromEnv,
   createGracefulShutdownHandler,
+  TestOnlyGoAuthorityIssuer,
+  verifyGoAuthorizationGrant,
+  computeGoGrantDigest,
+  createSimulatedClientAuthVerifier,
+  verifyServiceAttestationResponse,
+  Level2ASubmittedContentEvaluatorStub,
+  Level2BIndependentObservedEvaluatorStub,
+  EVIDENCE_INTEGRITY_LEVELS,
+  GO_GRANT_SCHEMA_VERSION,
 } from '../../services/independent-attestation-authority/src/index.mjs'
+
+function createTestCustomAuthVerifier(expectedToken = 'valid-oidc-token-for-test') {
+  return {
+    verifierKind: 'CUSTOM_TEST_OIDC_VERIFIER',
+    trustScope: 'CUSTOM_INJECTED',
+    isProductionAuthVerifier: () => true,
+    async verify(headers: Record<string, unknown>) {
+      const auth = typeof headers.authorization === 'string' ? headers.authorization : ''
+      if (auth.startsWith('Bearer ') && auth.slice(7).trim() !== expectedToken) {
+        throw new Error('UNMODELED_BEARER_TOKEN_REJECTED: Token no reconocido por verificador')
+      }
+      if (auth !== `Bearer ${expectedToken}`) {
+        throw new Error('CLIENT_AUTH_FAILED: Token cliente ausente o inválido')
+      }
+      return {
+        authenticated: true,
+        clientId: 'pos-collector-ci-service-account',
+        authMechanism: 'OIDC',
+        allowedScopes: ['PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'],
+        isGoAuthority: false,
+      }
+    },
+  }
+}
 
 const VALID_COMMIT_SHA = 'c56930d358f76e5a255292693b83fd709414f6e2'
 const VALID_COLLECTOR_ID = PR02_P0_COLECTOR_IDENTIDAD
@@ -558,6 +591,10 @@ describe('EXT-REAL-02: Independent Attestation Authority Deployment Readiness & 
       },
     })
 
+    const goFixtureIssuer = new TestOnlyGoAuthorityIssuer({
+      authorityId: 'go-fixture-sec-2',
+    })
+
     const prodService = new IndependentAttestationAuthorityService({
       signingProvider: prodKms,
       antiReplayGuard: new ServiceAntiReplayGuard({
@@ -572,6 +609,8 @@ describe('EXT-REAL-02: Independent Attestation Authority Deployment Readiness & 
       }),
       serviceEnvironment: 'PRODUCTION',
       env: { NODE_ENV: 'production', ATTESTATION_ENVIRONMENT: 'PRODUCTION' },
+      clientAuthVerifier: createTestCustomAuthVerifier(),
+      trustedGoPublicKeySpki: goFixtureIssuer.publicKeySpki,
     })
 
     await expect(
@@ -738,6 +777,10 @@ describe('EXT-REAL-02: Independent Attestation Authority Deployment Readiness & 
       },
     })
 
+    const goFixtureIssuerEnv = new TestOnlyGoAuthorityIssuer({
+      authorityId: 'go-fixture-env-1',
+    })
+
     const degradedProdService = new IndependentAttestationAuthorityService({
       signingProvider: readyKms,
       antiReplayGuard: new ServiceAntiReplayGuard({
@@ -752,6 +795,8 @@ describe('EXT-REAL-02: Independent Attestation Authority Deployment Readiness & 
       }),
       serviceEnvironment: 'PRODUCTION',
       env: { NODE_ENV: 'production', ATTESTATION_ENVIRONMENT: 'PRODUCTION' },
+      clientAuthVerifier: createTestCustomAuthVerifier(),
+      trustedGoPublicKeySpki: goFixtureIssuerEnv.publicKeySpki,
     })
 
     const server = new IndependentAttestationHttpServer({
@@ -960,5 +1005,783 @@ describe('EXT-REAL-02: Independent Attestation Authority Deployment Readiness & 
     } finally {
       if (server.isRunning) await server.close()
     }
+  })
+})
+
+describe('EXT-REAL-04: Controles Críticos de Confianza, GoAuthorizationGrant v1.1 y Anti-Replay Pre-Firma', () => {
+  const EXPECTED_PROJECT_REF = 'acoyfwwmhaeruciyedri'
+  const VALID_TOKEN = 'sim-pos-collector-token-04'
+  const AUTH_HEADERS = { authorization: `Bearer ${VALID_TOKEN}` }
+
+  const spyCallsMap = new WeakMap<object, string[]>()
+  const spyCustomSignMap = new WeakMap<object, (payload: string | Buffer) => string>()
+
+  class SpyTestSigningProvider extends TestSigningProvider {
+    override sign(payload: string | Buffer): string {
+      const calls = spyCallsMap.get(this) || []
+      calls.push(typeof payload === 'string' ? payload : payload.toString('utf8'))
+      spyCallsMap.set(this, calls)
+      const custom = spyCustomSignMap.get(this)
+      if (custom) {
+        return custom(payload)
+      }
+      return super.sign(payload)
+    }
+  }
+
+  function createFixture({
+    serviceEnvironment = 'DEVELOPMENT',
+    protectedMode = true,
+    antiReplayGuard,
+    signOverride,
+    now = '2026-11-13T15:00:00.000Z',
+  }: {
+    serviceEnvironment?: 'TEST' | 'DEVELOPMENT' | 'STAGING' | 'PRODUCTION'
+    protectedMode?: boolean
+    antiReplayGuard?: ServiceAntiReplayGuard
+    signOverride?: (payload: string | Buffer) => string
+    now?: string
+  } = {}) {
+    const goIssuer = new TestOnlyGoAuthorityIssuer({
+      authorityId: 'kioskopos-go-governance-test-only',
+    })
+    const signerCalls: string[] = []
+    const rawSpy = new SpyTestSigningProvider({
+      authorityId: 'external-attestation-test-only',
+    })
+    spyCallsMap.set(rawSpy, signerCalls)
+    if (signOverride) {
+      spyCustomSignMap.set(rawSpy, signOverride)
+    }
+    const signer = Object.assign(Object.create(rawSpy), {
+      signCalls: signerCalls,
+    }) as SpyTestSigningProvider & { signCalls: string[] }
+    // Ensure instance passed to service is rawSpy itself so instanceof & WeakMap lookup work directly
+    void signer
+
+    const simulatedAuth = createSimulatedClientAuthVerifier({
+      validTokens: {
+        [VALID_TOKEN]: {
+          clientId: 'pos-collector-test-client',
+          allowedScopes: ['PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'],
+          mechanism: 'SIMULATED_OIDC',
+        },
+      },
+    })
+
+    const service = new IndependentAttestationAuthorityService({
+      signingProvider: rawSpy,
+      antiReplayGuard: antiReplayGuard || new ServiceAntiReplayGuard({ storageType: 'memory' }),
+      serviceEnvironment,
+      protectedMode,
+      clientAuthVerifier: simulatedAuth,
+      trustedGoPublicKeySpki: goIssuer.publicKeySpki,
+      trustedGoAuthorityId: goIssuer.authorityId,
+      trustedGoKeyId: goIssuer.keyId,
+      expectedProjectRef: EXPECTED_PROJECT_REF,
+      expectedCommitSha: VALID_COMMIT_SHA,
+    })
+
+    const buildSignedGrantBundle = (overrides: Record<string, any> = {}) => {
+      const reqWithoutGrant = buildValidRequest({
+        projectRef: EXPECTED_PROJECT_REF,
+        ...overrides.requestOverrides,
+      })
+      const signedGrant = goIssuer.issueGrant({
+        authorizationId: reqWithoutGrant.authorizationId,
+        requestId: reqWithoutGrant.requestId,
+        processId: reqWithoutGrant.processId,
+        executionScope: reqWithoutGrant.executionScope,
+        environment: reqWithoutGrant.environment,
+        projectRef: overrides.grantProjectRef ?? EXPECTED_PROJECT_REF,
+        commitSha: reqWithoutGrant.commitSha,
+        requestSha256: overrides.grantRequestSha256 ?? reqWithoutGrant.requestSha256,
+        issuedAt: overrides.issuedAt ?? now,
+        expiresAt: overrides.expiresAt ?? '2026-11-13T15:10:00.000Z',
+        ...overrides.grantOverrides,
+      })
+      const grantSha256 = computeGoGrantDigest(signedGrant)
+      const finalReq = {
+        ...reqWithoutGrant,
+        ...(overrides.includeGrant === false ? {} : { goAuthorizationGrant: signedGrant }),
+      }
+      return { request: finalReq, grant: signedGrant, grantSha256 }
+    }
+
+    const signerHandle = {
+      signCalls: signerCalls,
+      get publicKeySpki() {
+        return rawSpy.publicKeySpki
+      },
+      get authorityId() {
+        return rawSpy.authorityId
+      },
+      get keyId() {
+        return rawSpy.keyId
+      },
+      provider: rawSpy,
+    }
+
+    return {
+      goIssuer,
+      signer: signerHandle,
+      simulatedAuth,
+      service,
+      buildSignedGrantBundle,
+      now,
+    }
+  }
+
+  it('EXT-REAL-04-01/02/03/04: rechaza sin auth, sin Grant, con firma inválida o con clave GO distinta (0 firmas)', async () => {
+    const { service, signer, buildSignedGrantBundle, now } = createFixture()
+    const { request } = buildSignedGrantBundle()
+
+    // 1. Sin autenticación en modo protegido -> 401 CLIENT_AUTH_FAILED
+    await expect(service.handleRequest(request, {}, { now })).rejects.toThrow(/CLIENT_AUTH_FAILED/)
+    expect(signer.signCalls.length).toBe(0)
+
+    // 2. Sin GoAuthorizationGrant -> 403 GO_AUTHORIZATION_GRANT_REQUIRED
+    const withoutGrant = buildSignedGrantBundle({ includeGrant: false })
+    await expect(
+      service.handleRequest(withoutGrant.request, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/GO_AUTHORIZATION_GRANT_REQUIRED/)
+    expect(signer.signCalls.length).toBe(0)
+
+    // 3. Firma inválida / corrupta en GoAuthorizationGrant -> 403 GO_AUTHORIZATION_SIGNATURE_INVALID
+    const originalGrant = request.goAuthorizationGrant!
+    const badSigReq = {
+      ...request,
+      goAuthorizationGrant: {
+        ...originalGrant,
+        signature:
+          (originalGrant.signature[0] === '0' ? '1' : '0') +
+          originalGrant.signature.slice(1),
+      },
+    }
+    await expect(service.handleRequest(badSigReq, AUTH_HEADERS, { now })).rejects.toThrow(
+      /GO_AUTHORIZATION_SIGNATURE_INVALID/
+    )
+    expect(signer.signCalls.length).toBe(0)
+
+    // 4. Grant firmado por otra clave GO no confiable -> 403 GO_AUTHORIZATION_KEY_ID_MISMATCH / SIGNATURE_INVALID
+    const rogueGo = new TestOnlyGoAuthorityIssuer({ authorityId: 'kioskopos-go-governance-test-only' })
+    const reqForRogue = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF })
+    const rogueGrant = rogueGo.issueGrant({
+      authorizationId: reqForRogue.authorizationId,
+      requestId: reqForRogue.requestId,
+      processId: reqForRogue.processId,
+      executionScope: reqForRogue.executionScope,
+      environment: reqForRogue.environment,
+      projectRef: EXPECTED_PROJECT_REF,
+      commitSha: reqForRogue.commitSha,
+      requestSha256: reqForRogue.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    const rogueReq = {
+      ...reqForRogue,
+      goAuthorizationGrant: rogueGrant,
+    }
+    await expect(service.handleRequest(rogueReq, AUTH_HEADERS, { now })).rejects.toThrow(
+      /GO_AUTHORIZATION_KEY_ID_MISMATCH|GO_AUTHORIZATION_SIGNATURE_INVALID/
+    )
+    expect(signer.signCalls.length).toBe(0)
+  })
+
+  it('EXT-REAL-04-05/06/13: rechaza Grant expirado, issuedAt futuro y digest mismatch (0 firmas)', async () => {
+    const { service, signer, buildSignedGrantBundle } = createFixture()
+
+    // 5. Grant expirado
+    const expiredBundle = buildSignedGrantBundle({
+      issuedAt: '2026-11-13T14:30:00.000Z',
+      expiresAt: '2026-11-13T14:40:00.000Z',
+    })
+    await expect(
+      service.handleRequest(expiredBundle.request, AUTH_HEADERS, { now: '2026-11-13T15:00:00.000Z' })
+    ).rejects.toThrow(/GO_AUTHORIZATION_EXPIRED/)
+    expect(signer.signCalls.length).toBe(0)
+
+    // 6. issuedAt futuro fuera de tolerancia (> 0s)
+    const futureBundle = buildSignedGrantBundle({
+      issuedAt: '2026-11-13T15:05:00.000Z',
+      expiresAt: '2026-11-13T15:15:00.000Z',
+    })
+    await expect(
+      service.handleRequest(futureBundle.request, AUTH_HEADERS, { now: '2026-11-13T15:00:00.000Z' })
+    ).rejects.toThrow(/GO_AUTHORIZATION_NOT_YET_VALID/)
+    expect(signer.signCalls.length).toBe(0)
+
+    // 13. Digest del request no coincide con el digest vinculado en el Grant
+    const badDigestBundle = buildSignedGrantBundle({
+      grantRequestSha256: 'f'.repeat(64),
+    })
+    await expect(
+      service.handleRequest(badDigestBundle.request, AUTH_HEADERS, { now: '2026-11-13T15:00:00.000Z' })
+    ).rejects.toThrow(/GO_AUTHORIZATION_DIGEST_MISMATCH/)
+    expect(signer.signCalls.length).toBe(0)
+  })
+
+  it('EXT-REAL-04-07/08/09/10/11/12: rechaza mismatch de requestId, requestSha256, executionScope, environment, projectRef y commitSha (0 firmas)', async () => {
+    const { goIssuer, service, signer, now } = createFixture()
+
+    // 7. Otro requestId
+    const targetReq7 = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF })
+    const grant7 = goIssuer.issueGrant({
+      authorizationId: targetReq7.authorizationId,
+      requestId: `att-req-other-${randomUUID()}`,
+      processId: targetReq7.processId,
+      executionScope: targetReq7.executionScope,
+      environment: targetReq7.environment,
+      projectRef: EXPECTED_PROJECT_REF,
+      commitSha: targetReq7.commitSha,
+      requestSha256: targetReq7.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...targetReq7, goAuthorizationGrant: grant7 }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/GO_AUTHORIZATION_REQUEST_MISMATCH/)
+
+    // 8. Otro requestSha256 (digest diferente en grant)
+    const req8 = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF })
+    const grant8 = goIssuer.issueGrant({
+      authorizationId: req8.authorizationId,
+      requestId: req8.requestId,
+      processId: req8.processId,
+      executionScope: req8.executionScope,
+      environment: req8.environment,
+      projectRef: EXPECTED_PROJECT_REF,
+      commitSha: req8.commitSha,
+      requestSha256: '1'.repeat(64),
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...req8, goAuthorizationGrant: grant8 }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/GO_AUTHORIZATION_DIGEST_MISMATCH/)
+
+    // 9. Otro executionScope (e.g. intentando scope distinto en grant)
+    const req9 = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF })
+    const grant9 = goIssuer.issueGrant({
+      authorizationId: req9.authorizationId,
+      requestId: req9.requestId,
+      processId: req9.processId,
+      executionScope: 'PR02_P0_DRY_RUN',
+      environment: req9.environment,
+      projectRef: EXPECTED_PROJECT_REF,
+      commitSha: req9.commitSha,
+      requestSha256: req9.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...req9, goAuthorizationGrant: grant9 }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/GO_AUTHORIZATION_SCOPE_MISMATCH|FORBIDDEN_EXECUTION_SCOPE/)
+
+    // 10. Otro environment en grant
+    const req10 = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF })
+    const grant10 = goIssuer.issueGrant({
+      authorizationId: req10.authorizationId,
+      requestId: req10.requestId,
+      processId: req10.processId,
+      executionScope: req10.executionScope,
+      environment: 'STAGING',
+      projectRef: EXPECTED_PROJECT_REF,
+      commitSha: req10.commitSha,
+      requestSha256: req10.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...req10, goAuthorizationGrant: grant10 }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/GO_AUTHORIZATION_ENVIRONMENT_MISMATCH/)
+
+    // 11. Otro projectRef (no esperado por la autoridad ni en el grant)
+    const req11 = buildValidRequest({ projectRef: 'rogueprojectref12345' })
+    const grant11 = goIssuer.issueGrant({
+      authorizationId: req11.authorizationId,
+      requestId: req11.requestId,
+      processId: req11.processId,
+      executionScope: req11.executionScope,
+      environment: req11.environment,
+      projectRef: 'rogueprojectref12345',
+      commitSha: req11.commitSha,
+      requestSha256: req11.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...req11, goAuthorizationGrant: grant11 }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/ATTESTATION_POLICY_PROJECT_MISMATCH|GO_AUTHORIZATION_PROJECT_MISMATCH/)
+
+    const req11b = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF })
+    const grant11b = goIssuer.issueGrant({
+      authorizationId: req11b.authorizationId,
+      requestId: req11b.requestId,
+      processId: req11b.processId,
+      executionScope: req11b.executionScope,
+      environment: req11b.environment,
+      projectRef: 'rogueprojectref12345',
+      commitSha: req11b.commitSha,
+      requestSha256: req11b.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...req11b, goAuthorizationGrant: grant11b }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/GO_AUTHORIZATION_PROJECT_MISMATCH/)
+
+    // 12. Otro commitSha
+    const otherSha = '9'.repeat(40)
+    const req12 = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF, commitSha: otherSha })
+    const grant12 = goIssuer.issueGrant({
+      authorizationId: req12.authorizationId,
+      requestId: req12.requestId,
+      processId: req12.processId,
+      executionScope: req12.executionScope,
+      environment: req12.environment,
+      projectRef: EXPECTED_PROJECT_REF,
+      commitSha: otherSha,
+      requestSha256: req12.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...req12, goAuthorizationGrant: grant12 }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/ATTESTATION_POLICY_COMMIT_MISMATCH|GO_AUTHORIZATION_COMMIT_MISMATCH/)
+
+    const req12b = buildValidRequest({ projectRef: EXPECTED_PROJECT_REF })
+    const grant12b = goIssuer.issueGrant({
+      authorizationId: req12b.authorizationId,
+      requestId: req12b.requestId,
+      processId: req12b.processId,
+      executionScope: req12b.executionScope,
+      environment: req12b.environment,
+      projectRef: EXPECTED_PROJECT_REF,
+      commitSha: otherSha,
+      requestSha256: req12b.requestSha256,
+      issuedAt: now,
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    await expect(
+      service.handleRequest({ ...req12b, goAuthorizationGrant: grant12b }, AUTH_HEADERS, { now })
+    ).rejects.toThrow(/GO_AUTHORIZATION_COMMIT_MISMATCH/)
+
+    expect(signer.signCalls.length).toBe(0)
+  })
+
+  it('EXT-REAL-04-14/15: rechaza alcances prohibidos (PRODUCTION/P1/P2/PV2/CAE/EMISION) y elevación de evidencia desde el cliente (0 firmas)', async () => {
+    const { service, signer, buildSignedGrantBundle, now } = createFixture()
+
+    // 14. Alcances y entornos prohibidos rechazados antes de firmar
+    for (const forbiddenScope of ['P1_IMPORT', 'P2_MIGRATION', 'PV2_ACTIVATION', 'CAE_EMISION', 'PRODUCTION_RUN']) {
+      const reqBadScope = buildValidRequest({ executionScope: forbiddenScope, projectRef: EXPECTED_PROJECT_REF })
+      await expect(service.handleRequest(reqBadScope, AUTH_HEADERS, { now })).rejects.toThrow(
+        /ATTESTATION_REQUEST_SCOPE_MISMATCH|FORBIDDEN_EXECUTION_SCOPE/
+      )
+      expect(() =>
+        validateAttestationPolicy({
+          executionScope: forbiddenScope,
+          environment: 'HOMOLOGACION',
+          commitSha: VALID_COMMIT_SHA,
+          requestId: reqBadScope.requestId,
+          processId: reqBadScope.processId,
+          authorizationId: reqBadScope.authorizationId,
+        })
+      ).toThrow(/ATTESTATION_POLICY_FORBIDDEN_SCOPE/)
+    }
+    const reqProdEnv = buildValidRequest({ environment: 'PRODUCTION', projectRef: EXPECTED_PROJECT_REF })
+    await expect(service.handleRequest(reqProdEnv, AUTH_HEADERS, { now })).rejects.toThrow(
+      /ATTESTATION_REQUEST_ENVIRONMENT_MISMATCH|FORBIDDEN_TARGET_ENVIRONMENT/
+    )
+
+    // 15. Elevación de evidencia declarativa enviada por el cliente
+    const valid = buildSignedGrantBundle().request
+    for (const forbiddenField of [
+      { arcaOriginVerified: true },
+      { rawSoapContentVerified: true },
+      { evidenceLevel: 'LEVEL_2B_INDEPENDENT_OBSERVED' },
+      { selfAttested: true },
+      { GO_APPROVED: true },
+    ]) {
+      const evilReq = { ...valid, ...forbiddenField }
+      await expect(service.handleRequest(evilReq, AUTH_HEADERS, { now })).rejects.toThrow(
+        /EVIDENCE_LEVEL_ELEVATION_REJECTED|UNEXPECTED_REQUEST_FIELD/
+      )
+    }
+
+    // Also verify typed Level 2A/2B stubs refuse cleanly with explicit unimplemented status
+    const stub2a = new Level2ASubmittedContentEvaluatorStub()
+    expect(stub2a.level).toBe(EVIDENCE_INTEGRITY_LEVELS.LEVEL_2A_SUBMITTED_CONTENT)
+    await expect(stub2a.inspect(valid)).rejects.toThrow(/EVIDENCE_LEVEL_2A_NOT_IMPLEMENTED/)
+    const stub2b = new Level2BIndependentObservedEvaluatorStub()
+    expect(stub2b.level).toBe(EVIDENCE_INTEGRITY_LEVELS.LEVEL_2B_INDEPENDENT_OBSERVED)
+    await expect(stub2b.inspect(valid)).rejects.toThrow(/EVIDENCE_LEVEL_2B_NOT_IMPLEMENTED/)
+
+    expect(signer.signCalls.length).toBe(0)
+  })
+
+  it('EXT-REAL-04-16/17/18: bloquea colapso GO/Attestation y exige clientAuthVerifier + trustedGoPublicKeySpki en modo protegido', () => {
+    const goIssuer = new TestOnlyGoAuthorityIssuer({ authorityId: 'shared-auth-id' })
+    const attSigner = new TestSigningProvider({ authorityId: 'shared-auth-id', keyId: 'att-k1' })
+    const customAuth = createTestCustomAuthVerifier()
+
+    // 16. Colapso de authorityId / clave pública entre GO y Attestation
+    expect(
+      () =>
+        new IndependentAttestationAuthorityService({
+          signingProvider: attSigner,
+          antiReplayGuard: new ServiceAntiReplayGuard({ storageType: 'memory' }),
+          serviceEnvironment: 'DEVELOPMENT',
+          clientAuthVerifier: customAuth,
+          trustedGoPublicKeySpki: attSigner.publicKeySpki,
+          trustedGoAuthorityId: 'other-go',
+        })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    expect(
+      () =>
+        new IndependentAttestationAuthorityService({
+          signingProvider: attSigner,
+          antiReplayGuard: new ServiceAntiReplayGuard({ storageType: 'memory' }),
+          serviceEnvironment: 'DEVELOPMENT',
+          clientAuthVerifier: customAuth,
+          trustedGoPublicKeySpki: goIssuer.publicKeySpki,
+          trustedGoAuthorityId: 'shared-auth-id',
+        })
+    ).toThrow(/COLLAPSED_AUTHORITIES_REJECTED/)
+
+    // 17. Arranque protegido sin clientAuthVerifier falla cerrado
+    expect(
+      () =>
+        new IndependentAttestationAuthorityService({
+          signingProvider: attSigner,
+          antiReplayGuard: new ServiceAntiReplayGuard({ storageType: 'memory' }),
+          serviceEnvironment: 'DEVELOPMENT',
+          trustedGoPublicKeySpki: goIssuer.publicKeySpki,
+        })
+    ).toThrow(/CLIENT_AUTH_VERIFIER_REQUIRED/)
+
+    // 18. Arranque protegido sin trustedGoPublicKeySpki falla cerrado
+    expect(
+      () =>
+        new IndependentAttestationAuthorityService({
+          signingProvider: attSigner,
+          antiReplayGuard: new ServiceAntiReplayGuard({ storageType: 'memory' }),
+          serviceEnvironment: 'DEVELOPMENT',
+          clientAuthVerifier: customAuth,
+        })
+    ).toThrow(/GO_TRUST_ANCHOR_REQUIRED/)
+
+    // En PRODUCTION también exige ambos sin fallback
+    const dummyProdSigner = new ProductionKmsSigningProvider({
+      authorityId: 'prod-guard-auth',
+      keyId: 'prod-k1',
+      publicKeySpki: attSigner.publicKeySpki ?? undefined,
+      keyVersionName: 'projects/p/locations/l/keyRings/r/cryptoKeys/k/cryptoKeyVersions/1',
+      kmsClient: { async sign({ data }) { return attSigner.sign(data) } },
+    })
+    expect(
+      () =>
+        new IndependentAttestationAuthorityService({
+          signingProvider: dummyProdSigner,
+          antiReplayGuard: new ServiceAntiReplayGuard({
+            storageType: 'distributed',
+            distributedStore: {
+              hasRequestId: async () => false,
+              hasRequestHash: async () => false,
+              hasAttestationId: async () => false,
+              recordOnce: async () => {},
+              isHealthy: async () => true,
+            },
+          }),
+          serviceEnvironment: 'PRODUCTION',
+          trustedGoPublicKeySpki: goIssuer.publicKeySpki,
+        })
+    ).toThrow(/CLIENT_AUTH_VERIFIER_REQUIRED/)
+
+    expect(
+      () =>
+        new IndependentAttestationAuthorityService({
+          signingProvider: dummyProdSigner,
+          antiReplayGuard: new ServiceAntiReplayGuard({
+            storageType: 'distributed',
+            distributedStore: {
+              hasRequestId: async () => false,
+              hasRequestHash: async () => false,
+              hasAttestationId: async () => false,
+              recordOnce: async () => {},
+              isHealthy: async () => true,
+            },
+          }),
+          serviceEnvironment: 'PRODUCTION',
+          clientAuthVerifier: customAuth,
+        })
+    ).toThrow(/GO_TRUST_ANCHOR_REQUIRED/)
+
+    // También createConfiguredAuthorityFromEnv bloquea SIMULATED_TEST_ONLY en STAGING y exige auth en DEVELOPMENT
+    expect(() =>
+      createConfiguredAuthorityFromEnv({
+        ATTESTATION_ENVIRONMENT: 'DEVELOPMENT',
+        ATTESTATION_SIGNING_PROVIDER: 'TEST_SIGNER',
+        ATTESTATION_TEST_MODE: 'true',
+      })
+    ).toThrow(/CLIENT_AUTH_VERIFIER_REQUIRED/)
+
+    // En DEVELOPMENT sí admite explícitamente SIMULATED_TEST_ONLY declarando honestamente clientAuthSimulated: true
+    const devSimulatedCfg = createConfiguredAuthorityFromEnv({
+      ATTESTATION_ENVIRONMENT: 'DEVELOPMENT',
+      ATTESTATION_SIGNING_PROVIDER: 'TEST_SIGNER',
+      ATTESTATION_TEST_MODE: 'true',
+      ATTESTATION_ANTI_REPLAY_MODE: 'memory',
+      ATTESTATION_CLIENT_AUTH_MODE: 'SIMULATED_TEST_ONLY',
+      ATTESTATION_SIMULATED_AUTH_TOKENS_JSON: JSON.stringify({
+        'dev-tok': { clientId: 'dev-cli', allowedScopes: ['PR02_P0_OFFICIAL_EVIDENCE_COLLECTION'] },
+      }),
+      ATTESTATION_GO_PUBLIC_KEY_SPKI: goIssuer.publicKeySpki,
+    })
+    expect(devSimulatedCfg.service.handleHealth().clientAuthSimulated).toBe(true)
+
+    const prodEnvKmsTestDummyKey = crypto.generateKeyPairSync('ed25519')
+    const spkiPem = prodEnvKmsTestDummyKey.publicKey.export({ type: 'spki', format: 'pem' }).toString()
+    expect(() =>
+      createConfiguredAuthorityFromEnv({
+        ATTESTATION_ENVIRONMENT: 'STAGING',
+        ATTESTATION_SIGNING_PROVIDER: 'PRODUCTION_KMS_SIGNER',
+        ATTESTATION_TEST_MODE: 'false',
+        ATTESTATION_REQUIRE_HTTPS: 'false',
+        ATTESTATION_TRUST_PROXY_HTTPS: 'true',
+        ATTESTATION_ANTI_REPLAY_STORAGE: 'distributed',
+        ATTESTATION_AUTHORITY_ID: 'staging-auth',
+        ATTESTATION_KEY_ID: 'staging-key-1',
+        ATTESTATION_PUBLIC_KEY_SPKI: spkiPem,
+        ATTESTATION_KMS_KEY_VERSION: 'arn:aws:kms:us-east-1:111:key/222',
+        ATTESTATION_CLIENT_AUTH_MODE: 'SIMULATED_TEST_ONLY',
+        ATTESTATION_GO_PUBLIC_KEY_SPKI: goIssuer.publicKeySpki,
+      })
+    ).toThrow(/SIMULATED_CLIENT_AUTH_FORBIDDEN_IN_STAGING/)
+  })
+
+  it('EXT-REAL-04-19/20/21: anti-replay secuencial, carrera concurrente (>=10 paralelas = 1 firma / 9 409) y fallo en firma no recicla identidad', async () => {
+    // 19 & 20: Carrera concurrente con 10 solicitudes idénticas simultáneas
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ext04-replay-'))
+    try {
+      const fileGuard = new ServiceAntiReplayGuard({
+        storageType: 'file',
+        filePath: path.join(tmpDir, 'anti-replay-ext04.json'),
+      })
+      const fx = createFixture({ antiReplayGuard: fileGuard })
+      const { request } = fx.buildSignedGrantBundle()
+
+      const results = await Promise.allSettled(
+        Array.from({ length: 10 }, () => fx.service.handleRequest(request, AUTH_HEADERS, { now: fx.now }))
+      )
+
+      const fulfilled = results.filter((r) => r.status === 'fulfilled')
+      const rejected = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
+
+      expect(fulfilled.length).toBe(1)
+      expect(rejected.length).toBe(9)
+      for (const r of rejected) {
+        expect(String(r.reason)).toMatch(
+          /SERVICE_ANTI_REPLAY_.*DUPLICATED|GO_AUTHORIZATION_REPLAY_DETECTED|REPLAY_DETECTED/
+        )
+      }
+      // Exactly 1 signingProvider.sign() call across all 10 concurrent requests
+      expect(fx.signer.signCalls.length).toBe(1)
+
+      // 19b. Reutilizar mismo authorizationId en nuevo requestId también da 409 GO_AUTHORIZATION_REPLAY_DETECTED
+      const donorReq2 = buildValidRequest({
+        projectRef: EXPECTED_PROJECT_REF,
+        authorizationId: request.authorizationId,
+      })
+      const grant2 = fx.goIssuer.issueGrant({
+        authorizationId: donorReq2.authorizationId,
+        requestId: donorReq2.requestId,
+        processId: donorReq2.processId,
+        executionScope: donorReq2.executionScope,
+        environment: donorReq2.environment,
+        projectRef: EXPECTED_PROJECT_REF,
+        commitSha: donorReq2.commitSha,
+        requestSha256: donorReq2.requestSha256,
+        issuedAt: fx.now,
+        expiresAt: '2026-11-13T15:10:00.000Z',
+      })
+      await expect(
+        fx.service.handleRequest(
+          {
+            ...donorReq2,
+            goAuthorizationGrant: grant2,
+          },
+          AUTH_HEADERS,
+          { now: fx.now }
+        )
+      ).rejects.toThrow(/SERVICE_ANTI_REPLAY_GO_AUTHORIZATION_DUPLICATED|GO_AUTHORIZATION_REPLAY_DETECTED/)
+      expect(fx.signer.signCalls.length).toBe(1)
+
+      // 21. Fallo durante firma marca FAILED_CONSUMED y bloquea todo reintento del mismo requestId/authorizationId
+      const failFx = createFixture({
+        signOverride: () => {
+          throw new Error('KMS_TRANSIENT_FAILURE_SIMULATED')
+        },
+      })
+      const failBundle = failFx.buildSignedGrantBundle()
+      await expect(
+        failFx.service.handleRequest(failBundle.request, AUTH_HEADERS, { now: failFx.now })
+      ).rejects.toThrow(/KMS_TRANSIENT_FAILURE_SIMULATED/)
+      expect(failFx.signer.signCalls.length).toBe(1)
+
+      // Retry after signing failure MUST NOT call signer again and MUST fail closed
+      await expect(
+        failFx.service.handleRequest(failBundle.request, AUTH_HEADERS, { now: failFx.now })
+      ).rejects.toThrow(
+        /SERVICE_ANTI_REPLAY_.*DUPLICATED|SERVICE_ANTI_REPLAY_FAILED|FAILED_ATTEMPT|REPLAY_DETECTED/
+      )
+      expect(failFx.signer.signCalls.length).toBe(1)
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true })
+    }
+  })
+
+  it('EXT-REAL-04-22/23: verifica nivel LEVEL_1_DIGEST_ONLY en v1.0 y v1.1 + compatibilidad HTTP + logs sin secretos/tokens', async () => {
+    const logs: Record<string, unknown>[] = []
+    const fx = createFixture()
+    // Capture audit logs
+    const auditedService = new IndependentAttestationAuthorityService({
+      signingProvider: fx.signer.provider,
+      antiReplayGuard: new ServiceAntiReplayGuard({ storageType: 'memory' }),
+      serviceEnvironment: 'DEVELOPMENT',
+      protectedMode: true,
+      clientAuthVerifier: fx.simulatedAuth,
+      trustedGoPublicKeySpki: fx.goIssuer.publicKeySpki,
+      trustedGoAuthorityId: fx.goIssuer.authorityId,
+      trustedGoKeyId: fx.goIssuer.keyId,
+      expectedProjectRef: EXPECTED_PROJECT_REF,
+      expectedCommitSha: VALID_COMMIT_SHA,
+      logger: {
+        info(event: string, meta: Record<string, unknown> = {}) {
+          logs.push({ event, ...meta })
+        },
+      },
+    })
+
+    // 22a. v1.1 response carries Level 1 declaration inside signed canonical payload
+    const bundle11 = fx.buildSignedGrantBundle()
+    const res11 = await auditedService.handleRequest(bundle11.request, AUTH_HEADERS, {
+      now: fx.now,
+      responseVersion: '1.1',
+    })
+    expect(res11.schemaVersion).toBe('1.1')
+    expect(res11.evidenceLevel).toBe(EVIDENCE_INTEGRITY_LEVELS.LEVEL_1_DIGEST_ONLY)
+    expect(res11.rawSoapVerified).toBe(false)
+    expect(res11.arcaOriginVerified).toBe(false)
+    expect(res11.authenticatedClientId).toBe('pos-collector-test-client')
+    expect(res11.goIssuerKeyId).toBe(fx.goIssuer.keyId)
+    expect(res11.goGrantSha256).toBe(bundle11.grantSha256)
+
+    const verified11 = verifyServiceAttestationResponse(res11, {
+      trustedAttestationPublicKey: fx.signer.publicKeySpki!,
+      pinnedKeyId: fx.signer.keyId ?? undefined,
+    })
+    expect(verified11.valid).toBe(true)
+    expect(res11.requestSha256).toBe(bundle11.request.requestSha256)
+
+    // Tampering evidenceLevel in v1.1 fails cryptographic verification
+    const tampered11 = { ...res11, arcaOriginVerified: true }
+    expect(() =>
+      verifyServiceAttestationResponse(tampered11, {
+        trustedAttestationPublicKey: fx.signer.publicKeySpki!,
+      })
+    ).toThrow(/ATTESTATION_RESPONSE_EVIDENCE_CLAIM_INVALID|ATTESTATION_SIGNATURE_INVALID/)
+
+    // 22b. HTTP Server integration with v1.0 client verifier & honest headers
+    const liveNowMs = Date.now()
+    const bundle10 = fx.buildSignedGrantBundle({
+      issuedAt: new Date(liveNowMs - 1000).toISOString(),
+      expiresAt: new Date(liveNowMs + 300_000).toISOString(),
+    })
+    const httpServer = new IndependentAttestationHttpServer({
+      service: auditedService,
+      requireHttps: false,
+      trustProxyHttps: true,
+    })
+    const { url } = await httpServer.start(0)
+    try {
+      const httpRes = await fetch(`${url}/attestations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-Proto': 'https',
+          ...AUTH_HEADERS,
+        },
+        body: JSON.stringify(bundle10.request),
+      })
+      expect(httpRes.status).toBe(200)
+      expect(httpRes.headers.get('x-attestation-evidence-level')).toBe('LEVEL_1_DIGEST_ONLY')
+      expect(httpRes.headers.get('x-attestation-arca-origin-verified')).toBe('false')
+      const json10 = await httpRes.json()
+      const clientCheck = verifyAttestationResponse(json10, {
+        trustedAttestationPublicKey: fx.signer.publicKeySpki,
+        attestationRequest: bundle10.request,
+        allowTestKeys: true,
+      })
+      expect(clientCheck.valid).toBe(true)
+      expect(clientCheck.authorityId).toBe(fx.signer.authorityId)
+
+      // Trigger rejected auth over HTTP and ensure error + logs never leak Bearer token or private keys
+      const unauthRes = await fetch(`${url}/attestations`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Forwarded-Proto': 'https',
+          authorization: 'Bearer ultra-secret-leak-probe-token-999',
+        },
+        body: JSON.stringify(bundle10.request),
+      })
+      expect([401, 403]).toContain(unauthRes.status)
+      const unauthText = await unauthRes.text()
+      expect(unauthText).not.toContain('ultra-secret-leak-probe-token-999')
+    } finally {
+      await httpServer.close()
+    }
+
+    // 23. Ningún token, header Authorization ni BEGIN PRIVATE KEY aparece en logs
+    const serializedLogs = JSON.stringify(logs)
+    expect(serializedLogs).not.toContain(VALID_TOKEN)
+    expect(serializedLogs).not.toContain('ultra-secret-leak-probe-token-999')
+    expect(serializedLogs).not.toContain('BEGIN PRIVATE KEY')
+    expect(serializedLogs).not.toContain('goAuthorizationGrant')
+    expect(logs.some((l) => l.event === 'ATTESTATION_ISSUED')).toBe(true)
+    expect(logs.some((l) => l.event === 'ATTESTATION_REJECTED')).toBe(true)
+  })
+
+  it('EXT-REAL-04-DIRECT-GRANT-VERIFY: verifyGoAuthorizationGrant valida domain separation y singleUse', () => {
+    const goIssuer = new TestOnlyGoAuthorityIssuer({ authorityId: 'go-gov-1' })
+    const req = buildValidRequest({ projectRef: 'acoyfwwmhaeruciyedri' })
+    const grant = goIssuer.issueGrant({
+      authorizationId: req.authorizationId,
+      requestId: req.requestId,
+      processId: req.processId,
+      executionScope: req.executionScope,
+      environment: req.environment,
+      projectRef: 'acoyfwwmhaeruciyedri',
+      commitSha: req.commitSha,
+      requestSha256: req.requestSha256,
+      issuedAt: '2026-11-13T15:00:00.000Z',
+      expiresAt: '2026-11-13T15:10:00.000Z',
+    })
+    const grantSha256 = computeGoGrantDigest(grant)
+    expect(grant.schemaVersion).toBe(GO_GRANT_SCHEMA_VERSION)
+    const ok = verifyGoAuthorizationGrant(grant, {
+      trustedGoPublicKeySpki: goIssuer.publicKeySpki,
+      trustedGoAuthorityId: goIssuer.authorityId,
+      trustedGoKeyId: goIssuer.keyId,
+      expectedProjectRef: 'acoyfwwmhaeruciyedri',
+      expectedCommitSha: VALID_COMMIT_SHA,
+      requestPkg: req,
+      now: '2026-11-13T15:05:00.000Z',
+    })
+    expect(ok.valid).toBe(true)
+    expect(ok.grantSha256).toBe(grantSha256)
   })
 })

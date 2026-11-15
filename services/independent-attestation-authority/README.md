@@ -171,3 +171,17 @@ Si el proveedor Cloud KMS no está disponible, experimenta latencia o retorna un
 Si el backend de almacenamiento de anti-replay no puede ser consultado o persistido:
 - El microservicio **rechaza firmar la solicitud** y responde con `500 Internal Server Error` (`SERVICE_ANTI_REPLAY_STORAGE_ERROR`).
 - **Bajo ninguna circunstancia** se autoriza la firma ignorando la verificación anti-replay.
+
+---
+
+## 14. Documentación de Arquitectura y Preparación de Despliegue (`EXT-REAL-03`)
+
+- [CLOUD_DEPLOYMENT_GUIDE.md](./docs/CLOUD_DEPLOYMENT_GUIDE.md) — Guía técnica de configuración y provisionamiento cloud
+- [CLOUD_PROVIDER_COMPARISON.md](./docs/CLOUD_PROVIDER_COMPARISON.md) — Matriz comparativa GCP vs AWS vs Azure y soporte Ed25519 KMS/HSM
+- [TRUST_AND_AUTHORIZATION_ARCHITECTURE.md](./docs/TRUST_AND_AUTHORIZATION_ARCHITECTURE.md) — Dominios de confianza y diseño criptográfico `GoAuthorizationGrant`
+- [EVIDENCE_INTEGRITY_MODEL.md](./docs/EVIDENCE_INTEGRITY_MODEL.md) — Modelo de integridad en dos niveles (Digest vs Evidencia SOAP) y procedencia
+- [DISTRIBUTED_ANTI_REPLAY_DESIGN.md](./docs/DISTRIBUTED_ANTI_REPLAY_DESIGN.md) — Máquina de estados multi-nodo y diseño transaccional ACID pre-firma
+- [SECURITY_REVIEW.md](./docs/SECURITY_REVIEW.md) — Revisión exhaustiva de controles HTTP, autenticación, logs y brechas abiertas
+- [DEPLOYMENT_RUNBOOK.md](./docs/DEPLOYMENT_RUNBOOK.md) — Procedimiento documental paso a paso (Etapas 1–16)
+- [ACCEPTANCE_TEST_PLAN.md](./docs/ACCEPTANCE_TEST_PLAN.md) — Catálogo de pruebas obligatorias de aceptación y seguridad pre-GO
+- [EXT_REAL_03_READINESS_REPORT.md](./docs/EXT_REAL_03_READINESS_REPORT.md) — Informe consolidado de madurez y decisiones humanas pendientes
