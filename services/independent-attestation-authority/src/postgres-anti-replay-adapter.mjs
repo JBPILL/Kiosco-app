@@ -596,7 +596,7 @@ export class PostgresDistributedAntiReplayStore extends DistributedAntiReplaySto
     )
 
     try {
-      return await this._withTx(async (tx) => {
+      const txOutcome = await this._withTx(async (tx) => {
         const res = await tx.query(this._sql.reserveSql, [
           norm.idempotencyKey,
           norm.requestId,
@@ -610,18 +610,22 @@ export class PostgresDistributedAntiReplayStore extends DistributedAntiReplaySto
         ])
 
         if (Array.isArray(res?.rows) && res.rows.length === 1) {
-          return Object.freeze({
+          return {
             reserved: true,
-            state: DISTRIBUTED_RESERVATION_STATES.RESERVED,
-            idempotencyKey: norm.idempotencyKey,
-            requestId: norm.requestId,
-            requestSha256: norm.requestSha256,
-            authorizationId: norm.authorizationId,
-            attestationId: norm.attestationId,
-            ownerNodeId: norm.ownerNodeId,
-            reservationToken: norm.reservationToken,
-            leaseExpiresAt: norm.leaseExpiresAt,
-          })
+            record: Object.freeze({
+              reserved: true,
+              state: DISTRIBUTED_RESERVATION_STATES.RESERVED,
+              idempotencyKey: norm.idempotencyKey,
+              requestId: norm.requestId,
+              requestSha256: norm.requestSha256,
+              authorizationId: norm.authorizationId,
+              attestationId: norm.attestationId,
+              ownerNodeId: norm.ownerNodeId,
+              reservationToken: norm.reservationToken,
+              leaseExpiresAt: norm.leaseExpiresAt,
+            }),
+            conflictRow: null,
+          }
         }
 
         const conflictRes = await tx.query(this._sql.findConflictSql, [
@@ -631,25 +635,49 @@ export class PostgresDistributedAntiReplayStore extends DistributedAntiReplaySto
           norm.attestationId,
           norm.idempotencyKey,
         ])
-        const row = conflictRes?.rows?.[0]
-        if (row) {
-          throwReservationConflictError(
-            {
-              requestId: row.request_id,
-              requestSha256: row.request_sha256,
-              authorizationId: row.authorization_id ?? null,
-              attestationId: row.attestation_id,
-              idempotencyKey: row.idempotency_key,
-              state: row.state,
-            },
-            norm
-          )
+        return {
+          reserved: false,
+          record: null,
+          conflictRow: conflictRes?.rows?.[0] || null,
         }
-
-        throw new Error(
-          'SERVICE_ANTI_REPLAY_REQUEST_ID_DUPLICATED: Conflicto transaccional en reserva PostgreSQL'
-        )
       })
+
+      if (txOutcome.reserved && txOutcome.record) {
+        return txOutcome.record
+      }
+
+      let row = txOutcome.conflictRow
+      if (!row) {
+        const freshConflictRes = await this._queryRead(
+          this._sql.findConflictSql,
+          [
+            norm.requestId,
+            norm.requestSha256,
+            norm.authorizationId,
+            norm.attestationId,
+            norm.idempotencyKey,
+          ]
+        )
+        row = freshConflictRes?.rows?.[0] || null
+      }
+
+      if (row) {
+        throwReservationConflictError(
+          {
+            requestId: row.request_id,
+            requestSha256: row.request_sha256,
+            authorizationId: row.authorization_id ?? null,
+            attestationId: row.attestation_id,
+            idempotencyKey: row.idempotency_key,
+            state: row.state,
+          },
+          norm
+        )
+      }
+
+      throw new Error(
+        'SERVICE_ANTI_REPLAY_REQUEST_ID_DUPLICATED: Conflicto transaccional en reserva PostgreSQL'
+      )
     } catch (err) {
       if (err?.message?.includes('SERVICE_ANTI_REPLAY_')) {
         throw err
