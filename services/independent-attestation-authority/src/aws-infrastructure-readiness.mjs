@@ -173,11 +173,25 @@ export function validateAwsIacStaticReadiness(options = {}) {
   const combinedCode = tfFiles.map((f) => f.code).join('\n')
   const combinedRaw = Object.values(filesMap).join('\n')
   const rdsCode = stripHclComments(filesMap['rds.tf'] || combinedCode)
+  const networkCode = stripHclComments(filesMap['network.tf'] || combinedCode)
   const kmsCode = stripHclComments(filesMap['kms.tf'] || combinedCode)
   const iamCode = stripHclComments(filesMap['iam.tf'] || combinedCode)
   const varsCode = stripHclComments(filesMap['variables.tf'] || combinedCode)
   const outputsCode = stripHclComments(filesMap['outputs.tf'] || '')
   const gitignoreContent = String(filesMap['.gitignore'] || '')
+
+  const hasIsolatedVpcTopology =
+    /resource\s+"aws_vpc"\s+"attestation_isolated"/.test(networkCode) &&
+    /resource\s+"aws_subnet"\s+"private_az_a"[\s\S]*?map_public_ip_on_launch\s*=\s*false/.test(
+      networkCode
+    ) &&
+    /resource\s+"aws_subnet"\s+"private_az_b"[\s\S]*?map_public_ip_on_launch\s*=\s*false/.test(
+      networkCode
+    ) &&
+    /resource\s+"aws_security_group"\s+"attestation_runtime"/.test(networkCode) &&
+    !/resource\s+"aws_internet_gateway"/.test(combinedCode) &&
+    !/resource\s+"aws_nat_gateway"/.test(combinedCode) &&
+    !/resource\s+"aws_vpc_endpoint"/.test(combinedCode)
 
   /** @type {Array<{ id: string, title: string, passed: boolean, reason: string }>} */
   const checks = []
@@ -202,8 +216,10 @@ export function validateAwsIacStaticReadiness(options = {}) {
   })
 
   // AWS10-02: No PostgreSQL ingress from 0.0.0.0/0 or ::/0
-  const hasOpenIpv4Ingress = /0\.0\.0\.0\/0/.test(combinedCode)
-  const hasOpenIpv6Ingress = /::\/0/.test(combinedCode)
+  const hasOpenIpv4Ingress = /(?<!!)=\s*(?:\[\s*)?"0\.0\.0\.0\/0"/.test(
+    combinedCode
+  )
+  const hasOpenIpv6Ingress = /(?<!!)=\s*(?:\[\s*)?"::\/0"/.test(combinedCode)
   const hasScopedSgIngress =
     /resource\s+"aws_vpc_security_group_ingress_rule"\s+"postgres_from_runtime"/.test(
       rdsCode
@@ -420,6 +436,7 @@ export function validateAwsIacStaticReadiness(options = {}) {
   const gitignoreProtectsState =
     gitignoreContent.includes('*.tfstate') &&
     gitignoreContent.includes('.terraform/') &&
+    gitignoreContent.includes('.plans/') &&
     gitignoreContent.includes('!terraform.tfvars.example')
   const aws10_13 = !hasStateOrLockDir && gitignoreProtectsState
   checks.push({
@@ -480,6 +497,10 @@ export function validateAwsIacStaticReadiness(options = {}) {
       RDS_ENCRYPTION_CONFIGURED: aws10_04 ? 'PASS' : 'FAIL',
       RDS_TLS_REQUIRED: aws10_05 ? 'PASS' : 'FAIL',
       ED25519_SIGNING_KEY_SEPARATED: aws10_06 && aws10_07 ? 'PASS' : 'FAIL',
+      ISOLATED_VPC_SUBNETS_DEFINED: hasIsolatedVpcTopology ? 'PASS' : 'FAIL',
+      PLANS_DIR_GITIGNORED: gitignoreContent.includes('.plans/')
+        ? 'PASS'
+        : 'FAIL',
       NO_SECRETS_IN_IAC: aws10_08 && aws10_09 ? 'PASS' : 'FAIL',
       NO_TERRAFORM_STATE_VERSIONED: aws10_13 ? 'PASS' : 'FAIL',
       AWS_RESOURCE_CREATION: 0,

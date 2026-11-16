@@ -6,8 +6,14 @@ import { describe, expect, it } from 'vitest'
 
 import {
   AWS_IAC_CHECK_IDS,
+  AWS_KMS_ED25519_KEY_SPEC,
+  AWS_KMS_ED25519_KEY_USAGE,
+  AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES,
+  AWS_KMS_ED25519_MESSAGE_TYPE,
+  AWS_KMS_ED25519_SIGNING_ALGORITHM,
   AWS_PREFLIGHT_STATES,
   AWS_TARGET_ARCHITECTURE,
+  AwsKmsSigningProvider,
   evaluateAwsControlledPreflight,
   validateAwsIacStaticReadiness,
 } from '../../services/independent-attestation-authority/src/index.mjs'
@@ -412,5 +418,86 @@ describe('AWS-REAL-10 — Infraestructura AWS Dedicada, IaC Estático y Prefligh
     expect(
       gcpPreflight.errors.some((e) => e.code === 'AWS10_PROVIDER_MISMATCH')
     ).toBe(true)
+  })
+
+  it('AWS12C-KMS-VPC-01: verifica contrato KMS Ed25519 (ED25519_SHA_512 + MessageType RAW <= 4096 bytes, bloqueo DIGEST) y topología VPC aislada costo $0', async () => {
+    const report = validateAwsIacStaticReadiness({ iacDir: IAC_DIR })
+    expect(report.valid).toBe(true)
+    expect(report.invariants.ISOLATED_VPC_SUBNETS_DEFINED).toBe('PASS')
+    expect(report.invariants.PLANS_DIR_GITIGNORED).toBe('PASS')
+
+    expect(AWS_KMS_ED25519_KEY_SPEC).toBe('ECC_NIST_EDWARDS25519')
+    expect(AWS_KMS_ED25519_KEY_USAGE).toBe('SIGN_VERIFY')
+    expect(AWS_KMS_ED25519_SIGNING_ALGORITHM).toBe('ED25519_SHA_512')
+    expect(AWS_KMS_ED25519_MESSAGE_TYPE).toBe('RAW')
+    expect(AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES).toBe(4096)
+
+    const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519')
+    const spkiPem = publicKey
+      .export({ format: 'pem', type: 'spki' })
+      .toString()
+      .trim()
+    const spkiDer = publicKey.export({ format: 'der', type: 'spki' })
+    const keyId = `ed25519-spki-${crypto.createHash('sha256').update(spkiDer).digest('hex').slice(0, 16)}`
+    const kmsKeyArn =
+      'arn:aws:kms:sa-east-1:210987654321:key/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'
+
+    // Prohibido instanciar con MessageType = DIGEST
+    expect(
+      () =>
+        new AwsKmsSigningProvider({
+          keyId,
+          publicKeySpki: spkiPem,
+          kmsKeyArn,
+          messageType: 'DIGEST',
+        })
+    ).toThrow(/UNSUPPORTED_KMS_MESSAGE_TYPE/)
+
+    let capturedSignParams: Record<string, unknown> | null = null
+    const signer = new AwsKmsSigningProvider({
+      keyId,
+      publicKeySpki: spkiPem,
+      kmsKeyArn,
+      awsKmsClient: {
+        sign: async (params) => {
+          capturedSignParams = params
+          return {
+            KeyId: kmsKeyArn,
+            SigningAlgorithm: 'ED25519_SHA_512',
+            Signature: crypto.sign(null, params.Message, privateKey),
+          }
+        },
+        getPublicKey: async () => ({
+          KeyId: kmsKeyArn,
+          KeySpec: 'ECC_NIST_EDWARDS25519',
+          KeyUsage: 'SIGN_VERIFY',
+          SigningAlgorithms: ['ED25519_SHA_512'],
+          PublicKey: spkiDer,
+        }),
+      },
+    })
+
+    expect(await signer.isHealthy()).toBe(true)
+
+    const cmd = signer.buildAwsSignCommandInput('{"canonical":"payload"}')
+    expect(cmd.MessageType).toBe('RAW')
+    expect(cmd.SigningAlgorithm).toBe('ED25519_SHA_512')
+
+    const sigHex = await signer.sign('{"canonical":"payload"}')
+    expect(sigHex).toMatch(/^[0-9a-f]{128}$/)
+    expect(capturedSignParams).toMatchObject({
+      KeyId: kmsKeyArn,
+      MessageType: 'RAW',
+      SigningAlgorithm: 'ED25519_SHA_512',
+    })
+
+    // Rechaza payloads > 4096 bytes
+    const oversizedPayload = 'x'.repeat(4097)
+    expect(() => signer.buildAwsSignCommandInput(oversizedPayload)).toThrow(
+      /AWS_KMS_PAYLOAD_TOO_LARGE/
+    )
+    await expect(signer.sign(oversizedPayload)).rejects.toThrow(
+      /AWS_KMS_PAYLOAD_TOO_LARGE/
+    )
   })
 })

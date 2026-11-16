@@ -16,8 +16,11 @@
 
 resource "aws_db_subnet_group" "attestation_postgres" {
   name        = "kioskopos-attestation-pg-subnets-${var.environment}"
-  description = "Private subnet group exclusively for Independent Attestation Authority anti-replay PostgreSQL"
-  subnet_ids  = var.private_subnet_ids
+  description = "Isolated private subnet group across 2 AZs exclusively for Independent Attestation Authority PostgreSQL"
+  subnet_ids = [
+    aws_subnet.private_az_a.id,
+    aws_subnet.private_az_b.id
+  ]
 
   tags = {
     Name               = "kioskopos-attestation-pg-subnets-${var.environment}"
@@ -29,8 +32,8 @@ resource "aws_db_subnet_group" "attestation_postgres" {
 
 resource "aws_security_group" "attestation_postgres" {
   name        = "kioskopos-attestation-pg-sg-${var.environment}"
-  description = "Restricts PostgreSQL TCP 5432 ingress strictly to the Independent Attestation Authority runtime security groups (no 0.0.0.0/0)"
-  vpc_id      = var.vpc_id
+  description = "Restricts PostgreSQL TCP 5432 ingress strictly to the Independent Attestation Authority runtime security group"
+  vpc_id      = aws_vpc.attestation_isolated.id
 
   tags = {
     Name                        = "kioskopos-attestation-pg-sg-${var.environment}"
@@ -40,14 +43,12 @@ resource "aws_security_group" "attestation_postgres" {
 }
 
 resource "aws_vpc_security_group_ingress_rule" "postgres_from_runtime" {
-  for_each = toset(var.allowed_runtime_security_group_ids)
-
   security_group_id            = aws_security_group.attestation_postgres.id
-  description                  = "Allow PostgreSQL TCP 5432 strictly from authorized attestation runtime SG ${each.value}"
+  description                  = "Allow PostgreSQL TCP 5432 strictly from dedicated attestation runtime security group"
   ip_protocol                  = "tcp"
   from_port                    = 5432
   to_port                      = 5432
-  referenced_security_group_id = each.value
+  referenced_security_group_id = aws_security_group.attestation_runtime.id
 }
 
 resource "aws_db_parameter_group" "attestation_postgres16" {

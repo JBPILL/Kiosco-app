@@ -1,5 +1,7 @@
 # Never version Terraform / OpenTofu state, plans, lock directories, or secret tfvars
 .terraform/
+.terraform.lock.hcl
+.plans/
 *.tfstate
 *.tfstate.*
 *.tfplan

@@ -14,7 +14,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.60"
+      version = "~> 6.23"
     }
   }
 }
@@ -26,14 +26,14 @@ provider "aws" {
 
   default_tags {
     tags = {
-      Service                     = "independent-attestation-authority"
-      Environment                 = var.environment
-      ManagedBy                   = "terraform-opentofu"
-      ArchitecturePhase           = "AWS-REAL-10"
-      DedicatedAuthorityInfra     = "true"
-      SharedWithKioskoPos         = "false"
-      SharedWithSupabase          = "false"
-      ArcaConnectivityIntroduced  = "false"
+      Service                    = "independent-attestation-authority"
+      Environment                = var.environment
+      ManagedBy                  = "terraform-opentofu"
+      ArchitecturePhase          = "AWS-REAL-12C"
+      DedicatedAuthorityInfra    = "true"
+      SharedWithKioskoPos        = "false"
+      SharedWithSupabase         = "false"
+      ArcaConnectivityIntroduced = "false"
     }
   }
 }

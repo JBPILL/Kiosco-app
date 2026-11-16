@@ -20,13 +20,13 @@ resource "aws_kms_key" "attestation_ed25519_signing" {
   is_enabled               = true
 
   tags = {
-    Name                         = "kioskopos-attestation-ed25519-signing-${var.environment}"
-    KeyPurpose                   = "ATTESTATION_SIGNING"
-    KeySpec                      = "ECC_NIST_EDWARDS25519"
-    KeyUsage                     = "SIGN_VERIFY"
-    SigningPrivateKeyExport      = "FORBIDDEN"
-    SigningKeyReusedForRds       = "false"
-    ManualRotationViaAlias       = "true"
+    Name                    = "kioskopos-attestation-ed25519-signing-${var.environment}"
+    KeyPurpose              = "ATTESTATION_SIGNING"
+    KeySpec                 = "ECC_NIST_EDWARDS25519"
+    KeyUsage                = "SIGN_VERIFY"
+    SigningPrivateKeyExport = "FORBIDDEN"
+    SigningKeyReusedForRds  = "false"
+    ManualRotationViaAlias  = "true"
   }
 }
 
@@ -91,6 +91,12 @@ data "aws_iam_policy_document" "attestation_ed25519_signing_key_policy" {
       variable = "kms:SigningAlgorithm"
       values   = ["ED25519_SHA_512"]
     }
+
+    condition {
+      test     = "StringEqualsIfExists"
+      variable = "kms:MessageType"
+      values   = ["RAW"]
+    }
   }
 
   statement {
@@ -103,13 +109,13 @@ data "aws_iam_policy_document" "attestation_ed25519_signing_key_policy" {
     }
 
     actions = [
+      "kms:Create*",
       "kms:PutKeyPolicy",
       "kms:ScheduleKeyDeletion",
       "kms:CancelKeyDeletion",
       "kms:DeleteImportedKeyMaterial",
       "kms:ImportKeyMaterial",
       "kms:DisableKey",
-      "kms:CreateGrant",
       "kms:RetireGrant",
       "kms:RevokeGrant",
       "kms:Encrypt",
@@ -142,12 +148,12 @@ resource "aws_kms_key" "rds_and_secrets_encryption" {
   is_enabled               = true
 
   tags = {
-    Name                            = "kioskopos-attestation-rds-encryption-${var.environment}"
-    KeyPurpose                      = "RDS_ENCRYPTION"
-    KeySpec                         = "SYMMETRIC_DEFAULT"
-    KeyUsage                        = "ENCRYPT_DECRYPT"
+    Name                             = "kioskopos-attestation-rds-encryption-${var.environment}"
+    KeyPurpose                       = "RDS_ENCRYPTION"
+    KeySpec                          = "SYMMETRIC_DEFAULT"
+    KeyUsage                         = "ENCRYPT_DECRYPT"
     RdsEncryptionKeyReusedForSigning = "false"
-    SigningKeyReusedForRds          = "false"
+    SigningKeyReusedForRds           = "false"
   }
 }
 

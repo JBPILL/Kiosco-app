@@ -443,6 +443,7 @@ export class AwsKmsSigningProvider extends ProductionKmsSigningProvider {
     readonly keyVersionName?: string
     readonly region?: string
     readonly awsSigningAlgorithm?: string
+    readonly messageType?: string
     readonly kmsEndpoint?: string
     readonly kmsTimeoutMs?: number
     readonly testDoubleOnly?: boolean
@@ -533,6 +534,12 @@ export class GcpKmsSigningProvider extends ProductionKmsSigningProvider {
   }>
   isRealWorldTested(): false
 }
+
+export const AWS_KMS_ED25519_KEY_SPEC: 'ECC_NIST_EDWARDS25519'
+export const AWS_KMS_ED25519_KEY_USAGE: 'SIGN_VERIFY'
+export const AWS_KMS_ED25519_SIGNING_ALGORITHM: 'ED25519_SHA_512'
+export const AWS_KMS_ED25519_MESSAGE_TYPE: 'RAW'
+export const AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES: 4096
 
 export type DistributedReservationState =
   | 'AVAILABLE'

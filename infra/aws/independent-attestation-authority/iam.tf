@@ -220,6 +220,12 @@ data "aws_iam_policy_document" "signing_access" {
       variable = "kms:SigningAlgorithm"
       values   = ["ED25519_SHA_512"]
     }
+
+    condition {
+      test     = "StringEqualsIfExists"
+      variable = "kms:MessageType"
+      values   = ["RAW"]
+    }
   }
 
   statement {
@@ -227,6 +233,7 @@ data "aws_iam_policy_document" "signing_access" {
     effect = "Deny"
 
     actions = [
+      "kms:Create*",
       "kms:CreateKey",
       "kms:ScheduleKeyDeletion",
       "kms:CancelKeyDeletion",
@@ -235,7 +242,6 @@ data "aws_iam_policy_document" "signing_access" {
       "kms:ImportKeyMaterial",
       "kms:DisableKey",
       "kms:EnableKey",
-      "kms:CreateGrant",
       "kms:RetireGrant",
       "kms:RevokeGrant",
       "kms:DeleteAlias",

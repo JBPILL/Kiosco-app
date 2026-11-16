@@ -1,6 +1,6 @@
 # ==============================================================================
 # Input Variables — Independent Attestation Authority Dedicated AWS IaC
-# No Account ID, Region, VPC, Subnet, Security Group, Password, or URL hardcoded
+# No Account ID, Region, Password, or URL hardcoded
 # ==============================================================================
 
 variable "aws_account_id" {
@@ -33,39 +33,36 @@ variable "environment" {
   }
 }
 
-variable "vpc_id" {
-  description = "Explicit dedicated VPC ID where private RDS subnets reside (never assumed or shared with POS)"
+variable "vpc_cidr" {
+  description = "CIDR block for the dedicated isolated VPC (no Internet Gateway, no NAT Gateway)"
   type        = string
+  default     = "10.240.0.0/24"
 
   validation {
-    condition     = can(regex("^vpc-[a-z0-9]{8,17}$", var.vpc_id))
-    error_message = "vpc_id must be an explicit AWS VPC identifier (vpc-...)."
+    condition     = can(cidrhost(var.vpc_cidr, 0)) && var.vpc_cidr != "0.0.0.0/0"
+    error_message = "vpc_cidr must be a valid private IPv4 CIDR block."
   }
 }
 
-variable "private_subnet_ids" {
-  description = "Explicit list of at least two private subnet IDs for the dedicated RDS subnet group"
-  type        = list(string)
+variable "private_subnet_a_cidr" {
+  description = "CIDR block for isolated private subnet A (AZ 1)"
+  type        = string
+  default     = "10.240.0.0/26"
 
   validation {
-    condition = (
-      length(var.private_subnet_ids) >= 2 &&
-      alltrue([for s in var.private_subnet_ids : can(regex("^subnet-[a-z0-9]{8,17}$", s))])
-    )
-    error_message = "private_subnet_ids must contain at least 2 valid private subnet IDs (subnet-...)."
+    condition     = can(cidrhost(var.private_subnet_a_cidr, 0)) && var.private_subnet_a_cidr != "0.0.0.0/0"
+    error_message = "private_subnet_a_cidr must be a valid private IPv4 CIDR block."
   }
 }
 
-variable "allowed_runtime_security_group_ids" {
-  description = "Security Group IDs of the Independent Attestation Authority runtime permitted to reach PostgreSQL on TCP 5432 (CIDR 0.0.0.0/0 is strictly forbidden)"
-  type        = list(string)
+variable "private_subnet_b_cidr" {
+  description = "CIDR block for isolated private subnet B (AZ 2)"
+  type        = string
+  default     = "10.240.0.64/26"
 
   validation {
-    condition = (
-      length(var.allowed_runtime_security_group_ids) >= 1 &&
-      alltrue([for sg in var.allowed_runtime_security_group_ids : can(regex("^sg-[a-z0-9]{8,17}$", sg))])
-    )
-    error_message = "allowed_runtime_security_group_ids must contain at least one explicit Security Group ID (sg-...)."
+    condition     = can(cidrhost(var.private_subnet_b_cidr, 0)) && var.private_subnet_b_cidr != "0.0.0.0/0" && var.private_subnet_b_cidr != var.private_subnet_a_cidr
+    error_message = "private_subnet_b_cidr must be a valid private IPv4 CIDR block distinct from subnet A."
   }
 }
 

@@ -6,6 +6,33 @@
 #   are ever exposed in outputs.
 # ==============================================================================
 
+output "isolated_vpc_id" {
+  description = "ID of the dedicated zero-fixed-cost isolated VPC"
+  value       = aws_vpc.attestation_isolated.id
+  sensitive   = false
+}
+
+output "isolated_private_subnet_ids" {
+  description = "IDs of the two isolated private subnets across 2 AZs used by the RDS Subnet Group"
+  value = [
+    aws_subnet.private_az_a.id,
+    aws_subnet.private_az_b.id
+  ]
+  sensitive = false
+}
+
+output "runtime_security_group_id" {
+  description = "ID of the dedicated runtime Security Group allowed to connect to PostgreSQL TCP 5432"
+  value       = aws_security_group.attestation_runtime.id
+  sensitive   = false
+}
+
+output "postgres_security_group_id" {
+  description = "ID of the dedicated PostgreSQL Security Group accepting TCP 5432 only from runtime SG"
+  value       = aws_security_group.attestation_postgres.id
+  sensitive   = false
+}
+
 output "attestation_ed25519_signing_key_arn" {
   description = "ARN of the dedicated Ed25519 asymmetric signing key in AWS KMS (SIGN_VERIFY only)"
   value       = aws_kms_key.attestation_ed25519_signing.arn

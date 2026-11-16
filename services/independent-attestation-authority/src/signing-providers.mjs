@@ -4,7 +4,14 @@ import crypto from 'node:crypto'
 export const SUPPORTED_SIGNING_ALGORITHM = 'Ed25519'
 
 const DEFAULT_KMS_SIGNING_TIMEOUT_MS = 5000
-const ALLOWED_AWS_ED25519_ALGORITHMS = Object.freeze(['ED25519_SHA_512'])
+export const AWS_KMS_ED25519_KEY_SPEC = 'ECC_NIST_EDWARDS25519'
+export const AWS_KMS_ED25519_KEY_USAGE = 'SIGN_VERIFY'
+export const AWS_KMS_ED25519_SIGNING_ALGORITHM = 'ED25519_SHA_512'
+export const AWS_KMS_ED25519_MESSAGE_TYPE = 'RAW'
+export const AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES = 4096
+const ALLOWED_AWS_ED25519_ALGORITHMS = Object.freeze([
+  AWS_KMS_ED25519_SIGNING_ALGORITHM,
+])
 
 async function awaitKmsWithTimeout(promise, timeoutMs, label) {
   let timer = null
@@ -467,6 +474,28 @@ export class ProductionKmsSigningProvider extends AttestationSigningProvider {
           ) {
             return false
           }
+          const returnedKeySpec =
+            remotePub.KeySpec ?? remotePub.CustomerMasterKeySpec
+          if (
+            returnedKeySpec !== undefined &&
+            String(returnedKeySpec) !== AWS_KMS_ED25519_KEY_SPEC
+          ) {
+            return false
+          }
+          if (
+            remotePub.KeyUsage !== undefined &&
+            String(remotePub.KeyUsage) !== AWS_KMS_ED25519_KEY_USAGE
+          ) {
+            return false
+          }
+          if (
+            Array.isArray(remotePub.SigningAlgorithms) &&
+            !remotePub.SigningAlgorithms.includes(
+              AWS_KMS_ED25519_SIGNING_ALGORITHM
+            )
+          ) {
+            return false
+          }
         }
         const remotePemOrDer =
           typeof remotePub === 'string' ||
@@ -622,10 +651,20 @@ export class AwsKmsSigningProvider extends ProductionKmsSigningProvider {
       (typeof options.keyVersionName === 'string' &&
         options.keyVersionName.trim()) ||
       undefined
-    const awsSigningAlgorithm = options.awsSigningAlgorithm || 'ED25519_SHA_512'
+    const awsSigningAlgorithm =
+      options.awsSigningAlgorithm || AWS_KMS_ED25519_SIGNING_ALGORITHM
     if (!ALLOWED_AWS_ED25519_ALGORITHMS.includes(awsSigningAlgorithm)) {
       throw new Error(
         `UNSUPPORTED_SIGNING_ALGORITHM: Algoritmo AWS KMS '${awsSigningAlgorithm}' no permitido; se requiere '${ALLOWED_AWS_ED25519_ALGORITHMS.join(', ')}'`
+      )
+    }
+    const messageType =
+      options.messageType !== undefined
+        ? String(options.messageType).trim().toUpperCase()
+        : AWS_KMS_ED25519_MESSAGE_TYPE
+    if (messageType !== AWS_KMS_ED25519_MESSAGE_TYPE) {
+      throw new Error(
+        `UNSUPPORTED_KMS_MESSAGE_TYPE: AWS KMS Ed25519 (${AWS_KMS_ED25519_KEY_SPEC} / ${AWS_KMS_ED25519_SIGNING_ALGORITHM}) exige MessageType='RAW'; prohibido usar '${options.messageType}'`
       )
     }
     const awsClient = options.awsKmsClient || null
@@ -636,10 +675,23 @@ export class AwsKmsSigningProvider extends ProductionKmsSigningProvider {
         typeof awsClient.send === 'function')
         ? {
             sign: async ({ keyVersionName, data }) => {
+              const rawBytes = Buffer.isBuffer(data)
+                ? data
+                : Buffer.from(String(data), 'utf8')
+              if (rawBytes.byteLength === 0) {
+                throw new Error(
+                  'AWS_KMS_EMPTY_PAYLOAD: El payload canónico para AWS KMS Ed25519 no puede ser vacío'
+                )
+              }
+              if (rawBytes.byteLength > AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES) {
+                throw new Error(
+                  `AWS_KMS_PAYLOAD_TOO_LARGE: AWS KMS Ed25519 con MessageType='RAW' admite hasta ${AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES} bytes (recibido ${rawBytes.byteLength} bytes)`
+                )
+              }
               const payload = {
                 KeyId: keyVersionName,
-                Message: data,
-                MessageType: 'RAW',
+                Message: rawBytes,
+                MessageType: AWS_KMS_ED25519_MESSAGE_TYPE,
                 SigningAlgorithm: awsSigningAlgorithm,
               }
               const res =
@@ -703,10 +755,20 @@ export class AwsKmsSigningProvider extends ProductionKmsSigningProvider {
     const data = Buffer.isBuffer(canonicalPayload)
       ? canonicalPayload
       : Buffer.from(String(canonicalPayload), 'utf8')
+    if (data.byteLength === 0) {
+      throw new Error(
+        'AWS_KMS_EMPTY_PAYLOAD: El payload canónico para AWS KMS Ed25519 no puede ser vacío'
+      )
+    }
+    if (data.byteLength > AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES) {
+      throw new Error(
+        `AWS_KMS_PAYLOAD_TOO_LARGE: AWS KMS Ed25519 con MessageType='RAW' admite hasta ${AWS_KMS_ED25519_MAX_RAW_MESSAGE_BYTES} bytes (recibido ${data.byteLength} bytes)`
+      )
+    }
     return Object.freeze({
       KeyId: this._keyVersionName,
       Message: data,
-      MessageType: 'RAW',
+      MessageType: AWS_KMS_ED25519_MESSAGE_TYPE,
       SigningAlgorithm: this._awsSigningAlgorithm,
     })
   }

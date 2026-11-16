@@ -59,9 +59,12 @@ services/independent-attestation-authority/var/
 
 # Terraform / OpenTofu state, plans y variables sensibles: nunca versionar
 **/.terraform/
+**/.terraform.lock.hcl
 **/*.tfstate
 **/*.tfstate.*
 **/*.tfplan
+**/.plans/
+infra/aws/independent-attestation-authority/.plans/
 **/*.tfvars
 **/*.tfvars.json
 !**/terraform.tfvars.example
