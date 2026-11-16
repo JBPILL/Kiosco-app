@@ -56,3 +56,20 @@ services/independent-attestation-authority/.env*
 service-account*.json
 .attestation-replay/
 services/independent-attestation-authority/var/
+
+# Terraform / OpenTofu state, plans y variables sensibles: nunca versionar
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.tfvars
+**/*.tfvars.json
+!**/terraform.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc

@@ -185,3 +185,4 @@ Si el backend de almacenamiento de anti-replay no puede ser consultado o persist
 - [DEPLOYMENT_RUNBOOK.md](./docs/DEPLOYMENT_RUNBOOK.md) — Procedimiento documental paso a paso (Etapas 1–16)
 - [ACCEPTANCE_TEST_PLAN.md](./docs/ACCEPTANCE_TEST_PLAN.md) — Catálogo de pruebas obligatorias de aceptación y seguridad pre-GO
 - [EXT_REAL_03_READINESS_REPORT.md](./docs/EXT_REAL_03_READINESS_REPORT.md) — Informe consolidado de madurez y decisiones humanas pendientes
+- [AWS_CONTROLLED_INFRASTRUCTURE_PROVISIONING_GUIDE.md](./docs/AWS_CONTROLLED_INFRASTRUCTURE_PROVISIONING_GUIDE.md) — Guía de provisión controlada AWS (`AWS-REAL-10`: RDS PostgreSQL dedicado + AWS KMS Ed25519 + Secrets Manager; `AWS_RESOURCES_PROVISIONED = false`)

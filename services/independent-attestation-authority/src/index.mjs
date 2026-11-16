@@ -165,3 +165,11 @@ export {
   runControlledMtlsConnectivityCheck,
   runControlledExternalConnectivitySuite,
 } from './external-connectivity.mjs'
+
+export {
+  AWS_TARGET_ARCHITECTURE,
+  AWS_PREFLIGHT_STATES,
+  AWS_IAC_CHECK_IDS,
+  validateAwsIacStaticReadiness,
+  evaluateAwsControlledPreflight,
+} from './aws-infrastructure-readiness.mjs'

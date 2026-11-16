@@ -1668,3 +1668,110 @@ export function runControlledExternalConnectivitySuite(
     }>
   }>
 >
+
+export const AWS_TARGET_ARCHITECTURE: Readonly<{
+  readonly CLOUD_PROVIDER_TARGET: 'AWS'
+  readonly AWS_ARCHITECTURE_SELECTED: true
+  readonly AWS_IAC_IMPLEMENTED: true
+  readonly AWS_RESOURCES_PROVISIONED: false
+  readonly AWS_REAL_CONNECTIVITY_TESTED: false
+  readonly DYNAMODB_INCLUDED_IN_INITIAL_TARGET: false
+  readonly OIDC_DEPLOYED_IN_INITIAL_TARGET: false
+  readonly MTLS_DEPLOYED_IN_INITIAL_TARGET: false
+  readonly PUBLIC_ENDPOINT_DEPLOYED: false
+  readonly SIGNING_KEY_PURPOSE: 'ATTESTATION_SIGNING'
+  readonly SIGNING_KEY_SPEC: 'ECC_NIST_EDWARDS25519'
+  readonly SIGNING_KEY_USAGE: 'SIGN_VERIFY'
+  readonly SIGNING_PRIVATE_KEY_EXPORT: 'FORBIDDEN'
+  readonly SIGNING_PRIVATE_KEY_IN_REPOSITORY: false
+  readonly SIGNING_PRIVATE_KEY_IN_RUNTIME_FILESYSTEM: false
+  readonly SIGNING_KEY_REUSED_FOR_RDS: false
+  readonly RDS_ENCRYPTION_KEY_REUSED_FOR_SIGNING: false
+  readonly POSTGRES_DEDICATED: true
+  readonly POSTGRES_SHARED_WITH_POS: false
+  readonly POSTGRES_SUPABASE: false
+  readonly PUBLICLY_ACCESSIBLE: false
+  readonly TLS_REQUIRED: true
+  readonly DATABASE_ENCRYPTED_AT_REST: true
+  readonly DATABASE_NAME_DEDICATED: true
+  readonly UNRESTRICTED_POSTGRES_INGRESS: false
+  readonly INGRESS_0_0_0_0_5432: false
+  readonly REPOSITORY_DATABASE_SECRET: false
+  readonly HARDCODED_DATABASE_PASSWORD: false
+  readonly DATABASE_URL_WITH_PASSWORD_IN_REPO: false
+}>
+
+export const AWS_PREFLIGHT_STATES: Readonly<{
+  readonly CONFIGURATION_INVALID: 'CONFIGURATION_INVALID'
+  readonly CONFIGURATION_VALID: 'CONFIGURATION_VALID'
+  readonly AWS_CREDENTIALS_NOT_CHECKED: 'AWS_CREDENTIALS_NOT_CHECKED'
+  readonly AWS_CONNECTIVITY_NOT_CHECKED: 'AWS_CONNECTIVITY_NOT_CHECKED'
+  readonly AWS_RESOURCES_NOT_PROVISIONED: 'AWS_RESOURCES_NOT_PROVISIONED'
+  readonly READY_FOR_CONTROLLED_CONNECTIVITY_CHECK: 'READY_FOR_CONTROLLED_CONNECTIVITY_CHECK'
+}>
+
+export const AWS_IAC_CHECK_IDS: readonly string[]
+
+export interface AwsIacCheckResult {
+  readonly id: string
+  readonly title: string
+  readonly passed: boolean
+  readonly reason: string
+}
+
+export interface AwsIacStaticReadinessReport {
+  readonly valid: boolean
+  readonly status: 'AWS_IAC_STATIC_VALID' | 'AWS_IAC_STATIC_INVALID'
+  readonly iacDir: string
+  readonly cloudProviderTarget: 'AWS'
+  readonly totalChecks: number
+  readonly passedChecks: number
+  readonly failedChecks: number
+  readonly checks: readonly AwsIacCheckResult[]
+  readonly invariants: Readonly<Record<string, unknown>>
+}
+
+export function validateAwsIacStaticReadiness(options?: {
+  readonly iacDir?: string
+  readonly files?: Record<string, string>
+}): AwsIacStaticReadinessReport
+
+export function evaluateAwsControlledPreflight(
+  env?: Record<string, string | undefined>,
+  options?: {
+    readonly iacDir?: string
+    readonly files?: Record<string, string>
+    readonly checkAmbientFiscalVars?: boolean
+  }
+): Readonly<{
+  status: string
+  cloudProviderTarget: 'AWS'
+  optInRequired: true
+  optInEnabled: boolean
+  mutatingOperationsExecuted: 0
+  awsApiCallsExecuted: 0
+  configurationValid: boolean
+  iacStaticValid: boolean
+  states: Readonly<{
+    CONFIGURATION_VALID: boolean
+    AWS_CREDENTIALS_NOT_CHECKED: true
+    AWS_CONNECTIVITY_NOT_CHECKED: true
+    AWS_RESOURCES_NOT_PROVISIONED: true
+    AWS_PRODUCTION_READY: false
+    PRODUCTION_VALIDATED: false
+    PRODUCTION_APPROVED: false
+    REAL_INTEGRATION_TESTED: false
+    REAL_POSTGRESQL_CONNECTED: false
+    REAL_KMS_CONNECTED: false
+    REAL_OIDC_CONNECTED: false
+    REAL_MTLS_CONNECTED: false
+    EXTERNAL_AUTHORITY_DEPLOYED: false
+    AUTHORITY_REAL_WORLD_AVAILABLE: false
+    P1_IMPORT_ALLOWED: false
+    PR02_READY_FOR_EMISSION_GO: false
+    REMOTE_GO: 'DENIED'
+  }>
+  iacReport: AwsIacStaticReadinessReport
+  safeFingerprint: SafeConfigurationFingerprint
+  errors: readonly Readonly<{ code: string; message: string }>[]
+}>

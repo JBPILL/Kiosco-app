@@ -114,3 +114,22 @@ ATTESTATION_AWS_REGION=sa-east-1
 2. Ejecutar suite `EXT07-REAL-PG-01` y smoke tests de KMS/OIDC/mTLS sobre infraestructura real sin tráfico fiscal ARCA ni mutaciones Supabase.
 3. Registrar y fijar públicamente `trustedAttestationKeyId`, `trustedAttestationPublicKeySpki` y par separado de `GoAuthorization` authority en la política verificadora.
 4. Mantener bloqueados hasta autorización explícita posterior: `P1_IMPORT_ALLOWED = false`, `PV2_ENABLED = false`, `HISTORICAL_042_REEMISSION_FORBIDDEN = true`, `REMOTE_GO = DENIED`.
+
+---
+
+## 7. Estado de Selección Arquitectónica AWS (`AWS-REAL-10`)
+
+Consulte [`AWS_CONTROLLED_INFRASTRUCTURE_PROVISIONING_GUIDE.md`](./AWS_CONTROLLED_INFRASTRUCTURE_PROVISIONING_GUIDE.md) y la definición IaC en [`infra/aws/independent-attestation-authority/`](../../../infra/aws/independent-attestation-authority/).
+
+```text
+CLOUD_PROVIDER_TARGET = AWS
+AWS_ARCHITECTURE_SELECTED = true
+AWS_IAC_IMPLEMENTED = true
+AWS_RESOURCES_PROVISIONED = false
+AWS_REAL_CONNECTIVITY_TESTED = false
+REAL_POSTGRESQL_CONNECTED = false
+REAL_KMS_CONNECTED = false
+EXTERNAL_AUTHORITY_DEPLOYED = false
+PRODUCTION_VALIDATED = false
+PRODUCTION_APPROVED = false
+```
