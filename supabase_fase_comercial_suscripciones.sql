@@ -1,8 +1,7 @@
--- Commercial incremental module. Review and install only with explicit authorization.
-BEGIN;
 -- Optional canonical commercial module. Apply AFTER 900_final_security.sql.
 -- Incremental counterpart: supabase_fase_comercial_suscripciones.sql (byte-identical).
 -- No remote installation is authorized by this source file.
+BEGIN;
 REVOKE CREATE ON SCHEMA public FROM PUBLIC,anon,authenticated,service_role;
 
 ALTER TABLE public.kioscos ADD COLUMN IF NOT EXISTS direccion text;
@@ -98,17 +97,19 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,publi
 AS $$
 DECLARE a public.usuarios; op public.operaciones_comerciales%ROWTYPE;
   k public.kioscos%ROWTYPE; s public.suscripciones%ROWTYPE; pl public.planes%ROWTYPE;
+  t public.tickets_soporte%ROWTYPE;
   req jsonb; anterior jsonb; nuevo jsonb; salida jsonb; evento text; fecha date;
-  meses integer; monto numeric; v_estado text; pid uuid; pago uuid; uid uuid;
+  meses integer; monto numeric; v_estado text; pid uuid; pago uuid; uid uuid; tid uuid; audit_kiosco uuid; resp_text text;
 BEGIN
   a:=public.comercial_actor(true);
   IF p_operacion_id IS NULL OR coalesce(jsonb_typeof(p_datos),'')<>'object' THEN
     RAISE EXCEPTION 'Solicitud comercial inválida' USING ERRCODE='22023';
   END IF;
   IF (p_tipo IN ('RENOVACION','CAMBIO_ESTADO','CAMBIO_PLAN','EDITAR_COMERCIO') AND p_kiosco_id IS NULL)
-    OR (p_tipo IN ('MODIFICACION_PLAN','CONFIGURACION') AND p_kiosco_id IS NOT NULL) THEN
+    OR (p_tipo IN ('MODIFICACION_PLAN','CONFIGURACION','GESTION_TICKET_SOPORTE') AND p_kiosco_id IS NOT NULL) THEN
     RAISE EXCEPTION 'Destino comercial inválido' USING ERRCODE='22023';
   END IF;
+  audit_kiosco:=p_kiosco_id;
   req:=jsonb_build_object('kiosco_id',p_kiosco_id,'datos',p_datos);
   INSERT INTO public.operaciones_comerciales(id,actor_usuario_id,kiosco_id,tipo,solicitud)
     VALUES(p_operacion_id,a.id,p_kiosco_id,p_tipo,req) ON CONFLICT(id) DO NOTHING;
@@ -225,12 +226,44 @@ BEGIN
     UPDATE public.suscripciones SET plan_id=pid,fecha_vencimiento=fecha,
       estado=CASE v_estado WHEN 'ACTIVO' THEN 'ACTIVA' WHEN 'SUSPENDIDO' THEN 'SUSPENDIDA' ELSE 'VENCIDA' END WHERE id=s.id;
     salida:=jsonb_build_object('success',true,'kiosco_id',k.id); evento:='CAMBIO_DATOS_COMERCIO';
+  ELSIF p_tipo='GESTION_TICKET_SOPORTE' THEN
+    IF p_datos ? 'ticket_id' AND jsonb_typeof(p_datos->'ticket_id')='string'
+      AND btrim(p_datos->>'ticket_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      tid:=(btrim(p_datos->>'ticket_id'))::uuid;
+    ELSE
+      RAISE EXCEPTION 'Ticket de soporte inválido' USING ERRCODE='22023';
+    END IF;
+    v_estado:=p_datos->>'estado';
+    IF v_estado NOT IN ('PENDIENTE','EN_PROCESO','RESUELTO') THEN
+      RAISE EXCEPTION 'Estado de ticket inválido' USING ERRCODE='22023';
+    END IF;
+    IF p_datos ? 'respuesta_admin' AND jsonb_typeof(p_datos->'respuesta_admin') NOT IN ('string','null') THEN
+      RAISE EXCEPTION 'Respuesta administrativa inválida' USING ERRCODE='22023';
+    END IF;
+    resp_text:=CASE WHEN p_datos ? 'respuesta_admin' THEN nullif(btrim(p_datos->>'respuesta_admin'),'') ELSE NULL END;
+    IF resp_text IS NOT NULL AND length(resp_text)>8000 THEN
+      RAISE EXCEPTION 'Respuesta administrativa excede el límite permitido' USING ERRCODE='22023';
+    END IF;
+    SELECT * INTO t FROM public.tickets_soporte WHERE id=tid FOR UPDATE;
+    IF t.id IS NULL THEN
+      RAISE EXCEPTION 'Ticket de soporte no encontrado' USING ERRCODE='22023';
+    END IF;
+    audit_kiosco:=t.kiosco_id;
+    anterior:=jsonb_build_object('ticket',to_jsonb(t));
+    UPDATE public.tickets_soporte SET
+      estado=v_estado,
+      respuesta_admin=CASE WHEN p_datos ? 'respuesta_admin' THEN resp_text ELSE respuesta_admin END,
+      fecha_actualizacion=now()
+    WHERE id=t.id
+    RETURNING * INTO t;
+    salida:=jsonb_build_object('success',true,'ticket',to_jsonb(t));
+    evento:='GESTION_TICKET_SOPORTE';
   ELSE
     RAISE EXCEPTION 'Operación comercial no permitida' USING ERRCODE='22023';
   END IF;
   nuevo:=salida;
   INSERT INTO public.auditoria_comercial_admin(operacion_id,actor_usuario_id,kiosco_id,tipo,estado_anterior,estado_nuevo,datos)
-    VALUES(p_operacion_id,a.id,p_kiosco_id,evento,anterior,nuevo,p_datos);
+    VALUES(p_operacion_id,a.id,audit_kiosco,evento,anterior,nuevo,p_datos);
   UPDATE public.operaciones_comerciales SET resultado=salida WHERE id=p_operacion_id;
   RETURN salida;
 END $$;
@@ -253,6 +286,23 @@ AS $$ SELECT public.comercial_mutar(p_operacion_id,'CONFIGURACION',NULL,p_datos)
 CREATE OR REPLACE FUNCTION public.editar_comercio_comercial(p_operacion_id uuid,p_kiosco_id uuid,p_datos jsonb)
 RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public
 AS $$ SELECT public.comercial_mutar(p_operacion_id,'EDITAR_COMERCIO',p_kiosco_id,p_datos) $$;
+CREATE OR REPLACE FUNCTION public.gestionar_ticket_soporte_admin(
+  p_operacion_id uuid,
+  p_ticket_id uuid,
+  p_estado text,
+  p_respuesta_admin text DEFAULT NULL,
+  p_actualizar_respuesta boolean DEFAULT false
+)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public
+AS $$ SELECT public.comercial_mutar(
+  p_operacion_id,
+  'GESTION_TICKET_SOPORTE',
+  NULL,
+  jsonb_build_object('ticket_id',p_ticket_id,'estado',p_estado)
+    || CASE WHEN coalesce(p_actualizar_respuesta,false)
+      THEN jsonb_build_object('respuesta_admin',p_respuesta_admin)
+      ELSE '{}'::jsonb END
+) $$;
 
 CREATE OR REPLACE FUNCTION public.leer_configuracion_comercial()
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public
@@ -373,8 +423,8 @@ BEGIN
   FOR f IN SELECT oid::regprocedure AS signature,proname FROM pg_proc
     WHERE pronamespace='public'::regnamespace AND (proname LIKE 'comercial_%' OR proname IN
       ('estado_comercial_efectivo','renovar_suscripcion_comercial','cambiar_estado_comercial','cambiar_plan_comercial',
-       'actualizar_plan','guardar_configuracion_comercial','editar_comercio_comercial','leer_configuracion_comercial',
-       'obtener_mi_suscripcion_comercial','leer_administracion_comercial')) LOOP
+       'actualizar_plan','guardar_configuracion_comercial','editar_comercio_comercial','gestionar_ticket_soporte_admin',
+       'leer_configuracion_comercial','obtener_mi_suscripcion_comercial','leer_administracion_comercial')) LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',f.signature);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role',f.signature);
   END LOOP;
@@ -384,6 +434,7 @@ GRANT EXECUTE ON FUNCTION public.renovar_suscripcion_comercial(uuid,uuid,integer
   public.cambiar_estado_comercial(uuid,uuid,text),public.cambiar_plan_comercial(uuid,uuid,uuid),
   public.actualizar_plan(uuid,uuid,text,numeric,integer,boolean,text),
   public.guardar_configuracion_comercial(uuid,jsonb),public.editar_comercio_comercial(uuid,uuid,jsonb),
+  public.gestionar_ticket_soporte_admin(uuid,uuid,text,text,boolean),
   public.leer_configuracion_comercial(),public.obtener_mi_suscripcion_comercial(),
   public.leer_administracion_comercial() TO authenticated;
 CREATE OR REPLACE FUNCTION public.obtener_estado_operativo_comercial()
@@ -402,182 +453,4 @@ GRANT EXECUTE ON FUNCTION public.obtener_estado_operativo_comercial() TO authent
 -- grants. No browser gets these grants; commerce/owner creation uses saga RPCs.
 GRANT INSERT(auth_user_id,kiosco_id,nombre,email,rol,activo,es_superadmin),
   UPDATE(auth_user_id,email) ON public.usuarios TO service_role;
-
--- Optional commercial enforcement, installed after 001_commercial_subscription.sql.
-CREATE OR REPLACE FUNCTION public.exigir_comercio_operativo(p_kiosco_id uuid)
-RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public
-AS $$
-DECLARE estado text; decision text; fila_estado text; vencimiento date;
-BEGIN
-  -- Serializes against administrative state/renewal changes until transaction end.
-  SELECT estado_suscripcion INTO decision FROM public.kioscos WHERE id=p_kiosco_id FOR SHARE;
-  SELECT s.estado,s.fecha_vencimiento INTO fila_estado,vencimiento FROM public.suscripciones s
-    WHERE s.kiosco_id=p_kiosco_id AND s.estado<>'CANCELADA' FOR SHARE;
-  estado:=public.comercial_resolver_estado(decision,fila_estado,vencimiento,public.comercial_hoy());
-  IF estado IS DISTINCT FROM 'ACTIVO' THEN
-    RAISE EXCEPTION 'Operación bloqueada por estado comercial: %',coalesce(estado,'NO_DISPONIBLE')
-      USING ERRCODE='42501';
-  END IF;
-END $$;
-
-CREATE OR REPLACE FUNCTION public.validar_escritura_comercial_operativa()
-RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public
-AS $$
-DECLARE fila jsonb; kid uuid;
-BEGIN
-  fila:=CASE WHEN TG_OP='DELETE' THEN to_jsonb(OLD) ELSE to_jsonb(NEW) END;
-  kid:=nullif(fila->>'kiosco_id','')::uuid;
-  IF kid IS NULL AND fila ? 'venta_id' THEN
-    SELECT kiosco_id INTO kid FROM public.ventas WHERE id=(fila->>'venta_id')::uuid;
-  END IF;
-  IF kid IS NULL AND fila ? 'compra_id' THEN
-    SELECT kiosco_id INTO kid FROM public.compras_proveedor WHERE id=(fila->>'compra_id')::uuid;
-  END IF;
-  IF kid IS NULL AND fila ? 'producto_id' THEN
-    SELECT kiosco_id INTO kid FROM public.productos WHERE id=(fila->>'producto_id')::uuid;
-  END IF;
-  IF kid IS NULL THEN RAISE EXCEPTION 'Comercio operativo no resuelto' USING ERRCODE='42501'; END IF;
-  PERFORM public.exigir_comercio_operativo(kid);
-  IF TG_OP='DELETE' THEN RETURN OLD; END IF;
-  RETURN NEW;
-END $$;
-
-DO $$
-DECLARE tabla text;
-BEGIN
-  FOREACH tabla IN ARRAY ARRAY[
-    'categorias','productos','combo_items','promociones','lotes_producto',
-    'sesiones_caja','movimientos_caja','ventas','detalles_venta','pagos_venta',
-    'movimientos_stock','clientes','movimientos_cuenta_corriente','proveedores',
-    'compras_proveedor','detalles_compra','pagos_proveedor','movimientos_proveedor',
-    'producto_costos','movimiento_stock_costos','historial_precios_producto',
-    'electronica_unidades','electronica_reparaciones','electronica_solicitudes'
-  ] LOOP
-    IF to_regclass('public.'||tabla) IS NULL THEN
-      RAISE EXCEPTION 'Prerequisito operativo ausente: %',tabla;
-    END IF;
-    EXECUTE format('DROP TRIGGER IF EXISTS comercial_estado_write_gate ON public.%I',tabla);
-    EXECUTE format('CREATE TRIGGER comercial_estado_write_gate BEFORE INSERT OR UPDATE OR DELETE ON public.%I FOR EACH ROW EXECUTE FUNCTION public.validar_escritura_comercial_operativa()',tabla);
-  END LOOP;
-END $$;
-ALTER FUNCTION public.exigir_comercio_operativo(uuid) OWNER TO postgres;
-ALTER FUNCTION public.validar_escritura_comercial_operativa() OWNER TO postgres;
-REVOKE ALL ON FUNCTION public.exigir_comercio_operativo(uuid),public.validar_escritura_comercial_operativa()
-  FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE TABLE IF NOT EXISTS public.provisiones_comercio (
-  operacion_id uuid PRIMARY KEY, actor_usuario_id uuid NOT NULL REFERENCES public.usuarios(id),
-  solicitud jsonb NOT NULL, solicitud_hash text NOT NULL,
-  kiosco_id uuid NOT NULL DEFAULT gen_random_uuid(), usuario_id uuid NOT NULL DEFAULT gen_random_uuid(),
-  auth_user_id uuid, estado text NOT NULL DEFAULT 'IN_PROGRESS'
-    CHECK(estado IN ('IN_PROGRESS','AUTH_READY','COMPENSATING','FAILED','TAINTED','UNCERTAIN','PASS')),
-  resultado jsonb, creado_en timestamptz NOT NULL DEFAULT now()
-);
-ALTER TABLE public.provisiones_comercio ENABLE ROW LEVEL SECURITY;
-REVOKE ALL ON public.provisiones_comercio FROM PUBLIC,anon,authenticated,service_role;
-
-CREATE OR REPLACE FUNCTION public.comercial_actor_edge(p_actor_auth_id uuid)
-RETURNS uuid LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public
-AS $$
-DECLARE uid uuid;
-BEGIN
-  IF auth.role() IS DISTINCT FROM 'service_role' THEN RAISE EXCEPTION 'Canal de servicio requerido' USING ERRCODE='42501'; END IF;
-  SELECT id INTO uid FROM public.usuarios WHERE auth_user_id=p_actor_auth_id AND activo AND es_superadmin;
-  IF uid IS NULL THEN RAISE EXCEPTION 'SuperAdmin activo requerido' USING ERRCODE='42501'; END IF;
-  RETURN uid;
-END $$;
-
-CREATE OR REPLACE FUNCTION public.reservar_provision_comercio(p_operacion_id uuid,p_actor_auth_id uuid,p_datos jsonb,p_hash text)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public
-AS $$
-DECLARE uid uuid; r public.provisiones_comercio%ROWTYPE; n integer;
-BEGIN
-  uid:=public.comercial_actor_edge(p_actor_auth_id);
-  IF p_operacion_id IS NULL OR coalesce(jsonb_typeof(p_datos),'')<>'object'
-    OR p_datos-ARRAY['email','nombreDueno','nombreKiosco','direccion','telefono','rubro','planId','diasValidez']<>'{}'
-    OR p_hash IS NULL OR p_hash !~ '^[a-f0-9]{64}$'
-    OR coalesce(length(btrim(p_datos->>'nombreKiosco')),0) NOT BETWEEN 1 AND 120
-    OR coalesce(length(btrim(p_datos->>'nombreDueno')),0) NOT BETWEEN 1 AND 120
-    OR coalesce(p_datos->>'email','') !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$'
-    OR length(p_datos->>'email')>254
-    OR coalesce((p_datos->>'diasValidez')::integer,0) NOT BETWEEN 1 AND 366 THEN
-    RAISE EXCEPTION 'Datos de provisioning inválidos' USING ERRCODE='22023';
-  END IF;
-  PERFORM 1 FROM public.planes WHERE id=(p_datos->>'planId')::uuid AND activo FOR SHARE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Plan activo requerido' USING ERRCODE='22023'; END IF;
-  INSERT INTO public.provisiones_comercio(operacion_id,actor_usuario_id,solicitud,solicitud_hash)
-    VALUES(p_operacion_id,uid,p_datos,p_hash) ON CONFLICT DO NOTHING;
-  GET DIAGNOSTICS n=ROW_COUNT;
-  SELECT * INTO r FROM public.provisiones_comercio WHERE operacion_id=p_operacion_id FOR UPDATE;
-  IF r.actor_usuario_id<>uid OR r.solicitud<>p_datos OR r.solicitud_hash<>p_hash THEN
-    RAISE EXCEPTION 'Operation ID asociado a otra solicitud' USING ERRCODE='22023';
-  END IF;
-  RETURN to_jsonb(r)||jsonb_build_object('claimed',n=1);
-END $$;
-
-CREATE OR REPLACE FUNCTION public.transicionar_provision_comercio(p_operacion_id uuid,p_actor_auth_id uuid,p_accion text,p_auth_user_id uuid DEFAULT NULL)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public
-AS $$
-DECLARE uid uuid; r public.provisiones_comercio%ROWTYPE;
-BEGIN
-  uid:=public.comercial_actor_edge(p_actor_auth_id);
-  SELECT * INTO r FROM public.provisiones_comercio WHERE operacion_id=p_operacion_id FOR UPDATE;
-  IF r.operacion_id IS NULL OR r.actor_usuario_id<>uid THEN RAISE EXCEPTION 'Reserva no autorizada' USING ERRCODE='42501'; END IF;
-  IF r.estado='PASS' THEN RETURN to_jsonb(r); END IF;
-  IF p_accion='AUTH_READY' AND r.estado='IN_PROGRESS' AND p_auth_user_id IS NOT NULL THEN
-    UPDATE public.provisiones_comercio SET auth_user_id=p_auth_user_id,estado='AUTH_READY' WHERE operacion_id=p_operacion_id;
-  ELSIF p_accion='COMPENSATING' AND r.estado='AUTH_READY' AND p_auth_user_id=r.auth_user_id THEN
-    UPDATE public.provisiones_comercio SET estado='COMPENSATING' WHERE operacion_id=p_operacion_id;
-  ELSIF p_accion IN ('FAILED','TAINTED') AND r.estado='COMPENSATING' AND p_auth_user_id=r.auth_user_id THEN
-    UPDATE public.provisiones_comercio SET estado=p_accion WHERE operacion_id=p_operacion_id;
-  ELSIF p_accion='FAILED' AND r.estado='IN_PROGRESS' AND p_auth_user_id IS NULL THEN
-    UPDATE public.provisiones_comercio SET estado='FAILED' WHERE operacion_id=p_operacion_id;
-  ELSIF p_accion='UNCERTAIN' AND r.estado IN ('IN_PROGRESS','AUTH_READY') THEN
-    UPDATE public.provisiones_comercio SET estado='UNCERTAIN' WHERE operacion_id=p_operacion_id;
-  ELSE RAISE EXCEPTION 'Transición de provisioning no permitida' USING ERRCODE='22023';
-  END IF;
-  SELECT * INTO r FROM public.provisiones_comercio WHERE operacion_id=p_operacion_id;
-  RETURN to_jsonb(r);
-END $$;
-
-CREATE OR REPLACE FUNCTION public.finalizar_provision_comercio(p_operacion_id uuid,p_actor_auth_id uuid)
-RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,public
-AS $$
-DECLARE uid uuid; r public.provisiones_comercio%ROWTYPE; salida jsonb; sid uuid;
-BEGIN
-  uid:=public.comercial_actor_edge(p_actor_auth_id);
-  SELECT * INTO r FROM public.provisiones_comercio WHERE operacion_id=p_operacion_id FOR UPDATE;
-  IF r.operacion_id IS NULL OR r.actor_usuario_id<>uid THEN RAISE EXCEPTION 'Reserva no autorizada' USING ERRCODE='42501'; END IF;
-  IF r.estado='PASS' THEN RETURN r.resultado; END IF;
-  IF r.estado<>'AUTH_READY' OR r.auth_user_id IS NULL THEN RAISE EXCEPTION 'Conciliación de provisioning requerida' USING ERRCODE='22023'; END IF;
-  PERFORM 1 FROM auth.users WHERE id=r.auth_user_id;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Identidad Auth ausente' USING ERRCODE='23503'; END IF;
-  PERFORM 1 FROM public.planes WHERE id=(r.solicitud->>'planId')::uuid AND activo FOR SHARE;
-  IF NOT FOUND THEN RAISE EXCEPTION 'Plan activo requerido' USING ERRCODE='22023'; END IF;
-  INSERT INTO public.kioscos(id,nombre,direccion,telefono,rubro,estado_suscripcion)
-    VALUES(r.kiosco_id,r.solicitud->>'nombreKiosco',r.solicitud->>'direccion',r.solicitud->>'telefono',r.solicitud->>'rubro','ACTIVO');
-  INSERT INTO public.suscripciones(kiosco_id,plan_id,fecha_inicio,fecha_vencimiento,estado)
-    VALUES(r.kiosco_id,(r.solicitud->>'planId')::uuid,public.comercial_hoy(),
-      public.comercial_hoy()+(r.solicitud->>'diasValidez')::integer,'ACTIVA') RETURNING id INTO sid;
-  INSERT INTO public.usuarios(id,auth_user_id,kiosco_id,nombre,email,rol,activo,es_superadmin)
-    VALUES(r.usuario_id,r.auth_user_id,r.kiosco_id,r.solicitud->>'nombreDueno',r.solicitud->>'email','DUEÑO',true,false);
-  salida:=jsonb_build_object('success',true,'kiosco_id',r.kiosco_id,'usuario_id',r.usuario_id,'suscripcion_id',sid);
-  INSERT INTO public.operaciones_comerciales(id,actor_usuario_id,kiosco_id,tipo,solicitud,resultado)
-    VALUES(p_operacion_id,uid,r.kiosco_id,'CREACION_COMERCIO',r.solicitud,salida);
-  INSERT INTO public.auditoria_comercial_admin(operacion_id,actor_usuario_id,kiosco_id,tipo,estado_nuevo)
-    VALUES(p_operacion_id,uid,r.kiosco_id,'CREACION_COMERCIO',salida);
-  UPDATE public.provisiones_comercio SET estado='PASS',resultado=salida WHERE operacion_id=p_operacion_id;
-  RETURN salida;
-END $$;
-DO $$
-DECLARE f record;
-BEGIN
-  FOR f IN SELECT oid::regprocedure signature,proname FROM pg_proc WHERE pronamespace='public'::regnamespace
-    AND proname IN ('comercial_actor_edge','reservar_provision_comercio','transicionar_provision_comercio','finalizar_provision_comercio') LOOP
-    EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',f.signature);
-    EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role',f.signature);
-    IF f.proname<>'comercial_actor_edge' THEN EXECUTE format('GRANT EXECUTE ON FUNCTION %s TO service_role',f.signature); END IF;
-  END LOOP;
-END $$;
-
 COMMIT;

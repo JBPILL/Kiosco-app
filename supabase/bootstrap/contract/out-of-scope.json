@@ -56,7 +56,8 @@
         "cambiar_plan_comercial",
         "actualizar_plan",
         "guardar_configuracion_comercial",
-        "editar_comercio_comercial"
+        "editar_comercio_comercial",
+        "gestionar_ticket_soporte_admin"
       ],
       "reason": "Only commercial fixed store handlers select these RPCs; backend enforces actor/tenant"
     }

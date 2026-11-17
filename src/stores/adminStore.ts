@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '../lib/supabase'
 import { ejecutarMutacionComercial, exigirAdminComercial, prepararOperacionComercial, confirmarOperacionComercial } from '../lib/commercialClient'
+import { useSoporteStore, type EstadoTicket } from './soporteStore'
 import type { KioscoAdminView, Plan, PagoSuscripcion, RubroComercio } from '../types/database'
 import toast from 'react-hot-toast'
 
@@ -31,6 +32,7 @@ interface AdminState {
   actualizarPrecioPlan: (planId: string, precio: number, nombre?: string) => Promise<boolean>
   crearPlan: (nombre: string, precio: number, maxUsuarios?: number, descripcion?: string) => Promise<boolean>
   eliminarPlan: (planId: string) => Promise<boolean>
+  gestionarTicketSoporte: (ticketId: string, estado: EstadoTicket, respuestaAdmin?: string) => Promise<boolean>
 }
 const mensaje = (error: unknown): string => error instanceof Error ? error.message : 'Operación comercial no confirmada.'
 export const useAdminStore = create<AdminState>((set, get) => {
@@ -110,6 +112,19 @@ export const useAdminStore = create<AdminState>((set, get) => {
       const plan = get().planes.find(p => p.id === id)
       if (!plan) { toast.error('Plan no disponible'); return false }
       return savePlan({ ...plan, activo: false })
+    },
+    gestionarTicketSoporte: async (ticketId, estado, respuestaAdmin) => {
+      if (get().cargandoAccion) return false
+      set({ cargandoAccion: true, error: null })
+      try {
+        const ok = await useSoporteStore.getState().actualizarEstadoTicket(ticketId, estado, respuestaAdmin)
+        if (!ok) {
+          set({ error: useSoporteStore.getState().error ?? 'No se pudo actualizar el ticket.' })
+        }
+        return ok
+      } finally {
+        set({ cargandoAccion: false })
+      }
     },
   }
 })

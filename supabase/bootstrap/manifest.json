@@ -186,11 +186,11 @@
       "installAfter": "900_final_security.sql",
       "automaticInstall": false,
       "incrementalPath": "../../supabase_fase_comercial_suscripciones.sql",
-      "incrementalSha256": "8aba324e8044e0de71dd5f8ea285c92417d4611dd990ea96f4625f5be1f22f4a",
+      "incrementalSha256": "ced31676e03e64d4f6d1dd2bbfff445be3142b2e034ace6bf3c7c8782bf173aa",
       "files": [
         {
           "path": "commercial/001_commercial_subscription.sql",
-          "sha256": "38b86f6f5ed974b92f880431111597fafc598bcfbb9026b6012094a7002d65fd"
+          "sha256": "ced31676e03e64d4f6d1dd2bbfff445be3142b2e034ace6bf3c7c8782bf173aa"
         },
         {
           "path": "commercial/002_commercial_write_gate.sql",

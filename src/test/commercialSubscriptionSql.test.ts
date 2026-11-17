@@ -238,3 +238,99 @@ it.each(['SOLO_LECTURA','SUSPENDIDO'])('backup exportable sin reactivar comercio
   expect((await db.query('SELECT public.generar_snapshot_backup_ampliado($1)', [kiosk])).rows).toHaveLength(1)
   expect((await db.query<{ r: { estado: string } }>('SELECT public.obtener_estado_operativo_comercial() r')).rows[0].r).toEqual({ estado })
 })
+
+it('gestionar_ticket_soporte_admin audita por SuperAdmin, es idempotente y rechaza DML directo o no-SuperAdmin', async () => {
+  await actor(owner)
+  const ticketId = id(200)
+  await db.query(
+    'SELECT public.crear_ticket_soporte_transaccional($1,$2,$3,$4,$5)',
+    [ticketId, 'ERROR', 'POS', 'Error de prueba', '{}'],
+  )
+
+  for (const uid of [owner, cashier, viewer, other]) {
+    await actor(uid)
+    await rechazo(
+      () => db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [id(201), ticketId, 'RESUELTO', 'No permitido', true]),
+      /no autorizada/,
+    )
+    await rechazo(
+      () => db.query('UPDATE public.tickets_soporte SET estado=$1 WHERE id=$2', ['RESUELTO', ticketId]),
+      /permission denied/,
+    )
+    await rechazo(
+      () => db.query('DELETE FROM public.tickets_soporte WHERE id=$1', [ticketId]),
+      /permission denied/,
+    )
+  }
+
+  await actor(owner, 'anon')
+  await rechazo(
+    () => db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [id(201), ticketId, 'RESUELTO', null, false]),
+    /permission denied/,
+  )
+  await actor(admin, 'service_role')
+  await rechazo(
+    () => db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [id(201), ticketId, 'RESUELTO', null, false]),
+    /permission denied/,
+  )
+
+  await actor(admin)
+  await rechazo(
+    () => db.query('UPDATE public.tickets_soporte SET estado=$1 WHERE id=$2', ['RESUELTO', ticketId]),
+    /permission denied/,
+  )
+  await rechazo(
+    () => db.query('DELETE FROM public.tickets_soporte WHERE id=$1', [ticketId]),
+    /permission denied/,
+  )
+
+  const op1 = id(202)
+  await db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [op1, ticketId, 'EN_PROCESO', null, false])
+  const op2 = id(203)
+  const res2 = await db.query<{ r: { success: boolean; ticket: { estado: string; respuesta_admin: string | null } } }>(
+    'SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5) r',
+    [op2, ticketId, 'RESUELTO', '  Revisado por soporte  ', true],
+  )
+  expect(res2.rows[0].r.success).toBe(true)
+  expect(res2.rows[0].r.ticket.estado).toBe('RESUELTO')
+  expect(res2.rows[0].r.ticket.respuesta_admin).toBe('Revisado por soporte')
+
+  const replay = await db.query<{ r: { success: boolean; ticket: { estado: string; respuesta_admin: string | null } } }>(
+    'SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5) r',
+    [op2, ticketId, 'RESUELTO', '  Revisado por soporte  ', true],
+  )
+  expect(replay.rows[0].r).toEqual(res2.rows[0].r)
+
+  await rechazo(
+    () => db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [op2, ticketId, 'PENDIENTE', 'otro', true]),
+    /Operation ID/,
+  )
+
+  const op3 = id(204)
+  const reopen = await db.query<{ r: { success: boolean; ticket: { estado: string; respuesta_admin: string | null } } }>(
+    'SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5) r',
+    [op3, ticketId, 'PENDIENTE', null, false],
+  )
+  expect(reopen.rows[0].r.ticket.estado).toBe('PENDIENTE')
+  expect(reopen.rows[0].r.ticket.respuesta_admin).toBe('Revisado por soporte')
+
+  await rechazo(
+    () => db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [id(205), ticketId, 'INVALIDO', null, false]),
+    /Estado de ticket inválido/,
+  )
+  await rechazo(
+    () => db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [id(206), id(999), 'RESUELTO', null, false]),
+    /no encontrado/,
+  )
+  await rechazo(
+    () => db.query('SELECT public.gestionar_ticket_soporte_admin($1,$2,$3,$4,$5)', [id(207), ticketId, 'RESUELTO', 'x'.repeat(8001), true]),
+    /límite/,
+  )
+
+  await db.exec('RESET ROLE')
+  const audits = (await db.query<{ operacion_id: string; kiosco_id: string; tipo: string }>(
+    "SELECT operacion_id,kiosco_id,tipo FROM public.auditoria_comercial_admin WHERE tipo='GESTION_TICKET_SOPORTE' ORDER BY creado_en,id",
+  )).rows
+  expect(audits).toHaveLength(3)
+  expect(audits.every(a => a.kiosco_id === kiosk)).toBe(true)
+})

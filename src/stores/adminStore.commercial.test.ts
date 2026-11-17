@@ -66,3 +66,26 @@ it('un nuevo plan conserva product/operation identity tras respuesta perdida', a
   expect(mocks.rpc.mock.calls[0][1].p_plan_id).toBe(mocks.rpc.mock.calls[0][1].p_operacion_id)
   expect(mocks.rpc.mock.calls[1][1]).toEqual(mocks.rpc.mock.calls[0][1])
 })
+it('gestionarTicketSoporte usa SAFE_RPC con idempotencia y rechaza actores no SuperAdmin o sin flag comercial', async () => {
+  mocks.rpc.mockResolvedValueOnce({ data: null, error: { message: 'transport' } })
+  expect(await useAdminStore.getState().gestionarTicketSoporte('ticket-1', 'RESUELTO', 'Solucionado')).toBe(false)
+  const firstCall = mocks.rpc.mock.calls[0]
+  expect(firstCall[0]).toBe('gestionar_ticket_soporte_admin')
+  expect(firstCall[1]).toMatchObject({
+    p_ticket_id: 'ticket-1',
+    p_estado: 'RESUELTO',
+    p_respuesta_admin: 'Solucionado',
+    p_actualizar_respuesta: true,
+  })
+  expect(await useAdminStore.getState().gestionarTicketSoporte('ticket-1', 'RESUELTO', 'Solucionado')).toBe(true)
+  expect(mocks.rpc.mock.calls[1][1]).toEqual(firstCall[1])
+
+  mocks.user.es_superadmin = false
+  expect(await useAdminStore.getState().gestionarTicketSoporte('ticket-1', 'EN_PROCESO')).toBe(false)
+  expect(mocks.rpc).toHaveBeenCalledTimes(2)
+
+  mocks.user.es_superadmin = true
+  vi.stubEnv('VITE_ADMIN_COMERCIAL_HABILITADO', 'false')
+  expect(await useAdminStore.getState().gestionarTicketSoporte('ticket-1', 'EN_PROCESO')).toBe(false)
+  expect(mocks.rpc).toHaveBeenCalledTimes(2)
+})

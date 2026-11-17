@@ -219,12 +219,20 @@
     },
     {
       "flow": "support ticket administration",
-      "mode": "OUT_OF_SCOPE",
+      "mode": "SAFE_RPC",
       "relations": [
-        "tickets_soporte"
+        "tickets_soporte",
+        "operaciones_comerciales",
+        "auditoria_comercial_admin"
       ],
       "browserDml": false,
-      "strictGuard": "RutaSuperAdmin and support admin store methods block access in strict scope"
+      "requiredFlags": [
+        "VITE_ADMIN_COMERCIAL_HABILITADO=true"
+      ],
+      "entrypoints": [
+        "gestionar_ticket_soporte_admin"
+      ],
+      "strictGuard": "SuperAdmin only via audited idempotent SECURITY DEFINER RPC; direct browser INSERT/UPDATE/DELETE remain blocked"
     },
     {
       "flow": "commercial subscriptions, plans, configuration and administration",
