@@ -18,6 +18,7 @@ import { TicketReceiptModal, type TicketData } from '../pos/TicketReceiptModal'
 import { ventaToTicketData } from '../../lib/ticketUtils'
 import toast from 'react-hot-toast'
 import { cargarDatosBalance, type DatosBalance, type VentaContable } from '../../lib/balanceReportData'
+import { formatMotivoMovimientoCaja } from '../../lib/cajaDisplay'
 const BALANCE_VACIO: DatosBalance = { ventas: [], movimientos: [], devoluciones: [], proveedores: [], compras: [], pagos: [] }
 
 const NOMBRES_MESES = [
@@ -206,10 +207,28 @@ export function BalanceContableTab() {
     return ventasFiscalesPeriodo.reduce((sum, v) => sum + Number(v.total || 0), 0)
   }, [ventasFiscalesPeriodo])
 
+  const coincideCircuitoFiscal = useCallback(
+    (venta?: { afip_cae?: string | null } | null) => {
+      if (filtroFiscal === 'SOLO_FISCALES') return Boolean(venta?.afip_cae)
+      if (filtroFiscal === 'SOLO_INTERNAS') return !venta?.afip_cae
+      return true
+    },
+    [filtroFiscal]
+  )
+
+  const devolucionesValidasAnio = useMemo(() => {
+    const ventasPorId = new Map(ventasAnio.map((v) => [v.id, v]))
+    return devolucionesAnio.filter((d) => {
+      const ventaAsoc = (d.venta as VentaContable | null) || ventasPorId.get(d.venta_id) || null
+      if (ventaAsoc && ventaAsoc.estado !== 'COMPLETADA') return false
+      return coincideCircuitoFiscal(ventaAsoc)
+    })
+  }, [devolucionesAnio, ventasAnio, coincideCircuitoFiscal])
+
   // Devoluciones del período
   const devolucionesPeriodo = useMemo(() => {
-    return devolucionesAnio.filter((d) => d.fecha_hora >= rangoInicio && d.fecha_hora <= rangoFin)
-  }, [devolucionesAnio, rangoInicio, rangoFin])
+    return devolucionesValidasAnio.filter((d) => d.fecha_hora >= rangoInicio && d.fecha_hora <= rangoFin)
+  }, [devolucionesValidasAnio, rangoInicio, rangoFin])
 
   const totalDevoluciones = useMemo(() => {
     return devolucionesPeriodo.reduce((sum, d) => sum + Number(d.monto_total || 0), 0)
@@ -292,7 +311,13 @@ export function BalanceContableTab() {
           const d = new Date(v.fecha_hora)
           return d.getMonth() + 1 === mesAnt
         })
-        const factMesAnt = ventasMesAnt.reduce((acc, v) => acc + Number(v.total || 0), 0)
+        const devsMesAnt = devolucionesValidasAnio.filter((d) => {
+          const dt = new Date(d.fecha_hora)
+          return dt.getMonth() + 1 === mesAnt
+        })
+        const brutoMesAnt = ventasMesAnt.reduce((acc, v) => acc + Number(v.total || 0), 0)
+        const totalDevsMesAnt = devsMesAnt.reduce((acc, d) => acc + Number(d.monto_total || 0), 0)
+        const factMesAnt = Math.max(0, brutoMesAnt - totalDevsMesAnt)
         if (factMesAnt > 0) {
           variacionVsAnterior = ((totalFacturado - factMesAnt) / factMesAnt) * 100
           textoComparativa = `${variacionVsAnterior >= 0 ? '+' : ''}${variacionVsAnterior.toFixed(1)}% vs ${NOMBRES_MESES[mesAnt - 1]}`
@@ -317,7 +342,7 @@ export function BalanceContableTab() {
       variacionVsAnterior,
       textoComparativa,
     }
-  }, [ventasPeriodo, totalDevoluciones, mesSeleccionado, anioSeleccionado, ventasValidasAnio])
+  }, [ventasPeriodo, totalDevoluciones, mesSeleccionado, anioSeleccionado, ventasValidasAnio, devolucionesValidasAnio])
 
   // Finanzas del período: Compras, Salidas Financieras, Margen y Flujo de Caja
   const totalComprasMercaderia = useMemo(() => {
@@ -359,7 +384,16 @@ export function BalanceContableTab() {
     }, 0)
   }, [ventasPeriodo])
 
-  const ventasCobradasContado = Math.max(0, kpisPeriodo.totalFacturado - totalVentasCredito)
+  const totalDevolucionesCredito = useMemo(() => {
+    return devolucionesPeriodo
+      .filter((d) => d.metodo_reintegro === 'CUENTA_CORRIENTE')
+      .reduce((sum, d) => sum + Number(d.monto_total || 0), 0)
+  }, [devolucionesPeriodo])
+
+  const ventasCobradasContado = Math.max(
+    0,
+    kpisPeriodo.totalFacturado - Math.max(0, totalVentasCredito - totalDevolucionesCredito)
+  )
   const flujoCajaNeto = (ventasCobradasContado + totalIngresosCaja) - totalSalidasFinancieras
 
   const deudaTotalProveedores = useMemo(() => {
@@ -376,16 +410,36 @@ export function BalanceContableTab() {
         const d = new Date(v.fecha_hora)
         return d.getMonth() + 1 === numMes
       })
+      const devsDelMes = devolucionesValidasAnio.filter((d) => {
+        const dt = new Date(d.fecha_hora)
+        return dt.getMonth() + 1 === numMes
+      })
 
-      const totalVentas = ventasDelMes.reduce((acc, v) => acc + Number(v.total || 0), 0)
+      const totalBrutoMes = ventasDelMes.reduce((acc, v) => acc + Number(v.total || 0), 0)
+      const totalDevsMes = devsDelMes.reduce((acc, d) => acc + Number(d.monto_total || 0), 0)
+      const totalVentas = Math.max(0, totalBrutoMes - totalDevsMes)
       const cantidadTickets = ventasDelMes.length
       const ticketPromedio = cantidadTickets > 0 ? totalVentas / cantidadTickets : 0
 
-      // Medio de pago principal
+      // Medio de pago principal (neto de devoluciones del mes)
       const conteoMedios = new Map<string, number>()
       for (const v of ventasDelMes) {
         for (const p of v.pagos || []) {
           conteoMedios.set(p.medio_pago, (conteoMedios.get(p.medio_pago) || 0) + Number(p.monto || 0))
+        }
+      }
+      for (const dev of devsDelMes) {
+        if (dev.metodo_reintegro === 'OTRO') continue
+        const canal =
+          dev.metodo_reintegro === 'MERCADOPAGO'
+            ? 'MERCADOPAGO'
+            : dev.metodo_reintegro === 'TRANSFERENCIA'
+            ? 'TRANSFERENCIA'
+            : dev.metodo_reintegro === 'CUENTA_CORRIENTE'
+            ? 'CUENTA_CORRIENTE'
+            : 'EFECTIVO'
+        if (conteoMedios.has(canal)) {
+          conteoMedios.set(canal, Math.max(0, (conteoMedios.get(canal) || 0) - Number(dev.monto_total || 0)))
         }
       }
       let medioPrincipal = '—'
@@ -421,7 +475,7 @@ export function BalanceContableTab() {
     }
 
     return meses
-  }, [ventasValidasAnio])
+  }, [ventasValidasAnio, devolucionesValidasAnio])
 
   const maxMontoMensual = useMemo(() => {
     return Math.max(1, ...datosPorMesDelAnio.map((m) => m.totalVentas))
@@ -451,6 +505,25 @@ export function BalanceContableTab() {
       }
     }
 
+    for (const dev of devolucionesPeriodo) {
+      if (dev.metodo_reintegro === 'OTRO') continue
+      const canal =
+        dev.metodo_reintegro === 'MERCADOPAGO'
+          ? 'MERCADOPAGO'
+          : dev.metodo_reintegro === 'TRANSFERENCIA'
+          ? 'TRANSFERENCIA'
+          : dev.metodo_reintegro === 'CUENTA_CORRIENTE'
+          ? 'CUENTA_CORRIENTE'
+          : 'EFECTIVO'
+      const actual = mapa.get(canal)
+      if (actual) {
+        mapa.set(canal, {
+          total: Math.max(0, actual.total - Number(dev.monto_total || 0)),
+          count: actual.count,
+        })
+      }
+    }
+
     const totalPeriodo = kpisPeriodo.totalFacturado || 1
     const lista = Array.from(mapa.entries()).map(([medio, val]) => ({
       medio: labelMedioPago(medio),
@@ -460,7 +533,7 @@ export function BalanceContableTab() {
     }))
 
     return lista.sort((a, b) => b.total - a.total)
-  }, [ventasPeriodo, kpisPeriodo.totalFacturado])
+  }, [ventasPeriodo, devolucionesPeriodo, kpisPeriodo.totalFacturado])
 
   // ==========================================
   // 4. LIBRO DIARIO DE MOVIMIENTOS CONTABLES
@@ -532,7 +605,7 @@ export function BalanceContableTab() {
         fecha: m.fecha_hora,
         tipo: 'EGRESO_CAJA',
         comprobante: `CAJA-${m.id.slice(0, 6).toUpperCase()}`,
-        concepto: `Gasto de caja: ${m.motivo.replace('_', ' ')} (${m.descripcion || 'Sin descripción'})`,
+        concepto: `Egreso de caja: ${formatMotivoMovimientoCaja(m.motivo)} (${m.descripcion || 'Sin descripción'})`,
         medio_pago: 'Efectivo',
         ingreso: 0,
         egreso: m.monto,
@@ -547,7 +620,7 @@ export function BalanceContableTab() {
         fecha: m.fecha_hora,
         tipo: 'INGRESO_CAJA',
         comprobante: `CAJA-${m.id.slice(0, 6).toUpperCase()}`,
-        concepto: `Ingreso de caja: ${m.motivo.replace('_', ' ')} (${m.descripcion || 'Sin descripción'})`,
+        concepto: `Ingreso de caja: ${formatMotivoMovimientoCaja(m.motivo)} (${m.descripcion || 'Sin descripción'})`,
         medio_pago: 'Efectivo',
         ingreso: m.monto,
         egreso: 0,

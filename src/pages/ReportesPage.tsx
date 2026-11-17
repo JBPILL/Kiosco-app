@@ -27,6 +27,8 @@ import toast from 'react-hot-toast'
 interface ResumenDiario {
   totalVentas: number
   totalDevoluciones?: number
+  totalDevolucionesEfectivo?: number
+  totalEnvasesEfectivo?: number
   cantidadVentas: number
   ventaPromedio: number
   totalCosto: number
@@ -60,12 +62,23 @@ interface VentaResumen {
   }[]
 }
 
+interface DevolucionDiariaResumen {
+  id: string
+  venta_id?: string | null
+  fecha_hora: string
+  monto_total: number
+  metodo_reintegro?: string | null
+  motivo?: string | null
+  notas?: string | null
+}
+
 export function ReportesPage() {
   const { usuario, kiosco } = useAuthStore()
   const esDueno = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
   const [tabActiva, setTabActiva] = useState<'balance' | 'ventas' | 'rotacion' | 'bajas'>('balance')
   const [fecha, setFecha] = useState(() => getFechaLocal())
   const [ventas, setVentas] = useState<VentaResumen[]>([])
+  const [devolucionesDia, setDevolucionesDia] = useState<DevolucionDiariaResumen[]>([])
   const [resumen, setResumen] = useState<ResumenDiario | null>(null)
   const [cargando, setCargando] = useState(true)
   const [ventaExpandida, setVentaExpandida] = useState<string | null>(null)
@@ -114,7 +127,7 @@ export function ReportesPage() {
     // Cargar devoluciones del día para calcular ventas netas y deducir reintegros y costo devuelto
     let queryDevs = supabase
       .from('devoluciones_venta')
-      .select('id, monto_total, metodo_reintegro, fecha_hora, detalles:detalles_devolucion(cantidad, producto_id, producto:productos(id))')
+      .select('id, venta_id, monto_total, metodo_reintegro, motivo, notas, fecha_hora, detalles:detalles_devolucion(cantidad, subtotal, reingresa_stock, producto_id, producto:productos(id))')
       .gte('fecha_hora', inicioISO)
       .lte('fecha_hora', finISO)
       .limit(10000)
@@ -124,6 +137,26 @@ export function ReportesPage() {
     }
 
     const { data: devsData } = await queryDevs
+
+    // Egresos de caja por recepción de envases retornables en efectivo durante la jornada
+    let queryEnvasesCaja = supabase
+      .from('movimientos_caja')
+      .select('id, tipo, motivo, monto, fecha_hora')
+      .eq('tipo', 'EGRESO')
+      .eq('motivo', 'DEVOLUCION_ENVASE')
+      .gte('fecha_hora', inicioISO)
+      .lte('fecha_hora', finISO)
+      .limit(10000)
+
+    if (kid) {
+      queryEnvasesCaja = queryEnvasesCaja.eq('kiosco_id', kid)
+    }
+
+    const { data: envasesCajaData } = await queryEnvasesCaja
+    const totalEnvasesEfectivo = (envasesCajaData || []).reduce(
+      (acc: number, m: { monto?: number | string | null }) => acc + (Number(m.monto) || 0),
+      0
+    )
 
     let devolucionesData = devsData || []
     if (esDueno) {
@@ -193,6 +226,7 @@ export function ReportesPage() {
     if (esDueno) {
       for (const d of devolucionesData) {
         for (const det of (d as any).detalles || []) {
+          if (det.reingresa_stock === false) continue
           const costoUnit = Number(det.producto?.precio_costo) || 0
           totalCostoDevoluciones += (Number(det.cantidad) || 0) * costoUnit
         }
@@ -244,7 +278,25 @@ export function ReportesPage() {
       ...data,
     }))
 
+    const totalDevolucionesEfectivo = devolucionesData
+      .filter((d: { metodo_reintegro?: string | null }) => d.metodo_reintegro === 'EFECTIVO_CAJA')
+      .reduce((acc: number, d: { monto_total?: number | null }) => acc + (Number(d.monto_total) || 0), 0)
+
+    setDevolucionesDia(
+      (devolucionesData as DevolucionDiariaResumen[]).map((d) => ({
+        id: d.id,
+        venta_id: d.venta_id ?? null,
+        fecha_hora: d.fecha_hora,
+        monto_total: Number(d.monto_total) || 0,
+        metodo_reintegro: d.metodo_reintegro ?? null,
+        motivo: d.motivo ?? null,
+        notas: d.notas ?? null,
+      }))
+    )
+
     setResumen({
+      totalDevolucionesEfectivo,
+      totalEnvasesEfectivo,
       totalVentas,
       totalDevoluciones,
       cantidadVentas,
@@ -315,7 +367,10 @@ export function ReportesPage() {
   const handleExportarVentasDia = async () => {
     if (ventas.length === 0) return
     const kiosco = useAuthStore.getState().kiosco
-    await exportarVentasExcel(ventas, kiosco?.nombre || 'Kiosco', fecha)
+    await exportarVentasExcel(ventas, kiosco?.nombre || 'Kiosco', fecha, {
+      devoluciones: devolucionesDia,
+      egresosEnvasesCaja: resumen?.totalEnvasesEfectivo ?? 0,
+    })
     toast.success('Reporte diario exportado en formato Excel (.xlsx)')
   }
 
@@ -487,6 +542,27 @@ export function ReportesPage() {
             </div>
           )}
 
+          {/* Egresos de caja del día por devoluciones y envases */}
+          {resumen && ((resumen.totalDevolucionesEfectivo || 0) > 0 || (resumen.totalEnvasesEfectivo || 0) > 0) && (
+            <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 shadow-md dark:shadow-black/20">
+              <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Salidas de caja (devoluciones y envases)</h3>
+              <div className="space-y-2 text-sm">
+                {(resumen.totalDevolucionesEfectivo || 0) > 0 && (
+                  <div className="flex items-center justify-between py-1.5 border-b border-gray-50 dark:border-gray-700">
+                    <span className="text-gray-600 dark:text-gray-300">Devoluciones de venta en efectivo</span>
+                    <span className="font-bold text-red-600 dark:text-red-400">-{formatPrecio(resumen.totalDevolucionesEfectivo || 0)}</span>
+                  </div>
+                )}
+                {(resumen.totalEnvasesEfectivo || 0) > 0 && (
+                  <div className="flex items-center justify-between py-1.5">
+                    <span className="text-gray-600 dark:text-gray-300">Recepción de envases en efectivo</span>
+                    <span className="font-bold text-red-600 dark:text-red-400">-{formatPrecio(resumen.totalEnvasesEfectivo || 0)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* Lista de ventas */}
           <div className="bg-white dark:bg-gray-800 rounded-2xl border border-gray-200 dark:border-gray-700 p-4 sm:p-5 shadow-md dark:shadow-black/20">
             <h3 className="font-semibold text-gray-900 dark:text-gray-100 mb-3">Ventas del día</h3>
@@ -539,10 +615,10 @@ export function ReportesPage() {
                             {venta.detalles.map((det, i) => (
                               <div key={i} className="flex justify-between text-sm py-1">
                                 <span className="text-gray-600 dark:text-gray-300">
-                                  {det.cantidad}x {det.producto?.descripcion || 'Producto'}
+                                  {det.cantidad}x {det.es_devolucion_envase ? (det.producto?.descripcion || 'Recepción de envase') : (det.producto?.descripcion || 'Producto')}
                                 </span>
                                 <span className="text-gray-900 dark:text-gray-100 font-medium">
-                                  {formatPrecio(det.subtotal)}
+                                  {det.subtotal < 0 ? `-${formatPrecio(Math.abs(det.subtotal))}` : formatPrecio(det.subtotal)}
                                 </span>
                               </div>
                             ))}

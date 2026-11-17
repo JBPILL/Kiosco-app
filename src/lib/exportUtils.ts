@@ -4,6 +4,12 @@ import type { MetricasRotacion } from './rotacionInventario'
 import { formatFecha, formatPrecio, labelMedioPago } from './utils'
 import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
 import { resolveStockMovementDelta } from './stockMovementDisplay'
+import {
+  formatAccionEnvase,
+  formatMetodoReintegro,
+  formatMotivoDevolucion,
+  formatMotivoMovimientoCaja,
+} from './cajaDisplay'
 
 export interface SheetOptionsColumn {
   width?: number
@@ -508,10 +514,26 @@ export interface VentaParaExportar {
 // ============================================================================
 // REPORTE EJECUTIVO DE VENTAS
 // ============================================================================
+export interface DevolucionVentaExport {
+  id: string
+  venta_id?: string | null
+  fecha_hora: string
+  monto_total: number
+  metodo_reintegro?: string | null
+  motivo?: string | null
+  notas?: string | null
+}
+
+export interface OpcionesExportVentas {
+  devoluciones?: DevolucionVentaExport[]
+  egresosEnvasesCaja?: number
+}
+
 export async function exportarVentasExcel(
   ventas: VentaParaExportar[],
   nombreKiosco: string = 'Kiosco',
-  fechaOPeriodo?: string
+  fechaOPeriodo?: string,
+  opciones?: OpcionesExportVentas
 ) {
   const totalCols = 8
   const columns: SheetOptionsColumn[] = [
@@ -526,7 +548,11 @@ export async function exportarVentasExcel(
   ]
 
   const ventasValidas = ventas.filter((v) => v.estado === 'COMPLETADA')
-  const totalFacturado = ventasValidas.reduce((s, v) => s + (v.total || 0), 0)
+  const totalBruto = ventasValidas.reduce((s, v) => s + (v.total || 0), 0)
+  const devoluciones = opciones?.devoluciones || []
+  const totalDevoluciones = devoluciones.reduce((s, d) => s + (Number(d.monto_total) || 0), 0)
+  const totalFacturado = Math.max(0, totalBruto - totalDevoluciones)
+  const egresosEnvasesCaja = Number(opciones?.egresosEnvasesCaja || 0)
   const ventasFiscales = ventasValidas.filter((v) => Boolean(v.afip_cae))
   const totalAFIP = ventasFiscales.reduce((s, v) => s + (v.total || 0), 0)
   const ticketPromedio = ventasValidas.length > 0 ? totalFacturado / ventasValidas.length : 0
@@ -635,11 +661,71 @@ export async function exportarVentasExcel(
     ] as Row)
   })
 
-  // Fila de Total
-  rows.push([
-    ...cTotalLabel('TOTAL FACTURADO', 7),
-    cTotalMoney(totalFacturado),
-  ] as Row)
+  // Fila de Total y conciliación con devoluciones / envases
+  if (devoluciones.length > 0 || egresosEnvasesCaja > 0) {
+    rows.push([
+      ...cTotalLabel('TOTAL BRUTO VENTAS', 7),
+      cTotalMoney(totalBruto),
+    ] as Row)
+    if (devoluciones.length > 0) {
+      rows.push([
+        ...cTotalLabel(`(-) DEVOLUCIONES DEL DÍA (${devoluciones.length})`, 7),
+        cTotalMoney(-totalDevoluciones),
+      ] as Row)
+    }
+    rows.push([
+      ...cTotalLabel('TOTAL NETO FACTURADO', 7),
+      cTotalMoney(totalFacturado),
+    ] as Row)
+    if (egresosEnvasesCaja > 0) {
+      rows.push([
+        ...cTotalLabel('EGRESOS CAJA POR RECEPCIÓN ENVASES (INFORMATIVO)', 7),
+        cTotalMoney(-egresosEnvasesCaja),
+      ] as Row)
+    }
+    if (devoluciones.length > 0) {
+      rows.push(emptyRow(totalCols) as Row)
+      rows.push(cSpan({
+        value: 'DETALLE DE DEVOLUCIONES DE LA JORNADA',
+        type: String,
+        fontWeight: 'bold',
+        fontSize: 10,
+        textColor: '#1E293B',
+        backgroundColor: '#E2E8F0',
+        align: 'left',
+        borderColor: '#CBD5E1',
+        borderStyle: 'thin',
+      }, totalCols) as Row)
+      rows.push([
+        cHeader('Comprobante', 'center'),
+        cHeader('Fecha y Hora', 'center'),
+        cHeader('Ticket Ref.', 'center'),
+        cHeader('Motivo', 'left'),
+        cHeader('Medio Reintegro', 'left'),
+        cHeader('Observaciones', 'left'),
+        cHeader('Canal', 'center'),
+        cHeader('Monto Reintegrado ($)', 'right'),
+      ] as Row)
+      devoluciones.forEach((d, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        rows.push([
+          cText(`DEV-${d.id.slice(0, 8).toUpperCase()}`, bg, 'center', true),
+          cText(d.fecha_hora ? formatFecha(d.fecha_hora) : '—', bg, 'center'),
+          cText(d.venta_id ? `T-${d.venta_id.slice(0, 8).toUpperCase()}` : '—', bg, 'center'),
+          cText(formatMotivoDevolucion(d.motivo), bg, 'left'),
+          cText(formatMetodoReintegro(d.metodo_reintegro), bg, 'left'),
+          cText(d.notas || '—', bg, 'left'),
+          cText(d.metodo_reintegro === 'EFECTIVO_CAJA' ? 'Caja' : 'Otro', bg, 'center'),
+          cMoney(-Math.abs(Number(d.monto_total || 0)), bg, true),
+        ] as Row)
+      })
+    }
+  } else {
+    rows.push([
+      ...cTotalLabel('TOTAL FACTURADO', 7),
+      cTotalMoney(totalFacturado),
+    ] as Row)
+  }
 
   const cleanName = sanitizarNombreArchivo(nombreKiosco)
   const fechaStr = new Date().toISOString().split('T')[0]
@@ -1853,6 +1939,15 @@ export async function exportarRendimientosDuenoExcel(params: {
 // ============================================================================
 // EXPORTACIÓN DE BACKUP MAESTRO UNIFICADO MULTI-HOJA (.XLSX)
 // ============================================================================
+export interface MasterExcelEnvaseTipo {
+  id: string
+  nombre: string
+  precio: number
+  activo: boolean
+  stockVacios: number
+  pendientes: number
+}
+
 export interface MasterExcelData {
   kioscoId?: string
   nombreKiosco?: string
@@ -1862,6 +1957,12 @@ export interface MasterExcelData {
   clientes?: any[]
   proveedores?: any[]
   ventas?: any[]
+  movimientosCaja?: any[]
+  devoluciones?: any[]
+  incluirDevoluciones?: boolean
+  envasesTipos?: MasterExcelEnvaseTipo[]
+  envasesMovimientos?: any[]
+  incluirEnvases?: boolean
 }
 
 export async function exportarMasterExcel(params: MasterExcelData) {
@@ -2220,14 +2321,286 @@ export async function exportarMasterExcel(params: MasterExcelData) {
         ] as Row)
       })
 
-      rows.push([
-        ...cTotalLabel(`TOTAL FACTURACIÓN (${vtas.length} tickets):`, 5),
-        cTotalMoney(totalVentasMonto),
-      ] as Row)
+      const totalDevsHist = (params.devoluciones || []).reduce(
+        (sum, d) => sum + Number(d.monto_total || 0),
+        0
+      )
+      if (totalDevsHist > 0) {
+        rows.push([
+          ...cTotalLabel(`TOTAL BRUTO (${vtas.length} tickets):`, 5),
+          cTotalMoney(totalVentasMonto),
+        ] as Row)
+        rows.push([
+          ...cTotalLabel(`(-) DEVOLUCIONES (${(params.devoluciones || []).length}):`, 5),
+          cTotalMoney(-totalDevsHist),
+        ] as Row)
+        rows.push([
+          ...cTotalLabel('TOTAL NETO VENTAS:', 5),
+          cTotalMoney(Math.max(0, totalVentasMonto - totalDevsHist)),
+        ] as Row)
+      } else {
+        rows.push([
+          ...cTotalLabel(`TOTAL FACTURACIÓN (${vtas.length} tickets):`, 5),
+          cTotalMoney(totalVentasMonto),
+        ] as Row)
+      }
     }
 
     sheets.push({
       sheet: 'Histórico de Ventas',
+      columns,
+      data: rows,
+    })
+  }
+
+  // 6. Hoja Movimientos de Caja (cuando se provee desde exportación maestra)
+  if (params.movimientosCaja !== undefined) {
+    const totalCols = 7
+    const columns: SheetOptionsColumn[] = [
+      { width: 22 }, // Fecha y Hora
+      { width: 14 }, // Tipo
+      { width: 24 }, // Motivo
+      { width: 38 }, // Descripción
+      { width: 22 }, // Usuario
+      { width: 16 }, // Ingreso ($)
+      { width: 16 }, // Egreso ($)
+    ]
+
+    const movsCaja = params.movimientosCaja || []
+    const rows: Row[] = [
+      [...cSpan(cTitle('MOVIMIENTOS DE CAJA Y ARQUEO'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${movsCaja.length} movimientos`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [
+        cHeader('Fecha y Hora', 'center'),
+        cHeader('Tipo', 'center'),
+        cHeader('Motivo', 'left'),
+        cHeader('Descripción / Detalle', 'left'),
+        cHeader('Operador', 'left'),
+        cHeader('Ingreso ($)', 'right'),
+        cHeader('Egreso ($)', 'right'),
+      ] as Row,
+    ]
+
+    if (movsCaja.length === 0) {
+      rows.push([...cSpan(cText('No se registraron movimientos directos de caja.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      let totalIng = 0
+      let totalEg = 0
+      movsCaja.forEach((m, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const monto = Number(m.monto || 0)
+        const ing = m.tipo === 'INGRESO' ? monto : 0
+        const eg = m.tipo === 'EGRESO' ? monto : 0
+        totalIng += ing
+        totalEg += eg
+        const usuarioNom = m.usuario?.nombre || 'Sistema'
+
+        rows.push([
+          cText(formatFecha(m.fecha_hora), bg, 'center'),
+          cText(m.tipo || '—', bg, 'center', true),
+          cText(formatMotivoMovimientoCaja(m.motivo), bg, 'left', true),
+          cText(m.descripcion || '—', bg, 'left', false, true),
+          cText(usuarioNom, bg, 'left'),
+          cMoney(ing, bg),
+          cMoney(eg, bg),
+        ] as Row)
+      })
+
+      rows.push([
+        ...cTotalLabel(`TOTALES (${movsCaja.length} movimientos):`, 5),
+        cTotalMoney(totalIng),
+        cTotalMoney(totalEg),
+      ] as Row)
+    }
+
+    sheets.push({
+      sheet: 'Movimientos de Caja',
+      columns,
+      data: rows,
+    })
+  }
+
+  // 7. Hoja Devoluciones de Ventas
+  if (params.incluirDevoluciones || (params.devoluciones?.length ?? 0) > 0) {
+    const totalCols = 8
+    const columns: SheetOptionsColumn[] = [
+      { width: 22 }, // Fecha y Hora
+      { width: 18 }, // Comprobante
+      { width: 18 }, // Ticket Original
+      { width: 22 }, // Motivo
+      { width: 22 }, // Medio Reintegro
+      { width: 20 }, // Operador
+      { width: 32 }, // Notas
+      { width: 18 }, // Monto ($)
+    ]
+
+    const devs = params.devoluciones || []
+    const rows: Row[] = [
+      [...cSpan(cTitle('HISTÓRICO DE DEVOLUCIONES DE VENTAS'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Total: ${devs.length} devoluciones`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [
+        cHeader('Fecha y Hora', 'center'),
+        cHeader('Comprobante', 'center'),
+        cHeader('Ticket Original', 'center'),
+        cHeader('Motivo', 'left'),
+        cHeader('Medio Reintegro', 'left'),
+        cHeader('Operador', 'left'),
+        cHeader('Observaciones', 'left'),
+        cHeader('Monto ($)', 'right'),
+      ] as Row,
+    ]
+
+    if (devs.length === 0) {
+      rows.push([...cSpan(cText('No se registraron devoluciones de ventas en el historial.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      let totalDevs = 0
+      devs.forEach((d, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const monto = Number(d.monto_total || 0)
+        totalDevs += monto
+        const comp = d.id ? `DEV-${String(d.id).slice(0, 8).toUpperCase()}` : 'DEV-S/N'
+        const ticketRef = d.venta_id ? `T-${String(d.venta_id).slice(0, 8).toUpperCase()}` : '—'
+
+        rows.push([
+          cText(d.fecha_hora ? formatFecha(d.fecha_hora) : '—', bg, 'center'),
+          cText(comp, bg, 'center', true),
+          cText(ticketRef, bg, 'center'),
+          cText(formatMotivoDevolucion(d.motivo), bg, 'left'),
+          cText(formatMetodoReintegro(d.metodo_reintegro), bg, 'left'),
+          cText(d.usuario?.nombre || 'Sistema', bg, 'left'),
+          cText(d.notas || '—', bg, 'left', false, true),
+          cMoney(monto, bg, true),
+        ] as Row)
+      })
+
+      rows.push([
+        ...cTotalLabel(`TOTAL DEVOLUCIONES (${devs.length} ops.):`, 7),
+        cTotalMoney(totalDevs),
+      ] as Row)
+    }
+
+    sheets.push({
+      sheet: 'Devoluciones de Ventas',
+      columns,
+      data: rows,
+    })
+  }
+
+  // 8. Hoja Envases Retornables (Saldos, Pendientes y Movimientos)
+  if (
+    params.incluirEnvases ||
+    (params.envasesTipos?.length ?? 0) > 0 ||
+    (params.envasesMovimientos?.length ?? 0) > 0
+  ) {
+    const totalCols = 7
+    const columns: SheetOptionsColumn[] = [
+      { width: 24 }, // Fecha / Tipo Envase
+      { width: 24 }, // Acción / Estado
+      { width: 16 }, // Cantidad / Precio Unit
+      { width: 16 }, // Stock Vacíos
+      { width: 16 }, // Pendientes
+      { width: 18 }, // Importe / Valuación ($)
+      { width: 34 }, // Notas / Distribuidor
+    ]
+
+    const tiposEnvase = params.envasesTipos || []
+    const movsEnvase = params.envasesMovimientos || []
+    const rows: Row[] = [
+      [...cSpan(cTitle('ENVASES RETORNABLES: SALDOS Y MOVIMIENTOS'), totalCols)] as Row,
+      [...cSpan(cSubtitle(`Comercio: ${nombreKiosco} | Fecha: ${fechaGeneracion} | Tipos: ${tiposEnvase.length} | Movimientos: ${movsEnvase.length}`), totalCols)] as Row,
+      emptyRow(totalCols) as Row,
+      [...cSpan(cHeader('ESTADO ACTUAL DE ENVASES POR TIPO', 'left'), totalCols)] as Row,
+      [
+        cHeader('Tipo de Envase', 'left'),
+        cHeader('Estado', 'center'),
+        cHeader('Precio Unit. ($)', 'right'),
+        cHeader('Stock Vacíos', 'center'),
+        cHeader('Pendientes Cliente', 'center'),
+        cHeader('Valuación Vacíos ($)', 'right'),
+        cHeader('Valuación Pendientes ($)', 'right'),
+      ] as Row,
+    ]
+
+    if (tiposEnvase.length === 0) {
+      rows.push([...cSpan(cText('No hay tipos de envases compartidos configurados.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      let totVacios = 0
+      let totPend = 0
+      let totValVacios = 0
+      let totValPend = 0
+      tiposEnvase.forEach((t, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const valVac = t.stockVacios * t.precio
+        const valPend = t.pendientes * t.precio
+        totVacios += t.stockVacios
+        totPend += t.pendientes
+        totValVacios += valVac
+        totValPend += valPend
+
+        rows.push([
+          cText(t.nombre, bg, 'left', true),
+          cText(t.activo ? 'Activo' : 'Inactivo', bg, 'center'),
+          cMoney(t.precio, bg),
+          cNum(t.stockVacios, bg, '#,##0', false, 'center'),
+          cNum(t.pendientes, bg, '#,##0', false, 'center'),
+          cMoney(valVac, bg),
+          cMoney(valPend, bg),
+        ] as Row)
+      })
+
+      rows.push([
+        ...cTotalLabel(`TOTAL ENVASES (${tiposEnvase.length} tipos):`, 3),
+        cTotalNum(totVacios, '#,##0', 'center'),
+        cTotalNum(totPend, '#,##0', 'center'),
+        cTotalMoney(totValVacios),
+        cTotalMoney(totValPend),
+      ] as Row)
+    }
+
+    rows.push(emptyRow(totalCols) as Row)
+    rows.push([...cSpan(cHeader('HISTORIAL DE MOVIMIENTOS DE ENVASES', 'left'), totalCols)] as Row)
+    rows.push([
+      cHeader('Fecha y Hora', 'center'),
+      cHeader('Acción', 'left'),
+      cHeader('Tipo de Envase', 'left'),
+      cHeader('Cantidad', 'center'),
+      cHeader('Stock Resultante', 'center'),
+      cHeader('Importe ($)', 'right'),
+      cHeader('Distribuidor / Notas', 'left'),
+    ] as Row)
+
+    if (movsEnvase.length === 0) {
+      rows.push([...cSpan(cText('No se registraron movimientos en el ledger de envases.', '#FFFFFF', 'center', true), totalCols)] as Row)
+    } else {
+      let totImporteEnv = 0
+      movsEnvase.forEach((m, idx) => {
+        const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+        const imp = Number(m.importe || 0)
+        totImporteEnv += imp
+        const detalle = [m.distribuidor ? `Dist: ${m.distribuidor}` : '', m.notas || ''].filter(Boolean).join(' · ') || '—'
+
+        rows.push([
+          cText(m.creado_en ? formatFecha(m.creado_en) : '—', bg, 'center'),
+          cText(formatAccionEnvase(m.accion), bg, 'left', true),
+          cText(m.tipo_nombre || m.tipo_id || 'Envase', bg, 'left'),
+          cNum(Number(m.cantidad || 0), bg, '+#,##0;-#,##0;0', false, 'center'),
+          cNum(Number(m.stock_resultante || 0), bg, '#,##0', false, 'center'),
+          cMoney(imp, bg),
+          cText(detalle, bg, 'left', false, true),
+        ] as Row)
+      })
+
+      rows.push([
+        ...cTotalLabel(`TOTAL MOVIMIENTOS (${movsEnvase.length} ops.):`, 5),
+        cTotalMoney(totImporteEnv),
+        cTotalText('—', 'center'),
+      ] as Row)
+    }
+
+    sheets.push({
+      sheet: 'Envases Retornables',
       columns,
       data: rows,
     })

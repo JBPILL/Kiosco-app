@@ -19,10 +19,15 @@ let invalido: boolean
 
 beforeEach(() => {
   vi.clearAllMocks()
-  filas = Object.fromEntries(['productos', 'categorias', 'movimientos_stock', 'clientes', 'proveedores', 'ventas']
-    .map(tabla => [tabla, [{ id: '001', descripcion: 'Zeta', nombre: 'Zeta', fecha: '2026-10-16', fecha_hora: '2026-10-16', estado: 'COMPLETADA' },
-      { id: '002', descripcion: 'Alfa', nombre: 'Alfa', fecha: '2026-10-17', fecha_hora: '2026-10-17', estado: 'COMPLETADA' },
-      { id: '003', descripcion: 'Beta', nombre: 'Beta', fecha: '2026-10-15', fecha_hora: '2026-10-15', estado: 'COMPLETADA' }]]))
+  const baseRows = () => [
+    { id: '001', descripcion: 'Zeta', nombre: 'Zeta', fecha: '2026-10-16', fecha_hora: '2026-10-16', creado_en: '2026-10-16', estado: 'COMPLETADA', precio: 100, activo: true, cantidad: 5, monto: 50, monto_total: 10, stock_resultante: 5, importe: 100, tipo: 'EGRESO', motivo: 'DEVOLUCION_ENVASE', accion: 'RECIBIR_EFECTIVO' },
+    { id: '002', descripcion: 'Alfa', nombre: 'Alfa', fecha: '2026-10-17', fecha_hora: '2026-10-17', creado_en: '2026-10-17', estado: 'COMPLETADA', precio: 100, activo: true, cantidad: 5, monto: 50, monto_total: 10, stock_resultante: 10, importe: 100, tipo: 'EGRESO', motivo: 'DEVOLUCION_VENTA', accion: 'RECIBIR_TICKET' },
+    { id: '003', descripcion: 'Beta', nombre: 'Beta', fecha: '2026-10-15', fecha_hora: '2026-10-15', creado_en: '2026-10-15', estado: 'COMPLETADA', precio: 100, activo: true, cantidad: 5, monto: 50, monto_total: 10, stock_resultante: 15, importe: 0, tipo: 'INGRESO', motivo: 'REPOSICION_CAMBIO', accion: 'AJUSTAR_SALDO' },
+  ]
+  filas = Object.fromEntries([
+    'productos', 'categorias', 'movimientos_stock', 'clientes', 'proveedores', 'ventas',
+    'movimientos_caja', 'devoluciones_venta', 'envases_tipos_comercio', 'envases_saldos', 'envases_pendientes', 'envases_movimientos',
+  ].map(tabla => [tabla, baseRows()]))
   consultas = []
   fallo = () => false
   nulo = false
@@ -69,6 +74,24 @@ it('exporta en piloto sin columnas fiscales y recorre páginas cortas de todas l
   expect(ventas.map(c => c.cursor)).toEqual([undefined, '002', '003'])
   expect(ventas.every(c => c.estado === 'COMPLETADA' && !c.seleccion.includes('afip_'))).toBe(true)
   expect(ventas[0].seleccion).toContain('usuarios!usuario_id(nombre)')
+  expect(datos.movimientosCaja).toHaveLength(3)
+  expect(consultas.some(c => c.tabla === 'devoluciones_venta' || c.tabla.startsWith('envases_'))).toBe(false)
+})
+
+it('incluye caja, devoluciones y envases en piloto cuando sus flags están habilitados sin columnas fiscales', async () => {
+  vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+  vi.stubEnv('VITE_CHECKOUT_MANUAL_TRANSACCIONAL', 'true')
+  vi.stubEnv('VITE_KIOSKO_ENVASES_TRANSACCIONAL', 'true')
+  vi.stubEnv('VITE_KIOSKO_DEVOLUCIONES_EFECTIVO', 'true')
+  await exportarExcelMaestroComercio('k1', 'Comercio')
+  const datos = mocks.exportar.mock.calls[0][0]
+  expect(datos.movimientosCaja).toHaveLength(3)
+  expect(datos.devoluciones).toHaveLength(3)
+  expect(datos.incluirDevoluciones).toBe(true)
+  expect(datos.envasesTipos).toHaveLength(3)
+  expect(datos.envasesMovimientos).toHaveLength(3)
+  expect(datos.incluirEnvases).toBe(true)
+  expect(consultas.find(c => c.tabla === 'ventas')?.seleccion).not.toContain('afip_')
 })
 
 it('conserva columnas fiscales en instalaciones completas y excluye ventas anuladas', async () => {
@@ -77,6 +100,8 @@ it('conserva columnas fiscales en instalaciones completas y excluye ventas anula
   await exportarExcelMaestroComercio('k1', 'Comercio')
   expect(consultas.find(c => c.tabla === 'ventas')?.seleccion).toContain('afip_cae')
   expect(mocks.exportar.mock.calls[0][0].ventas).toHaveLength(3)
+  expect(mocks.exportar.mock.calls[0][0].devoluciones).toHaveLength(3)
+  expect(mocks.exportar.mock.calls[0][0].envasesTipos).toHaveLength(3)
 })
 
 it('carga todos los costos en lotes acotados aunque el servidor limite las páginas', async () => {

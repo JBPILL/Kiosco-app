@@ -226,6 +226,7 @@ export type MotivoMovimientoCaja =
   | 'RETIRO_DUENO'
   | 'REPOSICION_CAMBIO'
   | 'DEVOLUCION_VENTA'
+  | 'DEVOLUCION_ENVASE'
   | 'COBRO_CUENTA_CORRIENTE'
   | 'OTRO'
 

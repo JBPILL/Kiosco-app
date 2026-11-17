@@ -14,28 +14,13 @@ import { Modal } from '../components/ui/Modal'
 import { TicketCierreCajaModal, type DatosCierreCaja } from '../components/pos/TicketCierreCajaModal'
 import { procesarDespachoCierre } from '../lib/whatsappReport'
 import toast from 'react-hot-toast'
+import { formatMotivoMovimientoCaja } from '../lib/cajaDisplay'
 import type {
   SesionCaja,
   Usuario,
   TipoMovimientoCaja,
   MotivoMovimientoCaja,
 } from '../types/database'
-
-function formatMotivoMovimiento(motivo: MotivoMovimientoCaja): string {
-  switch (motivo) {
-    case 'PROVEEDOR':
-      return 'Pago Proveedor'
-    case 'GASTO_GENERAL':
-      return 'Gasto General'
-    case 'RETIRO_DUENO':
-      return 'Retiro Dueño'
-    case 'REPOSICION_CAMBIO':
-      return 'Reposición Cambio'
-    case 'OTRO':
-    default:
-      return 'Movimiento'
-  }
-}
 
 const MOTIVOS_EGRESO: { valor: MotivoMovimientoCaja; label: string; desc: string }[] = [
   { valor: 'PROVEEDOR', label: 'Pago a Proveedor', desc: 'Panadería, bebidas, lácteos, golosinas' },
@@ -214,6 +199,13 @@ export function CajaPage() {
   }
 
   const efectivoEsperado = resumenActivo?.efectivo_esperado_en_caja ?? (sesionActiva?.monto_inicial || 0)
+  const egresosDevolucionesCaja = movimientosCaja.reduce(
+    (acc, mov) =>
+      mov.tipo === 'EGRESO' && (mov.motivo === 'DEVOLUCION_VENTA' || mov.motivo === 'DEVOLUCION_ENVASE')
+        ? acc + (Number(mov.monto) || 0)
+        : acc,
+    0
+  )
   const contadoNum = Math.max(0, parseFloat(efectivoContado) || 0)
   const totalBilletesContados = Object.values(desgloseBilletes).reduce((acc, c) => acc + (c || 0), 0)
   const diferenciaArqueo = contadoNum - efectivoEsperado
@@ -591,7 +583,7 @@ export function CajaPage() {
                 <IndicatorCard label="Plata de inicio" valor={formatPrecio(sesionActiva.monto_inicial)} detalle="Fondo para dar vuelto al abrir el turno" icono="caja" />
                 <IndicatorCard label="Ventas en efectivo" valor={!modoCiegoEfectivo ? formatPrecio(resumenActivo?.total_efectivo || 0) : '••••••'} detalle={modoCiegoEfectivo ? 'Importe oculto durante el arqueo ciego' : 'Cobros en efectivo registrados en ventas'} icono="dinero" tono="emerald" />
                 <IndicatorCard label="Entradas de plata" valor={`+${formatPrecio(resumenActivo?.total_ingresos_extra || 0)}`} detalle="Aportes y reposiciones de cambio" icono="rotacion" tono="teal" />
-                <IndicatorCard label="Retiros / Gastos" valor={`-${formatPrecio(resumenActivo?.total_egresos || 0)}`} detalle="Dinero retirado del cajón durante el turno" icono="alerta" tono="rose" />
+                <IndicatorCard label="Retiros / Gastos" valor={`-${formatPrecio(resumenActivo?.total_egresos || 0)}`} detalle="Dinero retirado del cajón durante el turno" pie={egresosDevolucionesCaja > 0 ? `Incluye ${formatPrecio(egresosDevolucionesCaja)} por devoluciones / envases` : undefined} icono="alerta" tono="rose" />
                 <IndicatorCard label={!modoCiegoEfectivo ? 'Debería haber en cajón' : 'Control de turno'} valor={!modoCiegoEfectivo ? formatPrecio(efectivoEsperado) : 'Modo Ciego'} detalle={modoCiegoEfectivo ? 'Contá el efectivo físico al cerrar' : 'Importe esperado para comparar con el conteo físico'} icono="check" tono="purple" />
               </div>
 
@@ -689,7 +681,7 @@ export function CajaPage() {
                         </span>
                         <div>
                           <span className="font-semibold text-gray-800 dark:text-gray-200">
-                            {formatMotivoMovimiento(mov.motivo)}
+                            {formatMotivoMovimientoCaja(mov.motivo)}
                           </span>
                           {mov.descripcion && (
                             <span className="text-gray-500 dark:text-gray-400 ml-1.5">
@@ -934,7 +926,7 @@ export function CajaPage() {
                     Total esperado en cajón:
                   </span>
                   <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                    (Fondo inicial + Efectivo cobrado + Entradas extra - Gastos)
+                    (Fondo inicial + Efectivo cobrado + Entradas extra - Salidas / Devoluciones)
                   </span>
                 </div>
                 <span className="text-xl sm:text-2xl font-black text-gray-900 dark:text-gray-100">
