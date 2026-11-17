@@ -102,6 +102,7 @@ it('classifies every write flow and keeps Auth provisioning server-side with com
     policies: { flow: string; mode: string; browserDml?: boolean; blockers?: string[]; strictBlockers?: boolean; strictGuard?: string; strictEntrypoint?: string; strategy?: string; entrypoint?: string; directWriteInventory?: { path: string; occurrences: number; mode: string; strictEntrypoint?: string; strictGuard?: string; strictGuardPath?: string }[] }[]
   }
   const allowedModes = new Set(['SAFE_RPC', 'SAFE_EDGE', 'LEGACY_ONLY', 'OUT_OF_SCOPE'])
+  expect(new Set(access.policies.map(policy => policy.flow)).size).toBe(access.policies.length)
   expect(access.policies.every(policy => allowedModes.has(policy.mode))).toBe(true)
   expect(access.policies.some(policy => policy.mode === 'UNRESOLVED')).toBe(false)
   expect(access.strictBlockers).toEqual([])
