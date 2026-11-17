@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 /** Offline only. Builds an atomic upgrade for the observed pre-030 Staging schema. */
-import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadAndVerifyFullSqlChain, sha256Hex, stripOuterTransaction } from './sql-chain-manifest.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 export const stagingRef = 'acoyfwwmhaeruciyedri'
 const literal = value => `'${value.replaceAll("'", "''")}'`
-const sha256 = value => createHash('sha256').update(value).digest('hex')
+const sha256 = sha256Hex
+
+export function verifyStagingFullSqlChain() {
+  return loadAndVerifyFullSqlChain(root).fullChain
+}
 
 export function planStagingUpgrade(input) {
   if (!input || input.projectRef !== stagingRef) throw new Error('Only the reviewed Staging ref is supported.')
@@ -16,6 +20,7 @@ export function planStagingUpgrade(input) {
     || input.adminEmail.length > 254) throw new Error('A separate confirmed Auth identity is required.')
   if (input.planName !== 'Plan de prueba' || input.price !== 0 || input.days !== 365)
     throw new Error('Only the explicitly authorized Staging trial coverage is supported.')
+  const { manifest, postCommercialChain } = loadAndVerifyFullSqlChain(root)
   const bootstrap = path.join(root, 'supabase/bootstrap')
   const domain = readFileSync(path.join(bootstrap, '001_domain.sql'), 'utf8')
   const platform = domain.match(/CREATE TABLE public\.platform_initial_admin_bootstrap_state \([\s\S]*?\r?\n\);/)?.[0]
@@ -24,13 +29,15 @@ export function planStagingUpgrade(input) {
     .sort().map(name => `steps/${name}`)
   sources.push('900_final_security.sql', ...readdirSync(path.join(bootstrap, 'commercial')).filter(name => name.endsWith('.sql'))
     .sort().map(name => `commercial/${name}`))
-  const manifest = JSON.parse(readFileSync(path.join(bootstrap, 'manifest.json'), 'utf8'))
   const approved = [...manifest.files, ...manifest.optionalModules.commercial.files]
   const bodies = sources.map(source => {
     const bytes = readFileSync(path.join(bootstrap, source))
     if (approved.find(entry => entry.path === source)?.sha256 !== sha256(bytes)) throw new Error(`Checksum mismatch: ${source}`)
-    return `-- Canonical source: ${source}\n${bytes.toString('utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gmi, '')}`
+    return `-- Canonical source: ${source}\n${stripOuterTransaction(bytes.toString('utf8'))}`
   })
+  const optionalPilotBodies = input.includePilotOperations === true
+    ? postCommercialChain.map(entry => `-- Canonical source (${entry.order}/56): ${entry.path}\n${stripOuterTransaction(entry.bytes.toString('utf8'))}`)
+    : []
   const email = literal(input.adminEmail.trim().toLowerCase())
   return `-- OFFLINE PLAN. Target ref must be supplied explicitly to the authenticated CLI: ${stagingRef}
 -- One transaction; existing tables/data and the 15 installed operational triggers are preserved.
@@ -59,6 +66,7 @@ ALTER TABLE public.usuarios ADD CONSTRAINT usuarios_superadmin_kiosco_scope_chec
   CHECK ((es_superadmin AND kiosco_id IS NULL) OR (NOT es_superadmin AND kiosco_id IS NOT NULL));
 ${platform}
 ${bodies.join('\n')}
+${optionalPilotBodies.join('\n')}
 DO $coverage$
 DECLARE aid uuid; actor uuid:=gen_random_uuid(); kid uuid; pid uuid:=gen_random_uuid(); sid uuid:=gen_random_uuid();
   op uuid:=gen_random_uuid(); ack jsonb; coverage date:=public.comercial_hoy()+365;
@@ -85,10 +93,15 @@ COMMIT;
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const [inputPath, outputPath] = process.argv.slice(2)
-    if (!inputPath || !outputPath) throw new Error('Usage: node scripts/plan-commercial-staging-upgrade.mjs INPUT.json OUTPUT.sql (offline only)')
-    const sql = planStagingUpgrade(JSON.parse(readFileSync(inputPath, 'utf8')))
-    writeFileSync(outputPath, sql, { flag: 'wx' })
-    process.stdout.write(`Offline Staging plan generated; sha256=${sha256(sql)}. No connection or SQL execution.\n`)
+    if (process.argv.includes('--verify-chain')) {
+      const chain = verifyStagingFullSqlChain()
+      process.stdout.write(`Staging SQL chain verified (${chain.length} files).\n`)
+    } else {
+      const [inputPath, outputPath] = process.argv.slice(2)
+      if (!inputPath || !outputPath) throw new Error('Usage: node scripts/plan-commercial-staging-upgrade.mjs INPUT.json OUTPUT.sql (offline only) | --verify-chain')
+      const sql = planStagingUpgrade(JSON.parse(readFileSync(inputPath, 'utf8')))
+      writeFileSync(outputPath, sql, { flag: 'wx' })
+      process.stdout.write(`Offline Staging plan generated; sha256=${sha256(sql)}. No connection or SQL execution.\n`)
+    }
   } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : 'Plan generation failed'}\n`); process.exitCode = 1 }
 }

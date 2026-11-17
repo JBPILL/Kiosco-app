@@ -22,6 +22,8 @@ no sustituye JWT/RLS, concurrencia y permisos del servicio hospedado.
    `supabase_fase_devolucion_preparacion_privada.sql`, y después
    `returns/001_atomic_cash_return.sql`, y finalmente
    `returns/002_owner_envases_return.sql` para devolver efectivo y vacíos al cliente.
+   (Omitir cualquiera de los tres prerrequisitos privados previos provoca error
+   de dependencia al instalar `returns/001_atomic_cash_return.sql`.)
    Para actualizar desde la primera instalación, aplicar 001 actualizado + 002
    en una transacción con respaldo previo. No reinstalar envases/001 o 002
    después de returns/002: sus listas anteriores de acciones no incluyen la
@@ -31,10 +33,26 @@ no sustituye JWT/RLS, concurrencia y permisos del servicio hospedado.
    pero impide crear solicitudes nuevas de CONSERVAR_ENVASES.
 
 4. Ajustes de interfaz y pendientes por tipo: instalar `envases/003_pending_totals.sql`
-   y `returns/003_whole_unit_quantities.sql` juntos, después de todos los anteriores,
+   y `returns/003_whole_unit_quantities.sql` juntos, después de todos los anteriores
+   (y siempre después de `returns/002_owner_envases_return.sql`),
    con respaldo y ensayo de restauración. No reaplicar versiones 001/002 después:
-   reemplazarían funciones o restricciones vigentes. La instalación no activa comercios.
+   reemplazarían funciones o restricciones vigentes (`envases/003` conserva las 7
+   acciones de `envases_movimientos_accion_check`). La instalación no activa comercios.
    El frontend que consulta pendientes requiere este módulo antes de publicarse.
+
+### Secuencia canónica completa (56 archivos SQL, verificada en PostgreSQL 16.4)
+
+El detalle de checksums SHA-256 de los **56** archivos vive en `supabase/bootstrap/manifest.json` (`fullSqlChain`):
+
+| Orden | Bloque | Archivos |
+| --- | --- | --- |
+| 1–43 | Baseline canónico | `001_domain.sql`, `002_identity_helpers.sql`, `steps/003..042`, `900_final_security.sql` |
+| 44–46 | Comercial | `commercial/001_commercial_subscription.sql`, `002_commercial_write_gate.sql`, `003_commerce_provisioning.sql` |
+| 47 | Capacidades piloto | `pilot-operations/001_capabilities.sql` (`envases=false`, `devoluciones_efectivo=false` por defecto) |
+| 48–49 | Envases base | `envases/001_shared_ledger.sql`, `envases/002_checkout_receipts.sql` |
+| 50–52 | Prerrequisitos devolución (raíz) | `supabase_fase_devolucion_registro_privado.sql`, `supabase_fase_devolucion_calculo_historico.sql`, `supabase_fase_devolucion_preparacion_privada.sql` |
+| 53–54 | Devoluciones base | `returns/001_atomic_cash_return.sql`, `returns/002_owner_envases_return.sql` |
+| 55–56 | Incrementales finales | `envases/003_pending_totals.sql`, `returns/003_whole_unit_quantities.sql` |
 
 Pendientes sin cliente: el Dueño declara/corrige el total por tipo con saldo esperado
 para rechazar cambios sobre una lectura vieja. Las observaciones de ese registro

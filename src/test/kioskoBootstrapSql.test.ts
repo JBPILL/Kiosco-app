@@ -1,5 +1,6 @@
 // @vitest-environment node
 // PGlite is an auxiliary parser/contract check; it is not real PostgreSQL or Supabase.
+import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
@@ -480,4 +481,30 @@ it('allows exactly the global SuperAdmin profile shape and keeps the owner tenan
   expect(resolved.rows[0]).toEqual({ kiosco_id: null, rol: 'VISOR', es_superadmin: true })
   await db.exec('RESET ROLE')
   await db.query("SELECT set_config('request.jwt.claim.sub','',false),set_config('request.jwt.claim.role','',false)")
+})
+
+it('manifests the exact 56-file SQL chain with SHA-256 checksums and safe precedence invariants', () => {
+  const manifest = JSON.parse(readFileSync(join(root, 'manifest.json'), 'utf8')) as {
+    fullSqlChain: { order: number; block: string; path: string; sha256: string }[]
+  }
+  expect(manifest.fullSqlChain).toHaveLength(56)
+  for (const [index, entry] of manifest.fullSqlChain.entries()) {
+    expect(entry.order).toBe(index + 1)
+    const digest = createHash('sha256').update(readFileSync(entry.path)).digest('hex')
+    expect(digest, entry.path).toBe(entry.sha256)
+  }
+  const paths = manifest.fullSqlChain.map(entry => entry.path)
+  expect(paths.indexOf('supabase/bootstrap/900_final_security.sql'))
+    .toBeLessThan(paths.indexOf('supabase/bootstrap/commercial/001_commercial_subscription.sql'))
+  expect(paths.indexOf('supabase/bootstrap/pilot-operations/001_capabilities.sql'))
+    .toBeLessThan(paths.indexOf('supabase/bootstrap/returns/001_atomic_cash_return.sql'))
+  for (const prereq of [
+    'supabase_fase_devolucion_registro_privado.sql',
+    'supabase_fase_devolucion_calculo_historico.sql',
+    'supabase_fase_devolucion_preparacion_privada.sql',
+  ]) {
+    expect(paths.indexOf(prereq)).toBeLessThan(paths.indexOf('supabase/bootstrap/returns/001_atomic_cash_return.sql'))
+  }
+  expect(paths.indexOf('supabase/bootstrap/returns/002_owner_envases_return.sql'))
+    .toBeLessThan(paths.indexOf('supabase/bootstrap/envases/003_pending_totals.sql'))
 })

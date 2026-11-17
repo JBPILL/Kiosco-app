@@ -142,13 +142,46 @@ Validación local disponible: `src/test/kioskoBootstrapSql.test.ts` ejecuta el o
 
 El baseline incluye `platform_initial_admin_bootstrap_state` como tabla destino-only vacía, clasificada en `data-migration.json.reinitialize`. La seguridad final habilita RLS y revoca incluso el acceso de `service_role` a esa tabla; sólo el operador conectado como `postgres` puede gestionar su estado. Tras el bootstrap zero-row, `scripts/f6-3b-initial-platform-admin.mjs` prepara en un rehearsal local el SuperAdmin global (`rol=VISOR`, `es_superadmin=true`, kiosco NULL) y el primer Dueño. No ejecutar el runner contra un proyecto hosted sin un gate posterior explícito.
 
-### Módulo comercial opcional
+### Módulo comercial opcional y cadena completa de 56 scripts SQL
 
-`manifest.json.optionalModules.commercial` declara tres archivos posteriores a 900,
-con instalación automática deshabilitada y checksum del incremental combinado.
-No modifica la ventana de importación F6. Para una base existente usar únicamente
-`supabase_fase_comercial_suscripciones.sql`; para una instalación nueva completar
-el baseline y luego los módulos opcionales en orden. No ejecutar ambas rutas.
+`manifest.json.optionalModules` declara por separado los bloques posteriores a `900_final_security.sql`, todos con `automaticInstall=false`, y `manifest.json.fullSqlChain` fija la secuencia completa verificable por SHA-256 de los **56 archivos SQL**:
+
+- **Bloque 1 (1–43):** Baseline canónico (`001_domain.sql`, `002_identity_helpers.sql`, `steps/003`..`steps/042`, `900_final_security.sql`).
+- **Bloque 2 (44–46):** Módulo comercial (`commercial/001_commercial_subscription.sql`, `commercial/002_commercial_write_gate.sql`, `commercial/003_commerce_provisioning.sql`). Para una base endurecida existente usar únicamente `supabase_fase_comercial_suscripciones.sql`; para instalación limpia usar los 43 SQL base y luego `commercial/001..003`. No ejecutar ambas rutas comerciales sobre el mismo destino.
+- **Bloque 3 (47):** Gate de capacidades del piloto (`pilot-operations/001_capabilities.sql`; instala `piloto_operaciones_capacidades` con `envases = false` y `devoluciones_efectivo = false` por defecto).
+- **Bloque 4 (48–49):** Envases base (`envases/001_shared_ledger.sql`, `envases/002_checkout_receipts.sql`).
+- **Bloque 5 (50–52):** Tres prerrequisitos privados de devolución parcial en raíz (obligatorios antes de `returns/001`): `supabase_fase_devolucion_registro_privado.sql`, `supabase_fase_devolucion_calculo_historico.sql`, `supabase_fase_devolucion_preparacion_privada.sql`.
+- **Bloque 6 (53–54):** Devolución atómica y devolución de envases (`returns/001_atomic_cash_return.sql`, `returns/002_owner_envases_return.sql`).
+- **Bloque 7 (55–56):** Incrementales finales posteriores a `returns/002`: `envases/003_pending_totals.sql` y `returns/003_whole_unit_quantities.sql`. Instalar `envases/003` después de `returns/002` es obligatorio para que `envases_movimientos_accion_check` conserve simultáneamente `DEVOLVER_CLIENTE`, `AJUSTAR_PENDIENTES` y `RECIBIR_PENDIENTES`.
+
+| Orden | Bloque | Ruta |
+| ---: | --- | --- |
+| 1 | `baseline` | `supabase/bootstrap/001_domain.sql` |
+| 2 | `baseline` | `supabase/bootstrap/002_identity_helpers.sql` |
+| 3–42 | `baseline` | `supabase/bootstrap/steps/003_profile_integrity.sql` .. `steps/042_post_import_triggers.sql` (ver `manifest.json.files`) |
+| 43 | `baseline` | `supabase/bootstrap/900_final_security.sql` |
+| 44 | `commercial` | `supabase/bootstrap/commercial/001_commercial_subscription.sql` |
+| 45 | `commercial` | `supabase/bootstrap/commercial/002_commercial_write_gate.sql` |
+| 46 | `commercial` | `supabase/bootstrap/commercial/003_commerce_provisioning.sql` |
+| 47 | `pilot-operations` | `supabase/bootstrap/pilot-operations/001_capabilities.sql` |
+| 48 | `envases-core` | `supabase/bootstrap/envases/001_shared_ledger.sql` |
+| 49 | `envases-core` | `supabase/bootstrap/envases/002_checkout_receipts.sql` |
+| 50 | `returns-prerequisites` | `supabase_fase_devolucion_registro_privado.sql` |
+| 51 | `returns-prerequisites` | `supabase_fase_devolucion_calculo_historico.sql` |
+| 52 | `returns-prerequisites` | `supabase_fase_devolucion_preparacion_privada.sql` |
+| 53 | `returns-core` | `supabase/bootstrap/returns/001_atomic_cash_return.sql` |
+| 54 | `returns-core` | `supabase/bootstrap/returns/002_owner_envases_return.sql` |
+| 55 | `final-incrementals` | `supabase/bootstrap/envases/003_pending_totals.sql` |
+| 56 | `final-incrementals` | `supabase/bootstrap/returns/003_whole_unit_quantities.sql` |
+
+Verificación offline de hashes SHA-256 de los 56 archivos:
+
+```text
+node supabase/bootstrap/verify-manifest.mjs --check
+node scripts/plan-commercial-staging-upgrade.mjs --verify-chain
+node scripts/plan-commercial-production-install.mjs --verify-chain
+```
+
 La fuente SQL base permanece intacta; los checksums actuales usan los bytes de Git
 preservados por .gitattributes. La guía de autorización, backup, instalación en
 Staging, validación JWT y posterior Production está en

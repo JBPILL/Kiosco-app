@@ -5,8 +5,9 @@ import path from 'node:path'
 import { PGlite } from '@electric-sql/pglite'
 import { expect, it } from 'vitest'
 
-const { planStagingUpgrade } = await import(pathToFileURL(path.resolve('scripts/plan-commercial-staging-upgrade.mjs')).href) as {
+const { planStagingUpgrade, verifyStagingFullSqlChain } = await import(pathToFileURL(path.resolve('scripts/plan-commercial-staging-upgrade.mjs')).href) as {
   planStagingUpgrade: (input: Record<string, unknown>) => string
+  verifyStagingFullSqlChain: () => { order: number; block: string; path: string; sha256: string }[]
 }
 const input = { projectRef: 'acoyfwwmhaeruciyedri', adminEmail: 'admin@example.test', planName: 'Plan de prueba', price: 0, days: 365 }
 it('rejects Production and unauthorized trial coverage before generating SQL', () => {
@@ -56,3 +57,34 @@ it('upgrades the pre-030 schema atomically, preserves its tenant, audits trial c
     expect((await db.query('SELECT count(*)::int n FROM public.suscripciones')).rows).toEqual([{ n: 1 }])
   } finally { await db.close() }
 }, 30000)
+
+it('verifies the 56-file canonical SQL chain and orders post-commercial modules safely when includePilotOperations=true', () => {
+  const chain = verifyStagingFullSqlChain()
+  expect(chain).toHaveLength(56)
+  const paths = chain.map(item => item.path)
+  expect(paths.indexOf('supabase/bootstrap/pilot-operations/001_capabilities.sql')).toBe(46)
+  expect(paths.indexOf('supabase_fase_devolucion_preparacion_privada.sql'))
+    .toBeLessThan(paths.indexOf('supabase/bootstrap/returns/001_atomic_cash_return.sql'))
+  expect(paths.indexOf('supabase/bootstrap/returns/002_owner_envases_return.sql'))
+    .toBeLessThan(paths.indexOf('supabase/bootstrap/envases/003_pending_totals.sql'))
+
+  const fullPlan = planStagingUpgrade({ ...input, includePilotOperations: true })
+  const markers = [
+    'supabase/bootstrap/pilot-operations/001_capabilities.sql',
+    'supabase/bootstrap/envases/001_shared_ledger.sql',
+    'supabase/bootstrap/envases/002_checkout_receipts.sql',
+    'supabase_fase_devolucion_registro_privado.sql',
+    'supabase_fase_devolucion_calculo_historico.sql',
+    'supabase_fase_devolucion_preparacion_privada.sql',
+    'supabase/bootstrap/returns/001_atomic_cash_return.sql',
+    'supabase/bootstrap/returns/002_owner_envases_return.sql',
+    'supabase/bootstrap/envases/003_pending_totals.sql',
+    'supabase/bootstrap/returns/003_whole_unit_quantities.sql',
+  ]
+  let prevIndex = -1
+  for (const marker of markers) {
+    const idx = fullPlan.indexOf(marker)
+    expect(idx, `${marker} missing from staging plan`).toBeGreaterThan(prevIndex)
+    prevIndex = idx
+  }
+})

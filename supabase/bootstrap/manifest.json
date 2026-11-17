@@ -201,6 +201,472 @@
           "sha256": "f42ccc45cd6078a59908a7b73d20c06f4552d4425e1038e8af0ab86bc7c8cc18"
         }
       ]
+    },
+    "pilotOperations": {
+      "installAfter": "commercial/003_commerce_provisioning.sql",
+      "automaticInstall": false,
+      "defaultCapabilitiesEnabled": false,
+      "files": [
+        {
+          "path": "pilot-operations/001_capabilities.sql",
+          "sha256": "8b4cba226d4577ba9c77d6700b033adaaaa482a76f719a6d8d6c8222ba43ad2e"
+        }
+      ]
+    },
+    "envases": {
+      "installAfter": "pilot-operations/001_capabilities.sql",
+      "automaticInstall": false,
+      "files": [
+        {
+          "path": "envases/001_shared_ledger.sql",
+          "sha256": "bb85b061a9f3a7f27945d062777a48d324bcac975cbe9bf6bcac0be4b94ecef3"
+        },
+        {
+          "path": "envases/002_checkout_receipts.sql",
+          "sha256": "6120b87b618ff027b691cbc1e2b52380542e343c592193aa899dcfea90b162e5"
+        }
+      ]
+    },
+    "returnsPrerequisites": {
+      "installAfter": "envases/002_checkout_receipts.sql",
+      "automaticInstall": false,
+      "files": [
+        {
+          "path": "../../supabase_fase_devolucion_registro_privado.sql",
+          "sha256": "296719a36755be37d39fd619db0ba6d6ccc396a0773fd30e2ee2b0d28631b48a"
+        },
+        {
+          "path": "../../supabase_fase_devolucion_calculo_historico.sql",
+          "sha256": "4503510361a6d7b72b1e89b3388efbf75ec0ca8efb40e0f97b5ba5b8c97eb685"
+        },
+        {
+          "path": "../../supabase_fase_devolucion_preparacion_privada.sql",
+          "sha256": "112cae6f9dd6af5d1aea81f8c87fa6c76caef067a8bff4316a8887d90166387f"
+        }
+      ]
+    },
+    "returns": {
+      "installAfter": "../../supabase_fase_devolucion_preparacion_privada.sql",
+      "automaticInstall": false,
+      "files": [
+        {
+          "path": "returns/001_atomic_cash_return.sql",
+          "sha256": "a5691bdc7d904cbab900816b54d906c0cefb5d45a9e744aba849ba2249ff297d"
+        },
+        {
+          "path": "returns/002_owner_envases_return.sql",
+          "sha256": "0cac14f18f57aa6ce16aed9d233a84421220043b0b1e0a5b81ee76b6f0b13b13"
+        }
+      ]
+    },
+    "finalIncrementals": {
+      "installAfter": "returns/002_owner_envases_return.sql",
+      "automaticInstall": false,
+      "note": "envases/003_pending_totals.sql must run after returns/002_owner_envases_return.sql so envases_movimientos_accion_check keeps DEVOLVER_CLIENTE, AJUSTAR_PENDIENTES and RECIBIR_PENDIENTES.",
+      "files": [
+        {
+          "path": "envases/003_pending_totals.sql",
+          "sha256": "2492048403854e1cbe7f8ed64e9d09988d81f7c3bf93ce974425870f68065197"
+        },
+        {
+          "path": "returns/003_whole_unit_quantities.sql",
+          "sha256": "2205938a48441b68ef546d6c6b7ea60204d2b100b419993da24080bd4d269cfc"
+        }
+      ]
     }
-  }
+  },
+  "fullSqlChain": [
+    {
+      "order": 1,
+      "block": "baseline",
+      "path": "supabase/bootstrap/001_domain.sql",
+      "bootstrapPath": "001_domain.sql",
+      "sha256": "32f10803cb34cc8737f6d3cfdfbea7e6c4bfc31fee5f2065eab4fca7776f4def"
+    },
+    {
+      "order": 2,
+      "block": "baseline",
+      "path": "supabase/bootstrap/002_identity_helpers.sql",
+      "bootstrapPath": "002_identity_helpers.sql",
+      "sha256": "76f7ab62cc7074ef34ecef36c08d3626b3b2e816a1bd6450ea396e23da9bfc01"
+    },
+    {
+      "order": 3,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/003_profile_integrity.sql",
+      "bootstrapPath": "steps/003_profile_integrity.sql",
+      "sha256": "f8239b6494ea98c60b6ee0fabc8849fe2aaeeb0008a7c6fd62337aacb7970859"
+    },
+    {
+      "order": 4,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/004_private_product_costs.sql",
+      "bootstrapPath": "steps/004_private_product_costs.sql",
+      "sha256": "ae715778229f0f5861cc704bff9d83dbefc767a2cca0fc83a35161b297c5f619"
+    },
+    {
+      "order": 5,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/005_stock_history.sql",
+      "bootstrapPath": "steps/005_stock_history.sql",
+      "sha256": "5a3de89b63033e02ba904b955d27ff953479a6b228a56844adb5b2c2e9f86ad1"
+    },
+    {
+      "order": 6,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/006_private_stock_costs.sql",
+      "bootstrapPath": "steps/006_private_stock_costs.sql",
+      "sha256": "2a258e699a5cc348991369d98ea9911a4bdacb6ba6ae60d7791e8fdb6f7f6a48"
+    },
+    {
+      "order": 7,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/007_annulment_audit.sql",
+      "bootstrapPath": "steps/007_annulment_audit.sql",
+      "sha256": "6ec5f37f68a2e33a66f1782360fda10089bedd23c310dcd9747cb2db61a4a095"
+    },
+    {
+      "order": 8,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/008_checkout_core.sql",
+      "bootstrapPath": "steps/008_checkout_core.sql",
+      "sha256": "d74fd02257043c9236dc3481e8267a4d80827c98b67a3d083c550532dcf527d3"
+    },
+    {
+      "order": 9,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/009_checkout_backend.sql",
+      "bootstrapPath": "steps/009_checkout_backend.sql",
+      "sha256": "3bc645b530e759148aec01dbc266b6b2735871597f1f22091264ef67bff6aa84"
+    },
+    {
+      "order": 10,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/010_checkout_cancel.sql",
+      "bootstrapPath": "steps/010_checkout_cancel.sql",
+      "sha256": "c990a1be8523420bad803f073d0799ac4883975638fcc985306fc632315e8fa5"
+    },
+    {
+      "order": 11,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/011_checkout_cash_close_guard.sql",
+      "bootstrapPath": "steps/011_checkout_cash_close_guard.sql",
+      "sha256": "b1d197103a292e95e8d3d5be866981ee4beab7883908d6f1b21bc47fd8976601"
+    },
+    {
+      "order": 12,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/012_checkout_lock_order.sql",
+      "bootstrapPath": "steps/012_checkout_lock_order.sql",
+      "sha256": "476035e5762e8489bc5ce99e7dde541f8ef0b0d56557765d1479533d287338ac"
+    },
+    {
+      "order": 13,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/013_checkout_prepare_lock.sql",
+      "bootstrapPath": "steps/013_checkout_prepare_lock.sql",
+      "sha256": "048106aab2f2e2ab84a03b3cb1e9630f325277fa5224678be2ed6a14d48b5622"
+    },
+    {
+      "order": 14,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/014_checkout_pending_query.sql",
+      "bootstrapPath": "steps/014_checkout_pending_query.sql",
+      "sha256": "3b82fe81834746cd1bb3208ee9f43225e204af85ab0866d0b7cee3282968a217"
+    },
+    {
+      "order": 15,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/015_checkout_recover_entry.sql",
+      "bootstrapPath": "steps/015_checkout_recover_entry.sql",
+      "sha256": "a7605a4bbb3efcee7e0c30f9933e613248307f6ef0184cd74cd25d3460d952ac"
+    },
+    {
+      "order": 16,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/016_checkout_cancel_reconcile.sql",
+      "bootstrapPath": "steps/016_checkout_cancel_reconcile.sql",
+      "sha256": "d7b99ca330c0e87173ec58de4ea1b249aaa66203c043ffc1b67a6cb3c5d77662"
+    },
+    {
+      "order": 17,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/017_supervisor_pin_private.sql",
+      "bootstrapPath": "steps/017_supervisor_pin_private.sql",
+      "sha256": "1e5e7d6725644dd7a967095ed6a7fbd7628a3dce42a87d3a4e0cbdd15db0b4ba"
+    },
+    {
+      "order": 18,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/018_supervisor_pin_attempts.sql",
+      "bootstrapPath": "steps/018_supervisor_pin_attempts.sql",
+      "sha256": "64b9cd0c44ed1ddedee65a7fe8097b85b5dc278e4e57c4546e6745bb6eac6f4c"
+    },
+    {
+      "order": 19,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/019_supervisor_discount_authorization.sql",
+      "bootstrapPath": "steps/019_supervisor_discount_authorization.sql",
+      "sha256": "be45e3af2f348fa072bea70868c39a49f7d6b5b986bbe05bdd133fc90490f6b7"
+    },
+    {
+      "order": 20,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/020_checkout_supervisor.sql",
+      "bootstrapPath": "steps/020_checkout_supervisor.sql",
+      "sha256": "dd7131b907568c98abb8ff295eb8ed3203e8ab39aa7aa73618ae4ba7a8642157"
+    },
+    {
+      "order": 21,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/021_checkout_supervisor_policy.sql",
+      "bootstrapPath": "steps/021_checkout_supervisor_policy.sql",
+      "sha256": "adb4d5f95333d3eb78461d3e868fe9ab41cb1c829c538c50347450c43fff04ce"
+    },
+    {
+      "order": 22,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/022_supervisor_discount_policy.sql",
+      "bootstrapPath": "steps/022_supervisor_discount_policy.sql",
+      "sha256": "a7b22d89404aa30bedb5550bd1954bb4a56eab77a8f9f4f17f3372f136b53a1f"
+    },
+    {
+      "order": 23,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/023_supervisor_pin_wait.sql",
+      "bootstrapPath": "steps/023_supervisor_pin_wait.sql",
+      "sha256": "911c4f4ef87fff48017223d9d5f35b06bfe07b03d413924645ce189f39c41b6f"
+    },
+    {
+      "order": 24,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/024_checkout_frozen_policy.sql",
+      "bootstrapPath": "steps/024_checkout_frozen_policy.sql",
+      "sha256": "55454458c2fd9820dd6a3ae04f8a91d1e1a97952f1a698dba87bb84135413a0f"
+    },
+    {
+      "order": 25,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/025_checkout_shared_cash.sql",
+      "bootstrapPath": "steps/025_checkout_shared_cash.sql",
+      "sha256": "957e20288ccfda1abb67a9c42bb6595941c3e8ab7e0241f450db4f7e3cf48033"
+    },
+    {
+      "order": 26,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/026_edge_identity_reads.sql",
+      "bootstrapPath": "steps/026_edge_identity_reads.sql",
+      "sha256": "ff9d4469acce90107fd654fcde4eac71814e727a3fb538be435fa282d7c2bc66"
+    },
+    {
+      "order": 27,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/027_edge_catalog_reads.sql",
+      "bootstrapPath": "steps/027_edge_catalog_reads.sql",
+      "sha256": "7ccabd8e23afa2dd35085859cc7a67042f21e305a9bb7378d5634aa6325895ca"
+    },
+    {
+      "order": 28,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/028_checkout_immutability.sql",
+      "bootstrapPath": "steps/028_checkout_immutability.sql",
+      "sha256": "a61751aeb449ef701c80f5fb41d3c3b20047a2be84b82df558696b1ba680adfe"
+    },
+    {
+      "order": 29,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/029_atomic_annulment.sql",
+      "bootstrapPath": "steps/029_atomic_annulment.sql",
+      "sha256": "2e0df86eeff9155b9805f2df9ad7dda4b57bb056b7fe169dd33a885407d340b5"
+    },
+    {
+      "order": 30,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/030_application_relations.sql",
+      "bootstrapPath": "steps/030_application_relations.sql",
+      "sha256": "ea5110ae94fa8d5d5e83940d797842993f2475ccef219800116c6321e94767e8"
+    },
+    {
+      "order": 31,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/031_stock_idempotency.sql",
+      "bootstrapPath": "steps/031_stock_idempotency.sql",
+      "sha256": "22af953f57b1371498542cd6b5b19903fa167393160bf6796d93a4ad3a1f970d"
+    },
+    {
+      "order": 32,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/032_cash_drawer_request.sql",
+      "bootstrapPath": "steps/032_cash_drawer_request.sql",
+      "sha256": "033efb622b8b18739883f70611e7c2774ff1bef75543df2be7105a8eb55ae61a"
+    },
+    {
+      "order": 33,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/033_cash_drawer_result.sql",
+      "bootstrapPath": "steps/033_cash_drawer_result.sql",
+      "sha256": "8130367b961f589d9d580465c3a4c9d4cadee0f9f79403de0d8938913b191c6e"
+    },
+    {
+      "order": 34,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/034_supervisor_audit.sql",
+      "bootstrapPath": "steps/034_supervisor_audit.sql",
+      "sha256": "7b7b3d3e3666823cfeed3813015c34d2c6d482d1648687e68d6f9df02820c050"
+    },
+    {
+      "order": 35,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/035_electronics.sql",
+      "bootstrapPath": "steps/035_electronics.sql",
+      "sha256": "54167233d8e6d613b8bef6d1dab526f3a255d3a608ac368b136aa3951e3e5262"
+    },
+    {
+      "order": 36,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/036_stock_loss_report.sql",
+      "bootstrapPath": "steps/036_stock_loss_report.sql",
+      "sha256": "c45f5a712cb6602510187e7c90724a2ad0e9a9c554e5741b5ef2c33c55c358f9"
+    },
+    {
+      "order": 37,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/037_backup_combo_restore.sql",
+      "bootstrapPath": "steps/037_backup_combo_restore.sql",
+      "sha256": "40d7a4e24a52622b473229d108e5faa01a2b29704c5c5e0a1425ad5e93667d32"
+    },
+    {
+      "order": 38,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/038_backup_compatible.sql",
+      "bootstrapPath": "steps/038_backup_compatible.sql",
+      "sha256": "d27e7a1bb31f31f2de88fb189cd2e4860aba4445a5a9607b184e89e34af01bc9"
+    },
+    {
+      "order": 39,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/039_combo_backup_restore.sql",
+      "bootstrapPath": "steps/039_combo_backup_restore.sql",
+      "sha256": "27e111ac794490d95c6b1aeaf39dc831278d1ab82c2ff1713c54f8fb887a4b8e"
+    },
+    {
+      "order": 40,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/040_transactional_write_hardening.sql",
+      "bootstrapPath": "steps/040_transactional_write_hardening.sql",
+      "sha256": "e3aa887fc56f1b9cb4da82842ef8319dacee9cfdd34dfb8be8290db3d2be64b9"
+    },
+    {
+      "order": 41,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/041_catalog_support_write_hardening.sql",
+      "bootstrapPath": "steps/041_catalog_support_write_hardening.sql",
+      "sha256": "76091a052c1862173546b3fe1111d9ce2e89a4a936472222c5192a8a7e8ee42e"
+    },
+    {
+      "order": 42,
+      "block": "baseline",
+      "path": "supabase/bootstrap/steps/042_post_import_triggers.sql",
+      "bootstrapPath": "steps/042_post_import_triggers.sql",
+      "sha256": "a44f97d0668e7d365eb01c3f46d8302c842652d9e2d998d510680035bd2893a7"
+    },
+    {
+      "order": 43,
+      "block": "baseline",
+      "path": "supabase/bootstrap/900_final_security.sql",
+      "bootstrapPath": "900_final_security.sql",
+      "sha256": "a0874bdce915d7597f3012052453ae656ed9e7857185fb1b4fabf4f987fee57c"
+    },
+    {
+      "order": 44,
+      "block": "commercial",
+      "path": "supabase/bootstrap/commercial/001_commercial_subscription.sql",
+      "bootstrapPath": "commercial/001_commercial_subscription.sql",
+      "sha256": "ced31676e03e64d4f6d1dd2bbfff445be3142b2e034ace6bf3c7c8782bf173aa"
+    },
+    {
+      "order": 45,
+      "block": "commercial",
+      "path": "supabase/bootstrap/commercial/002_commercial_write_gate.sql",
+      "bootstrapPath": "commercial/002_commercial_write_gate.sql",
+      "sha256": "0011a874fb406a50223a25aabc47a21853a26012888fcdfcbe9619f7fde82fea"
+    },
+    {
+      "order": 46,
+      "block": "commercial",
+      "path": "supabase/bootstrap/commercial/003_commerce_provisioning.sql",
+      "bootstrapPath": "commercial/003_commerce_provisioning.sql",
+      "sha256": "f42ccc45cd6078a59908a7b73d20c06f4552d4425e1038e8af0ab86bc7c8cc18"
+    },
+    {
+      "order": 47,
+      "block": "pilot-operations",
+      "path": "supabase/bootstrap/pilot-operations/001_capabilities.sql",
+      "bootstrapPath": "pilot-operations/001_capabilities.sql",
+      "sha256": "8b4cba226d4577ba9c77d6700b033adaaaa482a76f719a6d8d6c8222ba43ad2e"
+    },
+    {
+      "order": 48,
+      "block": "envases-core",
+      "path": "supabase/bootstrap/envases/001_shared_ledger.sql",
+      "bootstrapPath": "envases/001_shared_ledger.sql",
+      "sha256": "bb85b061a9f3a7f27945d062777a48d324bcac975cbe9bf6bcac0be4b94ecef3"
+    },
+    {
+      "order": 49,
+      "block": "envases-core",
+      "path": "supabase/bootstrap/envases/002_checkout_receipts.sql",
+      "bootstrapPath": "envases/002_checkout_receipts.sql",
+      "sha256": "6120b87b618ff027b691cbc1e2b52380542e343c592193aa899dcfea90b162e5"
+    },
+    {
+      "order": 50,
+      "block": "returns-prerequisites",
+      "path": "supabase_fase_devolucion_registro_privado.sql",
+      "bootstrapPath": "../../supabase_fase_devolucion_registro_privado.sql",
+      "sha256": "296719a36755be37d39fd619db0ba6d6ccc396a0773fd30e2ee2b0d28631b48a"
+    },
+    {
+      "order": 51,
+      "block": "returns-prerequisites",
+      "path": "supabase_fase_devolucion_calculo_historico.sql",
+      "bootstrapPath": "../../supabase_fase_devolucion_calculo_historico.sql",
+      "sha256": "4503510361a6d7b72b1e89b3388efbf75ec0ca8efb40e0f97b5ba5b8c97eb685"
+    },
+    {
+      "order": 52,
+      "block": "returns-prerequisites",
+      "path": "supabase_fase_devolucion_preparacion_privada.sql",
+      "bootstrapPath": "../../supabase_fase_devolucion_preparacion_privada.sql",
+      "sha256": "112cae6f9dd6af5d1aea81f8c87fa6c76caef067a8bff4316a8887d90166387f"
+    },
+    {
+      "order": 53,
+      "block": "returns-core",
+      "path": "supabase/bootstrap/returns/001_atomic_cash_return.sql",
+      "bootstrapPath": "returns/001_atomic_cash_return.sql",
+      "sha256": "a5691bdc7d904cbab900816b54d906c0cefb5d45a9e744aba849ba2249ff297d"
+    },
+    {
+      "order": 54,
+      "block": "returns-core",
+      "path": "supabase/bootstrap/returns/002_owner_envases_return.sql",
+      "bootstrapPath": "returns/002_owner_envases_return.sql",
+      "sha256": "0cac14f18f57aa6ce16aed9d233a84421220043b0b1e0a5b81ee76b6f0b13b13"
+    },
+    {
+      "order": 55,
+      "block": "final-incrementals",
+      "path": "supabase/bootstrap/envases/003_pending_totals.sql",
+      "bootstrapPath": "envases/003_pending_totals.sql",
+      "sha256": "2492048403854e1cbe7f8ed64e9d09988d81f7c3bf93ce974425870f68065197"
+    },
+    {
+      "order": 56,
+      "block": "final-incrementals",
+      "path": "supabase/bootstrap/returns/003_whole_unit_quantities.sql",
+      "bootstrapPath": "returns/003_whole_unit_quantities.sql",
+      "sha256": "2205938a48441b68ef546d6c6b7ea60204d2b100b419993da24080bd4d269cfc"
+    }
+  ]
 }
