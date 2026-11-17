@@ -3,6 +3,7 @@ import type { Producto, Categoria, MovimientoStock } from '../types/database'
 import type { MetricasRotacion } from './rotacionInventario'
 import { formatFecha, formatPrecio, labelMedioPago } from './utils'
 import { registrarDescargaRespaldoExterno } from './externalBackupReminder'
+import { resolveStockMovementDelta } from './stockMovementDisplay'
 
 export interface SheetOptionsColumn {
   width?: number
@@ -995,6 +996,13 @@ export const exportarLibroContableCSV = exportarLibroContableExcel
 // ============================================================================
 // KARDEX Y AUDITORÍA DE MOVIMIENTOS DE STOCK
 // ============================================================================
+function formatDeltaExcelPattern(delta: number, esPesable?: boolean): string {
+  if (esPesable || !Number.isInteger(delta)) {
+    return '+#,##0.000;-#,##0.000;0'
+  }
+  return '+#,##0;-#,##0;0'
+}
+
 export async function exportarMovimientosStockExcel(
   movimientos: (MovimientoStock & { producto?: Producto })[],
   nombreKiosco: string = 'Kiosco'
@@ -1010,10 +1018,16 @@ export async function exportarMovimientosStockExcel(
     { width: 32 }, // Auditoría / Notas
   ]
 
+  const deltas = movimientos.map((m) => resolveStockMovementDelta(m))
   const totalMovs = movimientos.length
-  const totalIngresadas = movimientos.filter((m) => m.tipo === 'INGRESO').reduce((s, m) => s + Math.abs(m.cantidad || 0), 0)
-  const totalEgresadas = movimientos.filter((m) => m.tipo === 'EGRESO').reduce((s, m) => s + Math.abs(m.cantidad || 0), 0)
+  const totalIngresadas = Number(
+    deltas.reduce((s, d) => (d > 0 ? s + d : s), 0).toFixed(3)
+  )
+  const totalEgresadas = Number(
+    deltas.reduce((s, d) => (d < 0 ? s + Math.abs(d) : s), 0).toFixed(3)
+  )
   const totalAjustes = movimientos.filter((m) => m.tipo === 'AJUSTE').length
+  const variacionNeta = Number(deltas.reduce((s, d) => s + d, 0).toFixed(3))
 
   const fechaGeneracion = new Date().toLocaleDateString('es-AR') + ' ' + new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
 
@@ -1088,12 +1102,14 @@ export async function exportarMovimientosStockExcel(
 
   movimientos.forEach((m, idx) => {
     const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
+    const delta = deltas[idx]
+    const format = formatDeltaExcelPattern(delta, m.producto?.es_pesable)
     rows.push([
       cText(formatFecha(m.fecha), bg, 'center'),
       cText(m.tipo, bg, 'center', true),
       cText(m.producto?.codigo_barras || '—', bg, 'center'),
       cText(m.producto?.descripcion || 'Producto eliminado', bg, 'left', true),
-      cNum(m.cantidad, bg, m.cantidad > 0 ? '+#,##0.00;-#,##0.00;0' : '#,##0.00', true),
+      cNum(delta, bg, format, true),
       cText(m.motivo, bg, 'left'),
       cText(m.notas || '—', bg, 'left'),
     ] as Row)
@@ -1102,7 +1118,7 @@ export async function exportarMovimientosStockExcel(
   // Cierre
   rows.push([
     ...cTotalLabel('TOTAL REGISTROS AUDITADOS', 4),
-    cTotalNum(totalIngresadas - totalEgresadas, '+#,##0.00;-#,##0.00;0'),
+    cTotalNum(variacionNeta, formatDeltaExcelPattern(variacionNeta, !Number.isInteger(variacionNeta))),
     ...cTotalLabel(`${totalMovs} OPERACIONES REGISTRADAS`, 2),
   ] as Row)
 
@@ -1989,23 +2005,27 @@ export async function exportarMasterExcel(params: MasterExcelData) {
         const bg = idx % 2 === 0 ? '#FFFFFF' : '#F8FAFC'
         const prodDesc = m.producto?.descripcion || m.producto_descripcion || 'Producto'
         const usuarioNom = m.usuario?.nombre || 'Sistema'
+        const delta = resolveStockMovementDelta(m)
+        const format = formatDeltaExcelPattern(delta, m.producto?.es_pesable)
 
         rows.push([
           cText(formatFecha(m.fecha), bg, 'center'),
           cText(prodDesc, bg, 'left', true),
           cText(m.tipo, bg, 'center'),
-          cNum(m.cantidad, bg, '#,##0', false, 'center'),
+          cNum(delta, bg, format, false, 'center'),
           cText(m.motivo, bg, 'left'),
           cText(m.notas || '—', bg, 'left', false, true),
           cText(usuarioNom, bg, 'left'),
         ] as Row)
       })
 
-      const totalCantidad = movs.reduce((s, m) => s + Number(m.cantidad || 0), 0)
+      const totalNeto = Number(
+        movs.reduce((s, m) => s + resolveStockMovementDelta(m), 0).toFixed(3)
+      ) || 0
 
       rows.push([
         ...cTotalLabel(`TOTAL REGISTROS (${movs.length} movimientos):`, 3),
-        cTotalNum(totalCantidad, '#,##0', 'center'),
+        cTotalNum(totalNeto, formatDeltaExcelPattern(totalNeto, !Number.isInteger(totalNeto)), 'center'),
         ...cSpan(cTotalText('—', 'center'), 3),
       ] as Row)
     }

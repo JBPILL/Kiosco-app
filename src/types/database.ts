@@ -170,6 +170,9 @@ export interface MovimientoStock {
   producto_id: string
   tipo: 'INGRESO' | 'EGRESO' | 'AJUSTE'
   cantidad: number
+  delta_stock?: number | null
+  stock_anterior?: number | null
+  stock_nuevo?: number | null
   motivo: 'COMPRA' | 'VENTA' | 'PERDIDA' | 'VENCIMIENTO' | 'ROTURA' | 'CONTEO' | 'DEVOLUCION' | 'MERMA' | 'ROBO' | 'CONSUMO_INTERNO'
   notas: string | null
   usuario_id: string | null

@@ -48,7 +48,7 @@ export async function exportarExcelMaestroComercio(kioscoId: string, nombreKiosc
   const [productos, categorias, movimientos, clientes, proveedores, ventas] = await Promise.all([
     leerFilas(kioscoId, 'productos', '*, categoria:categorias(nombre)'),
     leerFilas(kioscoId, 'categorias', '*'),
-    leerFilas(kioscoId, 'movimientos_stock', 'id, fecha, tipo, cantidad, motivo, notas, producto:productos(descripcion), usuario:usuarios(nombre)'),
+    leerFilas(kioscoId, 'movimientos_stock', 'id, fecha, tipo, cantidad, delta_stock, motivo, notas, producto:productos(descripcion), usuario:usuarios(nombre)'),
     leerFilas(kioscoId, 'clientes', '*'),
     leerFilas(kioscoId, 'proveedores', '*'),
     leerFilas(kioscoId, 'ventas', `id, fecha_hora, total, estado, ${camposFiscalesReporteVenta()} usuario:usuarios!usuario_id(nombre), pagos:pagos_venta(medio_pago, monto)`),

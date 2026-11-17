@@ -26,7 +26,12 @@ import toast from 'react-hot-toast'
 import { prepararMovimientoStock } from '../lib/stockOperation'
 import { MovimientosPendientes } from '../components/stock/MovimientosPendientes'
 import { adjuntarCostosHistoricos } from '../lib/movementCostAccess'
-import { presentarMovimientoStock } from '../lib/stockMovementDisplay'
+import {
+  formatStockMovementDelta,
+  getStockMovementDirection,
+  presentarMovimientoStock,
+  resolveStockMovementDelta,
+} from '../lib/stockMovementDisplay'
 
 export function StockPage() {
   const { usuario, kiosco } = useAuthStore()
@@ -79,7 +84,7 @@ export function StockPage() {
   const cargarMovimientos = useCallback(async (limite = 100) => {
     setCargando(true)
     const puedeVerCostos = usuario?.rol === 'DUEÑO' || Boolean(usuario?.es_superadmin)
-    const seleccionMovimientos: string = `*, producto:productos(id, descripcion, stock_actual, codigo_barras, precio_venta)${puedeVerCostos ? ', costo_privado:movimiento_stock_costos(precio_costo)' : ''}`
+    const seleccionMovimientos: string = `*, producto:productos(id, descripcion, stock_actual, codigo_barras, precio_venta, es_pesable)${puedeVerCostos ? ', costo_privado:movimiento_stock_costos(precio_costo)' : ''}`
     let query = supabase
       .from('movimientos_stock')
       .select(seleccionMovimientos)
@@ -775,7 +780,7 @@ export function StockPage() {
                   }
                   setExportando(true)
                   try {
-                    await exportarMovimientosStockExcel(movimientos as any, kiosco?.nombre || 'Mi Comercio')
+                    await exportarMovimientosStockExcel(movimientos, kiosco?.nombre || 'Mi Comercio')
                     toast.success('Movimientos exportados a Excel')
                   } catch (e: any) {
                     toast.error(`Error al exportar: ${e?.message || 'Error desconocido'}`)
@@ -820,10 +825,24 @@ export function StockPage() {
 
               <div className="divide-y divide-gray-100 dark:divide-gray-700/60 max-h-[560px] overflow-y-auto">
                 {movimientosFiltrados.map((mov) => {
-                  const esIngreso = mov.tipo === 'INGRESO'
-                  const esEgreso = mov.tipo === 'EGRESO'
                   const presentacion = presentarMovimientoStock(mov)
+                  const delta = resolveStockMovementDelta(mov)
+                  const direccion = getStockMovementDirection(delta)
                   const cantDisplay = presentacion.cantidad
+                  const badgeClass =
+                    mov.tipo === 'AJUSTE'
+                      ? direccion === 'up'
+                        ? tipoBadges.INGRESO
+                        : direccion === 'down'
+                        ? tipoBadges.EGRESO
+                        : tipoBadges.AJUSTE
+                      : tipoBadges[mov.tipo]
+                  const valorClass =
+                    direccion === 'up'
+                      ? 'text-emerald-600 dark:text-emerald-400'
+                      : direccion === 'down'
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-indigo-600 dark:text-indigo-400'
 
                   return (
                     <div
@@ -833,9 +852,7 @@ export function StockPage() {
                       {/* Badge de tipo y datos de producto (toma todo el espacio libre restante) */}
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <span
-                          className={`font-black text-[10px] tracking-wider px-2 py-1 rounded-md uppercase flex-shrink-0 ${
-                            tipoBadges[mov.tipo]
-                          }`}
+                          className={`font-black text-[10px] tracking-wider px-2 py-1 rounded-md uppercase flex-shrink-0 ${badgeClass}`}
                         >
                           {mov.tipo}
                         </span>
@@ -851,7 +868,7 @@ export function StockPage() {
                             {(usuario?.rol === 'DUEÑO' || usuario?.es_superadmin) && (
                               <span>
                                 {mov.tipo === 'AJUSTE'
-                                  ? 'Cantidad registrada; sin valoración del ajuste'
+                                  ? 'Variación por ajuste; sin valoración'
                                   : presentacion.estimacion == null
                                   ? 'Costo histórico no disponible'
                                   : `Estimación a costo: ${formatPrecio(presentacion.estimacion)}`}
@@ -889,15 +906,7 @@ export function StockPage() {
 
                       {/* Cantidad variada (columna con ancho fijo) */}
                       <div className="w-28 text-right flex-shrink-0">
-                        <span
-                          className={`tabular-nums text-base font-black ${
-                            esIngreso
-                              ? 'text-emerald-600 dark:text-emerald-400'
-                              : esEgreso
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-indigo-600 dark:text-indigo-400'
-                          }`}
-                        >
+                        <span className={`tabular-nums text-base font-black ${valorClass}`}>
                           {cantDisplay}
                         </span>
                         <span className="block text-[10px] text-gray-400">unidades</span>
@@ -1439,18 +1448,14 @@ export function StockPage() {
                   <span className="text-gray-400 block text-[11px]">Impacto</span>
                   <span
                     className={`font-black text-sm ${
-                      tipoMovimiento === 'INGRESO'
+                      calculoStockResultante.delta > 0
                         ? 'text-emerald-600 dark:text-emerald-400'
-                        : tipoMovimiento === 'EGRESO'
+                        : calculoStockResultante.delta < 0
                         ? 'text-red-600 dark:text-red-400'
                         : 'text-indigo-600 dark:text-indigo-400'
                     }`}
                   >
-                    {tipoMovimiento === 'INGRESO'
-                      ? `+${cantidad || 0}`
-                      : tipoMovimiento === 'EGRESO'
-                      ? `-${cantidad || 0}`
-                      : `Conteo: ${cantidad || 0}`}
+                    {formatStockMovementDelta(calculoStockResultante.delta)}
                   </span>
                 </div>
 
