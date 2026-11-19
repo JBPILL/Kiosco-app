@@ -145,6 +145,7 @@ export interface Venta {
 }
 
 export interface DetalleVenta {
+  es_devolucion_envase?: boolean
   id: string
   venta_id: string
   producto_id: string
@@ -169,6 +170,9 @@ export interface MovimientoStock {
   producto_id: string
   tipo: 'INGRESO' | 'EGRESO' | 'AJUSTE'
   cantidad: number
+  delta_stock?: number | null
+  stock_anterior?: number | null
+  stock_nuevo?: number | null
   motivo: 'COMPRA' | 'VENTA' | 'PERDIDA' | 'VENCIMIENTO' | 'ROTURA' | 'CONTEO' | 'DEVOLUCION' | 'MERMA' | 'ROBO' | 'CONSUMO_INTERNO'
   notas: string | null
   usuario_id: string | null
@@ -222,6 +226,7 @@ export type MotivoMovimientoCaja =
   | 'RETIRO_DUENO'
   | 'REPOSICION_CAMBIO'
   | 'DEVOLUCION_VENTA'
+  | 'DEVOLUCION_ENVASE'
   | 'COBRO_CUENTA_CORRIENTE'
   | 'OTRO'
 
@@ -285,6 +290,7 @@ export interface ItemCarrito {
   precio_envase_unitario?: number
   es_devolucion_envase?: boolean
   tipo_envase_id?: string
+  envase_compartido?: boolean
 }
 
 // --- Promociones Automáticas (NxM, Volumen, Porcentaje) ---

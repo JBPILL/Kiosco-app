@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 
-const mocks = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), insert: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
+const mocks = vi.hoisted(() => ({ rpc: vi.fn(), from: vi.fn(), insert: vi.fn(), select: vi.fn(), update: vi.fn(), deleteFn: vi.fn(), toastSuccess: vi.fn(), toastError: vi.fn() }))
 vi.mock('../lib/supabase', () => ({ supabase: { rpc: mocks.rpc, from: mocks.from } }))
 vi.mock('react-hot-toast', () => ({ default: Object.assign(vi.fn(), { success: mocks.toastSuccess, error: mocks.toastError }) }))
 
-import { useSoporteStore } from './soporteStore'
+import { useAuthStore } from './authStore'
+import { useSoporteStore, type TicketSoporte } from './soporteStore'
 
 beforeEach(() => {
   vi.clearAllMocks()
   localStorage.clear()
+  useAuthStore.setState({ usuario: null })
   useSoporteStore.setState({ tickets: [], guardando: false, error: null, tablaExiste: true })
   mocks.rpc.mockResolvedValue({ data: {
     id: 'ticket-1', kiosco_id: 'tenant-server', usuario_id: 'user-server',
@@ -17,7 +19,8 @@ beforeEach(() => {
     fecha_creacion: new Date(0).toISOString(),
   }, error: null })
   mocks.insert.mockReturnValue({ select: () => ({ maybeSingle: async () => ({ data: null, error: null }) }) })
-  mocks.from.mockReturnValue({ insert: mocks.insert })
+  mocks.select.mockReturnValue({ order: () => ({ limit: async () => ({ data: [], error: null }) }) })
+  mocks.from.mockReturnValue({ insert: mocks.insert, select: mocks.select, update: mocks.update, delete: mocks.deleteFn })
 })
 afterEach(() => vi.unstubAllEnvs())
 
@@ -68,4 +71,60 @@ it('strict scope mantiene las operaciones administrativas de soporte inaccesible
   useSoporteStore.getState().suscribirRealtimeTickets()()
   expect(mocks.from).not.toHaveBeenCalled()
   expect(mocks.rpc).not.toHaveBeenCalled()
+})
+
+it('en strict scope + comercial habilitado SuperAdmin lee tickets y muta solo via SAFE_RPC sin DML directo', async () => {
+  vi.stubEnv('VITE_KIOSKO_PILOT_STRICT_SCOPE', 'true')
+  vi.stubEnv('VITE_ADMIN_COMERCIAL_HABILITADO', 'true')
+  useAuthStore.setState({
+    usuario: {
+      id: 'admin-1',
+      auth_user_id: 'auth-admin-1',
+      kiosco_id: null,
+      nombre: 'Admin',
+      email: 'admin@example.test',
+      rol: 'VISOR',
+      activo: true,
+      es_superadmin: true,
+      fecha_creacion: new Date(0).toISOString(),
+    } as never,
+  })
+  const ticketServidor: TicketSoporte = {
+    id: 'ticket-admin-1',
+    kiosco_id: 'kiosco-1',
+    kiosco_nombre: 'Kiosco Centro',
+    usuario_nombre: 'Ana',
+    usuario_rol: 'DUEÑO',
+    tipo: 'CONSULTA',
+    modulo: 'Caja',
+    mensaje: 'Consulta de arqueo',
+    estado: 'PENDIENTE',
+    respuesta_admin: 'Respuesta previa',
+    fecha_creacion: new Date(0).toISOString(),
+  }
+  mocks.select.mockReturnValueOnce({
+    order: () => ({ limit: async () => ({ data: [ticketServidor], error: null }) }),
+  })
+
+  const cargados = await useSoporteStore.getState().cargarTicketsAdmin()
+  expect(cargados).toEqual([ticketServidor])
+  expect(useSoporteStore.getState().tickets).toEqual([ticketServidor])
+
+  mocks.rpc.mockResolvedValueOnce({
+    data: { success: true, ticket: { ...ticketServidor, estado: 'EN_PROCESO', respuesta_admin: 'Respuesta previa' } },
+    error: null,
+  })
+  expect(await useSoporteStore.getState().actualizarEstadoTicket('ticket-admin-1', 'EN_PROCESO')).toBe(true)
+  expect(mocks.rpc).toHaveBeenCalledWith('gestionar_ticket_soporte_admin', expect.objectContaining({
+    p_ticket_id: 'ticket-admin-1',
+    p_estado: 'EN_PROCESO',
+    p_respuesta_admin: null,
+    p_actualizar_respuesta: false,
+  }))
+  expect(useSoporteStore.getState().tickets[0].estado).toBe('EN_PROCESO')
+  expect(useSoporteStore.getState().tickets[0].respuesta_admin).toBe('Respuesta previa')
+
+  expect(await useSoporteStore.getState().eliminarTicket('ticket-admin-1')).toBe(false)
+  expect(mocks.update).not.toHaveBeenCalled()
+  expect(mocks.deleteFn).not.toHaveBeenCalled()
 })

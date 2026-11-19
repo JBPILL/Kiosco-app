@@ -409,3 +409,33 @@ it('fuera del modo estricto conserva el flujo de venta con devolución de envase
   expect(deps.preparar).toHaveBeenCalledOnce()
   expect(deps.confirmar).toHaveBeenCalledOnce()
 })
+
+it('el módulo de envases habilitado en strict conserva el crédito completo ante un descuento comercial', async () => {
+  const deps = httpDeps()
+  deps.pilotStrictScope = true
+  deps.envasesCompartidos = true
+  const idEnvase = '80000000-0000-0000-0000-000000000001'
+  const datos = { ...entrada(), tipoAjuste: 'DESCUENTO_PORCENTAJE' as const, valorAjuste: 10,
+    totalEsperado: 80, subtotalesEsperados: [180, -100], lineas: [
+      { tipo: 'PRODUCTO' as const, id: line, productoId: product, cantidad: 1, sinEnvase: false },
+      { tipo: 'DEVOLUCION_ENVASE' as const, id: '60000000-0000-0000-0000-000000000002', envaseId: idEnvase, cantidad: 1 },
+    ], pagos: [{ id: pay, medio: 'EFECTIVO' as const, montoCentavos: 8000, referencia: null }] }
+  deps.cargarDatos = vi.fn(async () => ({ productos: [crearProducto({ id: product, kiosco_id: kid, precio_venta: 200 })],
+    componentes: [], promociones: [], envases: [{ id: idEnvase, kioscoId: kid, nombre: 'Vidrio', precio: 100 }], cliente: null }))
+  const respuesta = await recibirCheckoutManual(peticion(datos), deps)
+  expect(respuesta.status).toBe(200)
+  expect(vi.mocked(deps.preparar).mock.calls[0][2].detalles.map(d => d.subtotal)).toEqual([180, -100])
+})
+
+it.each([false, true])('el cierre de envases usa la RPC atómica conservando autorización=%s', async autorizado => {
+  const rpc = vi.fn(async () => ({ data: { confirmado: true }, error: null }))
+  const backend = crearBackendCheckoutManual({ rpc } as unknown as Parameters<typeof crearBackendCheckoutManual>[0], { envasesCompartidos: true })
+  const snapshot = { version: 1 as const, id, kiosco_id: kid, usuario_id: uid, sesion_caja_id: box,
+    fecha_hora: entrada().fechaHora, total: 100, notas: null, cliente_id: null,
+    detalles: [{ id: line, producto_id: product, cantidad: 1, precio_unitario: 0, subtotal: -100, sin_envase: false,
+      precio_envase_unitario: 100, es_devolucion_envase: true, articulo_libre: { descripcion: 'Envase', precio_venta: -100 }, componentes: [] }], pagos: [] }
+  if (autorizado) await backend.confirmarAutorizado?.(contexto('CAJERO'), entrada(), snapshot, id)
+  else await backend.confirmar(contexto(), snapshot)
+  expect(rpc).toHaveBeenCalledWith('confirmar_checkout_envases', { p_actor_auth_id: uid, p_snapshot: snapshot,
+    p_autorizado: autorizado, p_autorizacion_id: autorizado ? id : null })
+})

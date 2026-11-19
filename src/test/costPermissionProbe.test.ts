@@ -6,7 +6,7 @@ const id = '10000000-0000-0000-0000-000000000001'
 const token = (role: string) => `header.${Buffer.from(JSON.stringify({ role })).toString('base64url')}.firma-sintetica`
 const config = { url: 'https://proyecto.supabase.co', key: token('anon'), jwt: token('authenticated'), kioscoId: id }
 const identidad = { id, role: 'authenticated' }
-const perfil = [{ id, auth_user_id: id, kiosco_id: id, rol: 'CAJERO', activo: true }]
+const perfil = [{ id, auth_user_id: id, kiosco_id: id, rol: 'CAJERO', activo: true, es_superadmin: false }]
 function respuestas(datos: unknown[]) {
   return vi.fn<typeof fetch>().mockImplementation(async () => {
     const dato = datos.shift()
@@ -21,6 +21,7 @@ it('verifica identidad por HTTP y sólo ejecuta GET sin publicar costos', async 
   expect(resultado.productosRevisados).toBe(1)
   expect(resultado.controles).toHaveLength(2)
   for (const [, opciones] of fetch.mock.calls) expect(opciones?.method).toBe('GET')
+  expect(new URL(String(fetch.mock.calls[1][0])).searchParams.get('select')).toContain('es_superadmin')
   expect(JSON.stringify(resultado)).not.toContain(config.jwt)
 })
 
@@ -38,6 +39,12 @@ it('rechaza service_role antes de enviar credenciales', async () => {
 
 it('no considera un perfil dueño como comprobación de cajero', async () => {
   await expect(verificarCostosCajero(config, respuestas([identidad, [{ ...perfil[0], rol: 'DUEÑO' }]]))).rejects.toThrow('CONTEXTO_NO_CAJERO')
+})
+
+it.each([true, null, undefined, 'false', 0])('rechaza un privilegio global no descartado: %s', async es_superadmin => {
+  const fetch = respuestas([identidad, [{ ...perfil[0], es_superadmin }]])
+  await expect(verificarCostosCajero(config, fetch)).rejects.toThrow('CONTEXTO_NO_CAJERO')
+  expect(fetch).toHaveBeenCalledTimes(2)
 })
 
 it('detecta exposición privada sin incluir el costo en el error', async () => {

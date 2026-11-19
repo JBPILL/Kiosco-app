@@ -2,3 +2,41 @@
 # No renormalization of existing SQL or historical documents.
 /supabase/bootstrap/**/*.sql -text
 /supabase_fase_comercial_suscripciones.sql -text
+
+# Reviewed restore plan hashes use deterministic UTF-8/LF on every checkout.
+/scripts/backup/restore-acceptance-plan.json text eol=lf
+/scripts/backup/restore-acceptance-preflight.sql text eol=lf
+/scripts/backup/restore-acceptance-engine.mjs text eol=lf
+/scripts/backup/restore-acceptance-engine.d.mts text eol=lf
+/scripts/backup/restore-acceptance-http.mjs text eol=lf
+/scripts/backup/restore-acceptance-http.d.mts text eol=lf
+/scripts/backup/restore-acceptance-recovery.mjs text eol=lf
+/scripts/backup/restore-acceptance-recovery.d.mts text eol=lf
+/scripts/backup/restore-dependency-baseline.mjs text eol=lf
+/scripts/backup/restore-dependency-baseline.d.mts text eol=lf
+/scripts/backup/restore-dependency-guard-fixtures.json text eol=lf
+/scripts/backup/restore-dependency-metadata.sql text eol=lf
+/scripts/backup/snapshot-local-dependencies.mjs text eol=lf
+/scripts/backup/restore-acceptance-operator.mjs text eol=lf
+/scripts/backup/restore-acceptance-operator.d.mts text eol=lf
+/scripts/backup/prepare-private-restore-journal.mjs text eol=lf
+/scripts/backup/restore-private-windows.ps1 text eol=lf
+/scripts/backup/verify-private-restore-directory.ps1 text eol=lf
+/scripts/preparar-ensayo-restauracion-privado.ps1 text eol=lf
+/scripts/backup/restore-dependency-preflight.mjs text eol=lf
+/scripts/backup/restore-dependency-preflight.d.mts text eol=lf
+/scripts/backup/restore-dependency-reviewed.json text eol=lf
+/scripts/backup/restore-readonly-postgres.mjs text eol=lf
+/scripts/backup/restore-readonly-postgres.d.mts text eol=lf
+/scripts/backup/restore-state-preflight.mjs text eol=lf
+/scripts/backup/restore-state-preflight.d.mts text eol=lf
+/scripts/backup/restore-preservation.mjs text eol=lf
+/scripts/backup/restore-preservation.d.mts text eol=lf
+
+/scripts/respaldar-staging-privado.ps1 text eol=lf
+/scripts/ejecutar-ensayo-restauracion-privado.ps1 text eol=lf
+/scripts/backup/restore-execution-package.mjs text eol=lf
+/scripts/backup/restore-private-executor.mjs text eol=lf
+/scripts/backup/restore-execution-cli.mjs text eol=lf
+/scripts/backup/restore-backup-reference.mjs text eol=lf
+/scripts/backup/verify-restore-backup-private.ps1 text eol=lf

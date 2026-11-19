@@ -97,17 +97,19 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,publi
 AS $$
 DECLARE a public.usuarios; op public.operaciones_comerciales%ROWTYPE;
   k public.kioscos%ROWTYPE; s public.suscripciones%ROWTYPE; pl public.planes%ROWTYPE;
+  t public.tickets_soporte%ROWTYPE;
   req jsonb; anterior jsonb; nuevo jsonb; salida jsonb; evento text; fecha date;
-  meses integer; monto numeric; v_estado text; pid uuid; pago uuid; uid uuid;
+  meses integer; monto numeric; v_estado text; pid uuid; pago uuid; uid uuid; tid uuid; audit_kiosco uuid; resp_text text;
 BEGIN
   a:=public.comercial_actor(true);
   IF p_operacion_id IS NULL OR coalesce(jsonb_typeof(p_datos),'')<>'object' THEN
     RAISE EXCEPTION 'Solicitud comercial inválida' USING ERRCODE='22023';
   END IF;
   IF (p_tipo IN ('RENOVACION','CAMBIO_ESTADO','CAMBIO_PLAN','EDITAR_COMERCIO') AND p_kiosco_id IS NULL)
-    OR (p_tipo IN ('MODIFICACION_PLAN','CONFIGURACION') AND p_kiosco_id IS NOT NULL) THEN
+    OR (p_tipo IN ('MODIFICACION_PLAN','CONFIGURACION','GESTION_TICKET_SOPORTE') AND p_kiosco_id IS NOT NULL) THEN
     RAISE EXCEPTION 'Destino comercial inválido' USING ERRCODE='22023';
   END IF;
+  audit_kiosco:=p_kiosco_id;
   req:=jsonb_build_object('kiosco_id',p_kiosco_id,'datos',p_datos);
   INSERT INTO public.operaciones_comerciales(id,actor_usuario_id,kiosco_id,tipo,solicitud)
     VALUES(p_operacion_id,a.id,p_kiosco_id,p_tipo,req) ON CONFLICT(id) DO NOTHING;
@@ -224,12 +226,44 @@ BEGIN
     UPDATE public.suscripciones SET plan_id=pid,fecha_vencimiento=fecha,
       estado=CASE v_estado WHEN 'ACTIVO' THEN 'ACTIVA' WHEN 'SUSPENDIDO' THEN 'SUSPENDIDA' ELSE 'VENCIDA' END WHERE id=s.id;
     salida:=jsonb_build_object('success',true,'kiosco_id',k.id); evento:='CAMBIO_DATOS_COMERCIO';
+  ELSIF p_tipo='GESTION_TICKET_SOPORTE' THEN
+    IF p_datos ? 'ticket_id' AND jsonb_typeof(p_datos->'ticket_id')='string'
+      AND btrim(p_datos->>'ticket_id') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN
+      tid:=(btrim(p_datos->>'ticket_id'))::uuid;
+    ELSE
+      RAISE EXCEPTION 'Ticket de soporte inválido' USING ERRCODE='22023';
+    END IF;
+    v_estado:=p_datos->>'estado';
+    IF v_estado NOT IN ('PENDIENTE','EN_PROCESO','RESUELTO') THEN
+      RAISE EXCEPTION 'Estado de ticket inválido' USING ERRCODE='22023';
+    END IF;
+    IF p_datos ? 'respuesta_admin' AND jsonb_typeof(p_datos->'respuesta_admin') NOT IN ('string','null') THEN
+      RAISE EXCEPTION 'Respuesta administrativa inválida' USING ERRCODE='22023';
+    END IF;
+    resp_text:=CASE WHEN p_datos ? 'respuesta_admin' THEN nullif(btrim(p_datos->>'respuesta_admin'),'') ELSE NULL END;
+    IF resp_text IS NOT NULL AND length(resp_text)>8000 THEN
+      RAISE EXCEPTION 'Respuesta administrativa excede el límite permitido' USING ERRCODE='22023';
+    END IF;
+    SELECT * INTO t FROM public.tickets_soporte WHERE id=tid FOR UPDATE;
+    IF t.id IS NULL THEN
+      RAISE EXCEPTION 'Ticket de soporte no encontrado' USING ERRCODE='22023';
+    END IF;
+    audit_kiosco:=t.kiosco_id;
+    anterior:=jsonb_build_object('ticket',to_jsonb(t));
+    UPDATE public.tickets_soporte SET
+      estado=v_estado,
+      respuesta_admin=CASE WHEN p_datos ? 'respuesta_admin' THEN resp_text ELSE respuesta_admin END,
+      fecha_actualizacion=now()
+    WHERE id=t.id
+    RETURNING * INTO t;
+    salida:=jsonb_build_object('success',true,'ticket',to_jsonb(t));
+    evento:='GESTION_TICKET_SOPORTE';
   ELSE
     RAISE EXCEPTION 'Operación comercial no permitida' USING ERRCODE='22023';
   END IF;
   nuevo:=salida;
   INSERT INTO public.auditoria_comercial_admin(operacion_id,actor_usuario_id,kiosco_id,tipo,estado_anterior,estado_nuevo,datos)
-    VALUES(p_operacion_id,a.id,p_kiosco_id,evento,anterior,nuevo,p_datos);
+    VALUES(p_operacion_id,a.id,audit_kiosco,evento,anterior,nuevo,p_datos);
   UPDATE public.operaciones_comerciales SET resultado=salida WHERE id=p_operacion_id;
   RETURN salida;
 END $$;
@@ -252,6 +286,23 @@ AS $$ SELECT public.comercial_mutar(p_operacion_id,'CONFIGURACION',NULL,p_datos)
 CREATE OR REPLACE FUNCTION public.editar_comercio_comercial(p_operacion_id uuid,p_kiosco_id uuid,p_datos jsonb)
 RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public
 AS $$ SELECT public.comercial_mutar(p_operacion_id,'EDITAR_COMERCIO',p_kiosco_id,p_datos) $$;
+CREATE OR REPLACE FUNCTION public.gestionar_ticket_soporte_admin(
+  p_operacion_id uuid,
+  p_ticket_id uuid,
+  p_estado text,
+  p_respuesta_admin text DEFAULT NULL,
+  p_actualizar_respuesta boolean DEFAULT false
+)
+RETURNS jsonb LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog,public
+AS $$ SELECT public.comercial_mutar(
+  p_operacion_id,
+  'GESTION_TICKET_SOPORTE',
+  NULL,
+  jsonb_build_object('ticket_id',p_ticket_id,'estado',p_estado)
+    || CASE WHEN coalesce(p_actualizar_respuesta,false)
+      THEN jsonb_build_object('respuesta_admin',p_respuesta_admin)
+      ELSE '{}'::jsonb END
+) $$;
 
 CREATE OR REPLACE FUNCTION public.leer_configuracion_comercial()
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=pg_catalog,public
@@ -372,8 +423,8 @@ BEGIN
   FOR f IN SELECT oid::regprocedure AS signature,proname FROM pg_proc
     WHERE pronamespace='public'::regnamespace AND (proname LIKE 'comercial_%' OR proname IN
       ('estado_comercial_efectivo','renovar_suscripcion_comercial','cambiar_estado_comercial','cambiar_plan_comercial',
-       'actualizar_plan','guardar_configuracion_comercial','editar_comercio_comercial','leer_configuracion_comercial',
-       'obtener_mi_suscripcion_comercial','leer_administracion_comercial')) LOOP
+       'actualizar_plan','guardar_configuracion_comercial','editar_comercio_comercial','gestionar_ticket_soporte_admin',
+       'leer_configuracion_comercial','obtener_mi_suscripcion_comercial','leer_administracion_comercial')) LOOP
     EXECUTE format('ALTER FUNCTION %s OWNER TO postgres',f.signature);
     EXECUTE format('REVOKE ALL ON FUNCTION %s FROM PUBLIC,anon,authenticated,service_role',f.signature);
   END LOOP;
@@ -383,6 +434,7 @@ GRANT EXECUTE ON FUNCTION public.renovar_suscripcion_comercial(uuid,uuid,integer
   public.cambiar_estado_comercial(uuid,uuid,text),public.cambiar_plan_comercial(uuid,uuid,uuid),
   public.actualizar_plan(uuid,uuid,text,numeric,integer,boolean,text),
   public.guardar_configuracion_comercial(uuid,jsonb),public.editar_comercio_comercial(uuid,uuid,jsonb),
+  public.gestionar_ticket_soporte_admin(uuid,uuid,text,text,boolean),
   public.leer_configuracion_comercial(),public.obtener_mi_suscripcion_comercial(),
   public.leer_administracion_comercial() TO authenticated;
 CREATE OR REPLACE FUNCTION public.obtener_estado_operativo_comercial()

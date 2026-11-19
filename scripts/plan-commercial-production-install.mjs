@@ -1,20 +1,29 @@
 #!/usr/bin/env node
 /** Offline plan only: reviewed F6 Production baseline, no Auth creation or payments. */
-import { createHash } from 'node:crypto'
 import { readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadAndVerifyFullSqlChain, sha256Hex, stripOuterTransaction } from './sql-chain-manifest.mjs'
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const digest = bytes => createHash('sha256').update(bytes).digest('hex')
+const digest = sha256Hex
+
+export function verifyProductionFullSqlChain() {
+  return loadAndVerifyFullSqlChain(root).fullChain
+}
+
 export function planProductionInstall(input) {
   if (!input || input.projectRef !== 'lllkjnqpltnwvxzphncr') throw new Error('Only the reviewed F6 Production ref is supported.')
   if (input.monthlyPrice !== 30000 || input.coverageMonths !== 1 || input.trialPrice !== 0 || input.trialDays !== 30)
     throw new Error('Commercial coverage differs from the authorized monthly/trial offer.')
   if (typeof input.adminEmail !== 'string' || input.adminEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.adminEmail))
     throw new Error('Existing confirmed SuperAdmin identity required.')
+  const { manifest, postCommercialChain } = loadAndVerifyFullSqlChain(root)
   const module = readFileSync(path.join(root, 'supabase_fase_comercial_suscripciones.sql'))
-  const manifest = JSON.parse(readFileSync(path.join(root, 'supabase/bootstrap/manifest.json'), 'utf8'))
   if (digest(module) !== manifest.optionalModules.commercial.incrementalSha256) throw new Error('Commercial module checksum mismatch.')
+  const optionalPilotBodies = input.includePilotOperations === true
+    ? postCommercialChain.map(entry => `-- Canonical source (${entry.order}/56): ${entry.path}\n${stripOuterTransaction(entry.bytes.toString('utf8'))}`)
+    : []
   const email = `'${input.adminEmail.trim().toLowerCase().replaceAll("'", "''")}'`
   return `-- OFFLINE PLAN. Explicit CLI target: lllkjnqpltnwvxzphncr. No baseline reinstall.
 BEGIN;
@@ -33,7 +42,8 @@ BEGIN
       WHERE p.es_superadmin AND p.activo AND p.kiosco_id IS NULL AND lower(a.email)=${email} AND a.email_confirmed_at IS NOT NULL)<>1
   THEN RAISE EXCEPTION 'Reviewed Production prerequisites differ; no installation applied'; END IF;
 END $preflight$;
-${module.toString('utf8').replace(/^\s*(BEGIN|COMMIT);\s*$/gmi, '')}
+${stripOuterTransaction(module.toString('utf8'))}
+${optionalPilotBodies.join('\n')}
 DO $coverage$
 DECLARE aid uuid; actor uuid; kid uuid; paid uuid:=gen_random_uuid(); trial uuid:=gen_random_uuid();
   sid uuid:=gen_random_uuid(); op uuid:=gen_random_uuid(); ack jsonb;
@@ -60,10 +70,15 @@ COMMIT;
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try {
-    const [inputPath, outputPath] = process.argv.slice(2)
-    if (!inputPath || !outputPath) throw new Error('Usage: node scripts/plan-commercial-production-install.mjs INPUT.json OUTPUT.sql (offline only)')
-    const sql = planProductionInstall(JSON.parse(readFileSync(inputPath, 'utf8')))
-    writeFileSync(outputPath, sql, { flag: 'wx' })
-    process.stdout.write(`Offline Production plan generated; sha256=${digest(sql)}. No connection or SQL execution.\n`)
+    if (process.argv.includes('--verify-chain')) {
+      const chain = verifyProductionFullSqlChain()
+      process.stdout.write(`Production SQL chain verified (${chain.length} files).\n`)
+    } else {
+      const [inputPath, outputPath] = process.argv.slice(2)
+      if (!inputPath || !outputPath) throw new Error('Usage: node scripts/plan-commercial-production-install.mjs INPUT.json OUTPUT.sql (offline only) | --verify-chain')
+      const sql = planProductionInstall(JSON.parse(readFileSync(inputPath, 'utf8')))
+      writeFileSync(outputPath, sql, { flag: 'wx' })
+      process.stdout.write(`Offline Production plan generated; sha256=${digest(sql)}. No connection or SQL execution.\n`)
+    }
   } catch (error) { process.stderr.write(`${error instanceof Error ? error.message : 'Plan generation failed'}\n`); process.exitCode = 1 }
 }

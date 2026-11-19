@@ -41,6 +41,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
+        data-variant={variant}
         className={`
           inline-flex items-center justify-center gap-2
           font-medium rounded-lg transition-colors duration-150

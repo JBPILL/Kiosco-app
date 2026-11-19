@@ -4,10 +4,12 @@ import type { ManualCheckoutHttpDependencies } from './manualCheckoutHttp.ts'
 import { crearBackendCotizacionPoint } from './pointQuoteBackend.ts'
 import { autorizarCotizacionPoint } from './pointQuoteAuthorization.ts'
 import { requiereRenovarPermisoManual } from './manualCheckoutSupervisorError.ts'
+import { contieneDevolucionEnvase } from './manualCheckoutRequest.ts'
 
-export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCheckoutHttpDependencies, 'origins'> {
+export function crearBackendCheckoutManual(admin: SupabaseClient, opciones: { envasesCompartidos?: boolean } = {}): Omit<ManualCheckoutHttpDependencies, 'origins'> {
   const comercial = crearBackendCotizacionPoint(admin)
   return {
+    envasesCompartidos: opciones.envasesCompartidos === true,
     ahora: comercial.ahora, autenticar: comercial.autenticar,
     cargarPolitica: async contexto => {
       const { data, error } = await admin.from('supervisor_politicas').select('umbral_descuento,revision')
@@ -38,6 +40,13 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
       return data
     },
     confirmar: async (contexto, snapshot) => {
+      if (opciones.envasesCompartidos && contieneDevolucionEnvase(snapshot)) {
+        const { data, error } = await admin.rpc('confirmar_checkout_envases', {
+          p_actor_auth_id: contexto.authUserId, p_snapshot: snapshot, p_autorizado: false, p_autorizacion_id: null,
+        })
+        if (error || !data) { registrarFalloCheckout('CONFIRMAR_ENVASES', error); throw new Error('No se confirmó el cierre con envases') }
+        return data
+      }
       const { data, error } = await admin.rpc('confirmar_venta_manual', {
         p_actor_auth_id: contexto.authUserId, p_solicitud: snapshot,
       })
@@ -45,6 +54,17 @@ export function crearBackendCheckoutManual(admin: SupabaseClient): Omit<ManualCh
       return data
     },
     confirmarAutorizado: async (contexto, entrada, snapshot, autorizacionId) => {
+      if (opciones.envasesCompartidos && contieneDevolucionEnvase(snapshot)) {
+        const { data, error } = await admin.rpc('confirmar_checkout_envases', {
+          p_actor_auth_id: contexto.authUserId, p_snapshot: snapshot, p_autorizado: true, p_autorizacion_id: autorizacionId,
+        })
+        if (error || !data) {
+          registrarFalloCheckout('CONFIRMAR_ENVASES_AUTORIZADO', error)
+          if (requiereRenovarPermisoManual(error)) throw new Error('Se requiere autorización de supervisor')
+          throw new Error('No se confirmó el cierre con envases autorizado')
+        }
+        return data
+      }
       const { data, error } = await admin.rpc('confirmar_venta_manual_autorizada', {
         p_actor_auth_id: contexto.authUserId, p_entrada: entrada, p_snapshot: snapshot, p_autorizacion_id: autorizacionId,
       })

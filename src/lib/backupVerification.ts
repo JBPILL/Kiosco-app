@@ -13,6 +13,27 @@ export interface ComboEsperadoBackup {
   componentes: readonly { componente_producto_id: string; cantidad: number }[]
 }
 
+export function verificarContactosBackup(esperados: readonly PromocionEsperadaBackup[], recibidos: unknown): number {
+  if (!Array.isArray(recibidos)) throw new Error('No se recibieron los contactos restaurados para verificar.')
+  const contactos = new Map<string, Record<string, unknown>>()
+  for (const valor of recibidos) {
+    if (!valor || typeof valor !== 'object' || Array.isArray(valor)) throw new Error('Contacto persistido inválido.')
+    const fila = valor as Record<string, unknown>
+    if (typeof fila.id !== 'string' || !fila.id || contactos.has(fila.id)) throw new Error('Identificadores de contactos inválidos.')
+    contactos.set(fila.id, fila)
+  }
+  const ids = new Set<string>()
+  for (const esperado of esperados) {
+    if (!esperado.id || ids.has(esperado.id)) throw new Error('Identificadores esperados de contactos inválidos.')
+    ids.add(esperado.id)
+    const fila = contactos.get(esperado.id)
+    if (!fila || Object.entries(esperado.campos).some(([campo, valor]) => !valoresIguales(valor, fila[campo]))) {
+      throw new Error('La restauración no conservó los datos o el saldo de un contacto.')
+    }
+  }
+  return esperados.length
+}
+
 /** La receta es un conjunto de componentes; el orden del snapshot no importa. */
 export function verificarCombosBackup(esperados: readonly ComboEsperadoBackup[], recibidos: unknown): number {
   if (!Array.isArray(recibidos)) throw new Error('No se recibió el catálogo para verificar combos.')
@@ -107,6 +128,8 @@ export function verificarLotesBackup(esperados: readonly ProductoEsperadoBackup[
     if (!lote) throw new Error('No se encontró un lote restaurado en el servidor.')
     for (const [campo, valor] of Object.entries(esperado.campos)) {
       if (typeof valor === 'number' && !Number.isFinite(valor)) throw new Error('Valor esperado de lote inválido.')
+      if (campo === 'fecha_ingreso' && typeof valor === 'string' && typeof lote[campo] === 'string'
+        && Number.isFinite(Date.parse(valor)) && Date.parse(valor) === Date.parse(lote[campo] as string)) continue
       if (lote[campo] !== valor) throw new Error(`La restauración no conservó el campo ${campo} de un lote.`)
     }
   }

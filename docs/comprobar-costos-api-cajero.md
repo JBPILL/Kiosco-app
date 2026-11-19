@@ -26,7 +26,8 @@ node .\scripts\verificar-costos-cajero.mjs
 ```
 
 Código de salida 0 indica que se verificó la identidad en Auth, existe un
-único perfil activo CAJERO del comercio esperado, ninguna fila de las tablas
+único perfil activo CAJERO del comercio esperado con es_superadmin=false explícito,
+ninguna fila de las tablas
 privadas es visible y todos los productos públicos recorridos tienen costo 0.
 Se solicita conteo exacto para no confundir truncamiento con ausencia de filas;
 las páginas públicas avanzan por filas recibidas hasta una página vacía.
@@ -37,6 +38,11 @@ Un código 1 imprime únicamente diagnóstico no confirmado. Revisar la
 configuración y permisos localmente; no ampliar grants para obtener éxito.
 
 ## Alcance de la aceptación
+
+Corrección de seguridad del 29/10/2026: un rol CAJERO por sí solo no acredita
+ausencia de privilegios globales. El verificador rechaza SuperAdmin, campo ausente,
+nulo o valores que no sean el booleano false antes de leer costos/productos.
+Esto endurece el diagnóstico local; no modifica cuentas, RLS ni permisos remotos.
 
 Antes de interpretar cero filas como una prueba de aislamiento, confirmar
 con una sesión de dueño que existen registros de costos en el comercio de

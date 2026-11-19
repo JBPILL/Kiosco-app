@@ -1,0 +1,20 @@
+# ==============================================================================
+# Example Variables Template — DO NOT COMMIT REAL .tfvars OR CREDENTIALS
+# Copy to a local untracked file only after explicit human provisioning approval
+# ==============================================================================
+
+aws_account_id = "<REPLACE_WITH_DEDICATED_12_DIGIT_AWS_ACCOUNT_ID>"
+aws_region     = "<REPLACE_WITH_APPROVED_AWS_REGION>"
+environment    = "staging"
+
+vpc_cidr              = "10.240.0.0/24"
+private_subnet_a_cidr = "10.240.0.0/26"
+private_subnet_b_cidr = "10.240.0.64/26"
+
+db_name                         = "attestation_anti_replay"
+db_master_username              = "attestation_admin"
+db_instance_class               = "db.t4g.micro"
+db_allocated_storage_gb         = 20
+db_backup_retention_days        = 7
+db_deletion_protection          = true
+kms_key_deletion_window_in_days = 30

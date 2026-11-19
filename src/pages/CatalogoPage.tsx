@@ -7,6 +7,8 @@ import { ProductForm } from '../components/catalogo/ProductForm'
 import { SiembraCatalogoModal } from '../components/catalogo/SiembraCatalogoModal'
 import { AumentoPreciosModal } from '../components/catalogo/AumentoPreciosModal'
 import { PreciosEnvasesModal } from '../components/catalogo/PreciosEnvasesModal'
+import { EnvasesOperativosModal } from '../components/pos/EnvasesOperativosModal'
+import { envasesTransaccionalesActivos } from '../lib/pilotExpansion'
 import { EtiquetasGondolaModal } from '../components/catalogo/EtiquetasGondolaModal'
 import { ImportarCatalogoModal } from '../components/catalogo/ImportarCatalogoModal'
 import { exportarCatalogoExcel } from '../lib/exportUtils'
@@ -246,7 +248,7 @@ export function CatalogoPage() {
       />
 
       {/* Modal de modificación de precios de envases retornables */}
-      {tieneEnvases && (
+      {tieneEnvases && (envasesTransaccionalesActivos() ? <EnvasesOperativosModal administracion isOpen={envasesOpen} onClose={() => setEnvasesOpen(false)} productos={productos} cargandoProductos={cargando} onEditarProducto={handleEditar} /> : (
         <PreciosEnvasesModal
           isOpen={envasesOpen}
           onClose={() => setEnvasesOpen(false)}
@@ -254,7 +256,7 @@ export function CatalogoPage() {
           onActualizarProducto={actualizarProducto}
           onRecargarProductos={cargarProductos}
         />
-      )}
+      ))}
 
       {/* Modal de impresión de etiquetas de góndola */}
       <EtiquetasGondolaModal

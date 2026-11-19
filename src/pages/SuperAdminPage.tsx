@@ -34,6 +34,7 @@ function SuperAdminComercialPage() {
     actualizarPrecioPlan,
     crearPlan,
     eliminarPlan,
+    gestionarTicketSoporte,
   } = useAdminStore()
 
   // Configuración de cobro y soporte centralizado
@@ -112,10 +113,9 @@ function SuperAdminComercialPage() {
   const {
     tickets,
     cargando: cargandoTickets,
+    guardando: guardandoTicket,
     tablaExiste: tablaSoporteExiste,
     cargarTicketsAdmin,
-    actualizarEstadoTicket,
-    eliminarTicket,
   } = useSoporteStore()
 
   // Filtros y modales de Bandeja de Soporte
@@ -517,10 +517,16 @@ function SuperAdminComercialPage() {
   const handleGuardarRespuesta = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!ticketParaResponder) return
-    await actualizarEstadoTicket(ticketParaResponder.id, nuevoEstadoRespuesta, textoRespuesta.trim())
-    setModalRespuestaOpen(false)
-    setTicketParaResponder(null)
-    setTextoRespuesta('')
+    const ok = await gestionarTicketSoporte(
+      ticketParaResponder.id,
+      nuevoEstadoRespuesta,
+      textoRespuesta.trim()
+    )
+    if (ok) {
+      setModalRespuestaOpen(false)
+      setTicketParaResponder(null)
+      setTextoRespuesta('')
+    }
   }
 
   const generarLinkWhatsAppRespuesta = (ticket: TicketSoporte, mensajePersonalizado?: string) => {
@@ -1436,8 +1442,9 @@ function SuperAdminComercialPage() {
                         {ticket.estado === 'PENDIENTE' && (
                           <button
                             type="button"
-                            onClick={() => actualizarEstadoTicket(ticket.id, 'EN_PROCESO')}
-                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors"
+                            disabled={cargandoAccion || guardandoTicket}
+                            onClick={() => gestionarTicketSoporte(ticket.id, 'EN_PROCESO')}
+                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 disabled:opacity-50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 transition-colors"
                           >
                             Poner en Revisión
                           </button>
@@ -1446,8 +1453,9 @@ function SuperAdminComercialPage() {
                         {ticket.estado !== 'RESUELTO' && (
                           <button
                             type="button"
-                            onClick={() => actualizarEstadoTicket(ticket.id, 'RESUELTO')}
-                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition-colors"
+                            disabled={cargandoAccion || guardandoTicket}
+                            onClick={() => gestionarTicketSoporte(ticket.id, 'RESUELTO')}
+                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 disabled:opacity-50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 transition-colors"
                           >
                             Marcar Resuelto
                           </button>
@@ -1456,25 +1464,13 @@ function SuperAdminComercialPage() {
                         {ticket.estado === 'RESUELTO' && (
                           <button
                             type="button"
-                            onClick={() => actualizarEstadoTicket(ticket.id, 'PENDIENTE')}
-                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 text-gray-700 dark:text-gray-300 transition-colors"
+                            disabled={cargandoAccion || guardandoTicket}
+                            onClick={() => gestionarTicketSoporte(ticket.id, 'PENDIENTE')}
+                            className="px-3 py-2 rounded-xl text-xs font-semibold bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 disabled:opacity-50 text-gray-700 dark:text-gray-300 transition-colors"
                           >
                             Reabrir Ticket
                           </button>
                         )}
-
-                        {/* Eliminar Ticket */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (confirm(`¿Eliminar la consulta de "${ticket.kiosco_nombre}"?`)) {
-                              eliminarTicket(ticket.id)
-                            }
-                          }}
-                          className="px-2.5 py-2 rounded-xl text-xs font-semibold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 transition-colors"
-                        >
-                          Eliminar
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -2654,8 +2650,8 @@ function SuperAdminComercialPage() {
               >
                 Cancelar
               </Button>
-              <Button type="submit" variant="primary">
-                Guardar Respuesta y Actualizar Estado
+              <Button type="submit" variant="primary" disabled={cargandoAccion || guardandoTicket}>
+                {cargandoAccion || guardandoTicket ? 'Guardando...' : 'Guardar Respuesta y Actualizar Estado'}
               </Button>
             </div>
           </form>

@@ -106,3 +106,12 @@ BLOCKED: quedan writes directos de catálogo/productos (alta, edición, importac
 
 ### Validaciones hospedadas diferidas
 `DEFERRED_HOSTED_VALIDATION`: Edge Functions desplegadas en Supabase real; configuración hospedada de Auth; secretos del proyecto; diferencias de ownership/roles administrados; networking/runtime hospedado.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR08 y PR09**.
+
+La evidencia de SQL local no sustituye JWT/ACL/RLS y concurrencia del entorno hospedado. Preservar el manifiesto y las limitaciones de publicación de cada fase.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

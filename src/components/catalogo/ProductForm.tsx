@@ -153,6 +153,10 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
     }
   }, [producto, isOpen])
 
+  const stockFraccionable = form.es_pesable || form.unidad_medida !== 'UN'
+  const stockAnteriorFraccionado = Boolean(producto && !Number.isInteger(producto.stock_actual))
+  const minimoAnteriorFraccionado = Boolean(producto && !Number.isInteger(producto.stock_minimo))
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (guardando) return
@@ -180,21 +184,17 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
       return
     }
 
-    const stockActualNum = form.es_pesable
-      ? parseFloat(form.stock_actual) || 0
-      : parseInt(form.stock_actual, 10) || 0
-
-    const stockMinimoNum = form.es_pesable
-      ? parseFloat(form.stock_minimo) || 0
-      : parseInt(form.stock_minimo, 10) || 0
-
-    if (stockActualNum < 0) {
-      toast.error('El stock inicial no puede ser negativo')
+    const stockActualNum = Number(form.stock_actual)
+    const stockMinimoNum = Number(form.stock_minimo)
+    if (![stockActualNum, stockMinimoNum].every(n => Number.isFinite(n) && n >= 0 && n <= 999999999.999 && Number(n.toFixed(3)) === n)) {
+      toast.error('Ingresá stocks válidos, no negativos y con hasta tres decimales')
       return
     }
-
-    if (stockMinimoNum < 0) {
-      toast.error('El stock mínimo no puede ser negativo')
+    // Preserve an existing fractional balance exactly when editing other fields.
+    // Reconciliation must be explicit; never truncate quantities with parseInt.
+    if (!stockFraccionable && ((!Number.isInteger(stockActualNum) && stockActualNum !== producto?.stock_actual)
+      || (!Number.isInteger(stockMinimoNum) && stockMinimoNum !== producto?.stock_minimo))) {
+      toast.error('Los artículos por unidad requieren stock entero. El saldo fraccionado anterior puede conservarse sin cambios hasta conciliarlo.')
       return
     }
 
@@ -353,13 +353,15 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
               2. Stock y Clasificación
             </p>
 
+            {!stockFraccionable && (stockAnteriorFraccionado || minimoAnteriorFraccionado) && <p role="status" className="rounded-lg border border-amber-400 bg-amber-50 p-3 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">Este artículo tiene un saldo fraccionado anterior. Podés conservarlo al editar otros datos. Para corregirlo, verificá el conteo físico e ingresá el entero correspondiente; no se redondeará automáticamente.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <Input
                   label={`Stock actual ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : '(unidades)'}`}
                   type="number"
                   min="0"
-                  step={form.es_pesable ? '0.001' : '1'}
+                  step={stockFraccionable || stockAnteriorFraccionado ? '0.001' : '1'}
+                  aria-label="Stock actual"
                   value={form.stock_actual}
                   placeholder="0"
                   onChange={(e) => setForm({ ...form, stock_actual: e.target.value })}
@@ -373,7 +375,8 @@ export function ProductForm({ isOpen, onClose, categorias, producto, onGuardar }
                   label={`Stock mínimo de alerta ${form.es_pesable ? `(${form.unidad_medida || 'KG'})` : '(unidades)'}`}
                   type="number"
                   min="0"
-                  step={form.es_pesable ? '0.001' : '1'}
+                  step={stockFraccionable || minimoAnteriorFraccionado ? '0.001' : '1'}
+                  aria-label="Stock mínimo"
                   value={form.stock_minimo}
                   placeholder="5"
                   onChange={(e) => setForm({ ...form, stock_minimo: e.target.value })}

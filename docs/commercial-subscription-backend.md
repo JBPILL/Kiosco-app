@@ -21,9 +21,9 @@ Las funciones internas de la saga sólo son ejecutables por service_role.
 
 Las RPC públicas son renovar_suscripcion_comercial, cambiar_estado_comercial,
 cambiar_plan_comercial, actualizar_plan, guardar_configuracion_comercial,
-editar_comercio_comercial, leer_configuracion_comercial,
-obtener_mi_suscripcion_comercial, leer_administracion_comercial y
-obtener_estado_operativo_comercial.
+editar_comercio_comercial, gestionar_ticket_soporte_admin,
+leer_configuracion_comercial, obtener_mi_suscripcion_comercial,
+leer_administracion_comercial y obtener_estado_operativo_comercial.
 
 Cada mutación registra actor, operación, solicitud y resultado. Repetir ID y
 cuerpo recupera el ACK; cambiar el cuerpo se rechaza. Renovación, pago, extensión
@@ -104,6 +104,23 @@ plan inicial gratuito para nuevas altas se presenta como prueba de 30 días.
 Al vencer, requiere seleccionar el plan mensual y renovar por el backend; no
 hay cargo automático ni continuidad gratuita implícita. No se registra un pago
 recibido al inicializar cobertura. La operación y ambos planes quedan auditados.
+
+Tanto `plan-commercial-production-install.mjs` como `plan-commercial-staging-upgrade.mjs`
+verifican criptográficamente por SHA-256 los **56 archivos SQL** declarados en
+`supabase/bootstrap/manifest.json` (`fullSqlChain`):
+
+1. `1–43`: Baseline canónico (`001_domain.sql`, `002_identity_helpers.sql`, `steps/003..042`, `900_final_security.sql`).
+2. `44–46`: Comercial (`commercial/001_commercial_subscription.sql`, `commercial/002_commercial_write_gate.sql`, `commercial/003_commerce_provisioning.sql`).
+3. `47`: Capacidades piloto (`pilot-operations/001_capabilities.sql`, manteniendo `envases=false` y `devoluciones_efectivo=false` por defecto).
+4. `48–49`: Envases base (`envases/001_shared_ledger.sql`, `envases/002_checkout_receipts.sql`).
+5. `50–52`: Prerrequisitos privados de devolución parcial en raíz (`supabase_fase_devolucion_registro_privado.sql`, `supabase_fase_devolucion_calculo_historico.sql`, `supabase_fase_devolucion_preparacion_privada.sql`), obligatorios antes de `returns/001`.
+6. `53–54`: Devoluciones base (`returns/001_atomic_cash_return.sql`, `returns/002_owner_envases_return.sql`).
+7. `55–56`: Incrementales finales (`envases/003_pending_totals.sql`, `returns/003_whole_unit_quantities.sql`), obligatorios al final tras `returns/002` para conservar íntegro `envases_movimientos_accion_check`.
+
+Si el JSON de entrada incluye `"includePilotOperations": true`, ambos generadores
+anexan en ese orden exacto los 10 scripts opcionales post-comerciales (47–56) sin
+habilitar capacidades operativas por defecto. Puede comprobarse offline la cadena
+completa de 56 scripts ejecutando `--verify-chain` en cualquiera de los dos scripts.
 
 El backup privado de Production se restauró y el plan exacto pasó en PostgreSQL
 17 local: plan mensual 30000, prueba inicial 0, cobertura un mes calendario y

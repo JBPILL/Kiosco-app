@@ -1,0 +1,24 @@
+# Secrets & credentials must NEVER enter container image
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+*.pfx
+*.kms.json
+credentials*.json
+service-account*.json
+
+# Local state & logs
+node_modules/
+logs/
+*.log
+.attestation-replay/
+*.tmp-*
+
+# VCS & documentation
+.git/
+.gitignore
+README.md
+docs/

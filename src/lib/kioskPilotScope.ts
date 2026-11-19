@@ -1,4 +1,5 @@
 import type { ItemCarrito } from '../types/database'
+import { envasesTransaccionalesActivos } from './pilotExpansion'
 
 export const ERROR_FACTURACION_FUERA_DE_ALCANCE = 'La facturación fiscal está fuera del alcance del piloto.'
 export const ERROR_ENVASE_FUERA_DE_ALCANCE = 'Las devoluciones de envases están fuera del alcance del piloto.'
@@ -24,7 +25,7 @@ export function errorCheckoutFueraDeAlcance(
 ): string | null {
   if (!modoEstricto) return null
   if (solicitaFactura) return ERROR_FACTURACION_FUERA_DE_ALCANCE
-  if (items.some(item => item.es_devolucion_envase)) return ERROR_ENVASE_FUERA_DE_ALCANCE
+  if (!envasesTransaccionalesActivos() && items.some(item => item.es_devolucion_envase)) return ERROR_ENVASE_FUERA_DE_ALCANCE
   return null
 }
 

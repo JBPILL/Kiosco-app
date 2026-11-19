@@ -47,3 +47,16 @@ export async function ejecutarMutacionComercial(name: string, scope: string, arg
   confirmarOperacionComercial(key)
   return data as Record<string, unknown>
 }
+export async function gestionarTicketSoporteComercial(
+  ticketId: string,
+  estado: 'PENDIENTE' | 'EN_PROCESO' | 'RESUELTO',
+  respuestaAdmin?: string
+): Promise<Record<string, unknown>> {
+  const actualizarRespuesta = respuestaAdmin !== undefined
+  return ejecutarMutacionComercial('gestionar_ticket_soporte_admin', `ticket:${ticketId}`, {
+    p_ticket_id: ticketId,
+    p_estado: estado,
+    p_respuesta_admin: actualizarRespuesta ? respuestaAdmin : null,
+    p_actualizar_respuesta: actualizarRespuesta,
+  })
+}

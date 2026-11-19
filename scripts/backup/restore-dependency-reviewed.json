@@ -1,0 +1,1875 @@
+{
+  "scope": "STATIC_PUBLIC_CALLEES_TRIGGERS_TABLE_METADATA_ONLY",
+  "projectRef": "acoyfwwmhaeruciyedri",
+  "serverVersion": "17.11",
+  "observedAt": "2026-10-30T08:57:19.028577+00:00",
+  "sourceEvidenceSha256": "977354c10b42db7b11f3dac15c8e783231df3176b9728dd64814609cdafef49e",
+  "structureSha256": "9e33b734e18fa89ffa670e8f1a16d729088de5e1449e3b232238efe0a6f1c3c5",
+  "metadata": {
+    "tables": [
+      {
+        "rls": true,
+        "name": "auditoria_operaciones",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "categorias",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "clientes",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "combo_items",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "historial_precios_producto",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "kioscos",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "lotes_producto",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "movimiento_stock_costos",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "movimientos_stock",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "operaciones_escritura",
+        "force_rls": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "name": "operaciones_stock",
+        "force_rls": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "name": "producto_costos",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "productos",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "proveedores",
+        "force_rls": false,
+        "authenticated_select": true
+      },
+      {
+        "rls": true,
+        "name": "suscripciones",
+        "force_rls": false,
+        "authenticated_select": false
+      },
+      {
+        "rls": true,
+        "name": "usuarios",
+        "force_rls": false,
+        "authenticated_select": true
+      }
+    ],
+    "functions": [
+      {
+        "name": "actor_operativo_actual",
+        "owner": "postgres",
+        "signature": "public.actor_operativo_actual()",
+        "volatility": "s",
+        "body_sha256": "4a8c6fbc04d2df4564707e9bbe4b15959c01fcf8fb00e51560e739bbd147c949",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "auth_es_dueno_o_superadmin",
+        "owner": "postgres",
+        "signature": "public.auth_es_dueno_o_superadmin()",
+        "volatility": "s",
+        "body_sha256": "6809bf2739b991cc11c03f459152e9f0c9b28fef418fcfebe526a4215728a931",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "auth_es_superadmin",
+        "owner": "postgres",
+        "signature": "public.auth_es_superadmin()",
+        "volatility": "s",
+        "body_sha256": "d7246d353c975990e5b23eac4491c82dd7ce42aa01b47bd71b335da8c69f1aa5",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "auth_user_kiosco_id",
+        "owner": "postgres",
+        "signature": "public.auth_user_kiosco_id()",
+        "volatility": "s",
+        "body_sha256": "d23a6cf1e7f9616128e80ee23a6881577b0747372ec14eb34b01563f262085c7",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "auth_user_rol",
+        "owner": "postgres",
+        "signature": "public.auth_user_rol()",
+        "volatility": "s",
+        "body_sha256": "37910df62ddc7cbbda70b1cbcccba27bc929cadbacda2c308b01b08d845b6a1f",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "capacidades_restauracion_backup",
+        "owner": "postgres",
+        "signature": "public.capacidades_restauracion_backup(uuid)",
+        "volatility": "s",
+        "body_sha256": "ac12a8cd2de454de6632ee7467daf70f6b77311762079c9c3d409444f17993a1",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "capturar_costo_historico_movimiento_stock",
+        "owner": "postgres",
+        "signature": "public.capturar_costo_historico_movimiento_stock()",
+        "volatility": "v",
+        "body_sha256": "510a995bc927d7b9af6deb098017708af7ffdfbed91c22b07e462c40f8485c10",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "comercial_hoy",
+        "owner": "postgres",
+        "signature": "public.comercial_hoy()",
+        "volatility": "s",
+        "body_sha256": "23f330bd34fb7ad187f01cb84bffea1c0d7692cb39c2f5a73878c0a7096efaf8",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "comercial_resolver_estado",
+        "owner": "postgres",
+        "signature": "public.comercial_resolver_estado(text,text,date,date)",
+        "volatility": "i",
+        "body_sha256": "dbc47319fc7812e4d81878c26ddb6e46f26e8690b62c56b482d0286a1ee4127c",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "exigir_comercio_operativo",
+        "owner": "postgres",
+        "signature": "public.exigir_comercio_operativo(uuid)",
+        "volatility": "v",
+        "body_sha256": "29f34f59a8acef68fd7b76ef712a33f5c32c408a96afc0c27b589d5f4fd64bd6",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "guardar_costo_privado_movimiento_stock",
+        "owner": "postgres",
+        "signature": "public.guardar_costo_privado_movimiento_stock()",
+        "volatility": "v",
+        "body_sha256": "6734065cc4697c6df9a77fe1100e09bc1583271027e00009cc2ae7ee65d1f3bc",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "guardar_producto_transaccional",
+        "owner": "postgres",
+        "signature": "public.guardar_producto_transaccional(uuid,uuid,jsonb)",
+        "volatility": "v",
+        "body_sha256": "4e6753d47602cfab3e1e3ccb8a726f825520a00af315103f6e3604a516dac4a3",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "normalizar_movimiento_stock",
+        "owner": "postgres",
+        "signature": "public.normalizar_movimiento_stock()",
+        "volatility": "v",
+        "body_sha256": "777ac239e27ef1bc58a8f58fd8b594ef49c345f9f39a27538f120a3beda661f0",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": false,
+        "authenticated_execute": false
+      },
+      {
+        "name": "proteger_costo_producto",
+        "owner": "postgres",
+        "signature": "public.proteger_costo_producto()",
+        "volatility": "v",
+        "body_sha256": "cfb7ed2d01db0795c44f718b5c4c7f726609e1b5c71191487e2e1fdc54db0318",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "proteger_privilegios_usuario",
+        "owner": "postgres",
+        "signature": "public.proteger_privilegios_usuario()",
+        "volatility": "v",
+        "body_sha256": "f93b163db2331a8ab2a47fd0c993d9d329ffb56232d245448bec60aac9f55dac",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "registrar_movimiento_stock",
+        "owner": "postgres",
+        "signature": "public.registrar_movimiento_stock(uuid,text,numeric,text,text,date,text,uuid)",
+        "volatility": "v",
+        "body_sha256": "2e1f648621af9bfa85943d6fc4b5ed71b2ad3a46440c4a217b8a43100dd4d99f",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      },
+      {
+        "name": "registrar_movimiento_stock_idempotente",
+        "owner": "postgres",
+        "signature": "public.registrar_movimiento_stock_idempotente(uuid,uuid,text,numeric,text,text,date,text,uuid)",
+        "volatility": "v",
+        "body_sha256": "94d018adcc018a2f9aaa5d0ee6ce97a12a3204e09e2b7ad8345b8f306f874461",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "restaurar_contacto_backup",
+        "owner": "postgres",
+        "signature": "public.restaurar_contacto_backup(uuid,uuid,text,uuid,jsonb)",
+        "volatility": "v",
+        "body_sha256": "a8a7de9f4413e0c22e28e17fc5eaaa5185901050620f075497c6bc8b149a49e3",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "restaurar_lote_backup",
+        "owner": "postgres",
+        "signature": "public.restaurar_lote_backup(uuid,uuid,uuid,jsonb)",
+        "volatility": "v",
+        "body_sha256": "f09ca415f7185c3332859c1a815155eb4141c93c3fc5e9352b0992c4a2b987bc",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "restaurar_producto_backup",
+        "owner": "postgres",
+        "signature": "public.restaurar_producto_backup(uuid,uuid,uuid,jsonb)",
+        "volatility": "v",
+        "body_sha256": "0198b1096115a5068086c8cb49727ebdc5e2e79cc12bc15c358b79420b76b3ab",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": true
+      },
+      {
+        "name": "validar_escritura_comercial_operativa",
+        "owner": "postgres",
+        "signature": "public.validar_escritura_comercial_operativa()",
+        "volatility": "v",
+        "body_sha256": "65f9204abda7d2571b8f91cdd272af5f8822ea5ef83416ded219388ba7434ac7",
+        "anon_execute": false,
+        "config_sha256": "7b14df390c9fb0194589823f48b5dde100196e6260dd2c60c96a0c147d944c24",
+        "security_definer": true,
+        "authenticated_execute": false
+      }
+    ],
+    "triggers": [
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "categorias",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "f28f36274685ef67b2b877ce8c521f47686f946b217a675629091f1fa5b2a628"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "clientes",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "f5d996ac58e69e54a63df4667ba2048e53a6aaf53a53f346be99acdb1388e545"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "combo_items",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "42f2a3c00c948573d7a0fd6025366013277f7be7757af277b5ac490121f4e4e7"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "historial_precios_producto",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "76c8af7f2f436aba249dc814aa7f57704493ddac5faf74851c690d0d1b57f9a1"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "lotes_producto",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "d3bb223ed6ce2a387ead7327d7cddac3897eea0f3fb01a36fe224ad679a90a39"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "movimiento_stock_costos",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "6c5ee53add6ca5a8d5c873ac7ac3bf156cb9dcb1d79b0a37a820266661291904"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "movimientos_stock",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "4f8eaf13dc88f2b1847557c7aa3a07daa16c2e17d811fbe16e64dd2b18c2077b"
+      },
+      {
+        "name": "trg_capturar_costo_historico_movimiento_stock",
+        "table": "movimientos_stock",
+        "enabled": "O",
+        "function": "capturar_costo_historico_movimiento_stock()",
+        "definition_sha256": "1fc46a01f05d5d7f6d44a4a8f6fa921fe6bbc0f54f9e10d78af05abba18110c4"
+      },
+      {
+        "name": "trg_guardar_costo_privado_movimiento_stock",
+        "table": "movimientos_stock",
+        "enabled": "O",
+        "function": "guardar_costo_privado_movimiento_stock()",
+        "definition_sha256": "b7a155d8bf019a30124973de9f3376b20d8799211dc9f02c5e37951f54b27a8c"
+      },
+      {
+        "name": "trg_inmutar_costo_historico_movimiento_stock",
+        "table": "movimientos_stock",
+        "enabled": "O",
+        "function": "capturar_costo_historico_movimiento_stock()",
+        "definition_sha256": "98fb7d447b5f6e0f0062e5d01b55b61190043adae6f441c9ebe849bf548f5728"
+      },
+      {
+        "name": "trg_normalizar_movimiento_stock",
+        "table": "movimientos_stock",
+        "enabled": "O",
+        "function": "normalizar_movimiento_stock()",
+        "definition_sha256": "4b451bc7e0fe35f7a43982764de2cc982903a457ce0b872597c07d3627c3e308"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "producto_costos",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "a0c64ddebee27b9b634dbf081ffcad5e21aea05122e06c17c89092e89f25d073"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "productos",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "f6b8df1b8d3467897ee0425444f8772c68724916f74eea0b857d5666fb87be40"
+      },
+      {
+        "name": "trg_proteger_costo_producto",
+        "table": "productos",
+        "enabled": "O",
+        "function": "proteger_costo_producto()",
+        "definition_sha256": "43e106460811b59e572b34f1a504ed64d00040435bf62d06df15dbec3ec9d8be"
+      },
+      {
+        "name": "comercial_estado_write_gate",
+        "table": "proveedores",
+        "enabled": "O",
+        "function": "validar_escritura_comercial_operativa()",
+        "definition_sha256": "c0618f7c347d6bf5969388f6de0b895f12fbc4e51dd0df8899af4073576b9726"
+      },
+      {
+        "name": "trg_proteger_privilegios_usuario",
+        "table": "usuarios",
+        "enabled": "O",
+        "function": "proteger_privilegios_usuario()",
+        "definition_sha256": "cd18c05ffa1346260a1e456caadeba8e2873d8ab32b9928ffc6fe15ecd38b9f4"
+      }
+    ],
+    "columns": [
+      {
+        "type": "text",
+        "table": "auditoria_operaciones",
+        "column": "accion",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "auditoria_operaciones",
+        "column": "actor_auth_id",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "auditoria_operaciones",
+        "column": "actor_rol",
+        "not_null": false
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "auditoria_operaciones",
+        "column": "creado_en",
+        "not_null": true
+      },
+      {
+        "type": "jsonb",
+        "table": "auditoria_operaciones",
+        "column": "detalles",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "auditoria_operaciones",
+        "column": "entidad",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "auditoria_operaciones",
+        "column": "entidad_id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "auditoria_operaciones",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "auditoria_operaciones",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "auditoria_operaciones",
+        "column": "motivo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "auditoria_operaciones",
+        "column": "usuario_id",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "categorias",
+        "column": "color",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "categorias",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "categorias",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "categorias",
+        "column": "nombre",
+        "not_null": true
+      },
+      {
+        "type": "integer",
+        "table": "categorias",
+        "column": "orden",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "clientes",
+        "column": "activo",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "clientes",
+        "column": "direccion",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "clientes",
+        "column": "dni_cuit",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "clientes",
+        "column": "email",
+        "not_null": false
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "clientes",
+        "column": "fecha_creacion",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "clientes",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "clientes",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "clientes",
+        "column": "limite_credito",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "clientes",
+        "column": "nombre",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "clientes",
+        "column": "notas",
+        "not_null": false
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "clientes",
+        "column": "saldo_deudor",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "clientes",
+        "column": "telefono",
+        "not_null": false
+      },
+      {
+        "type": "numeric(12,3)",
+        "table": "combo_items",
+        "column": "cantidad",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "combo_items",
+        "column": "combo_producto_id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "combo_items",
+        "column": "componente_producto_id",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "combo_items",
+        "column": "created_at",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "combo_items",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "combo_items",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "historial_precios_producto",
+        "column": "creado_en",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "historial_precios_producto",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "historial_precios_producto",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "historial_precios_producto",
+        "column": "motivo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "historial_precios_producto",
+        "column": "operacion_id",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "historial_precios_producto",
+        "column": "precio_costo_anterior",
+        "not_null": false
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "historial_precios_producto",
+        "column": "precio_costo_nuevo",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "historial_precios_producto",
+        "column": "precio_venta_anterior",
+        "not_null": false
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "historial_precios_producto",
+        "column": "precio_venta_nuevo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "historial_precios_producto",
+        "column": "producto_id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "historial_precios_producto",
+        "column": "usuario_id",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "kioscos",
+        "column": "arqueo_ciego_obligatorio",
+        "not_null": true
+      },
+      {
+        "type": "jsonb",
+        "table": "kioscos",
+        "column": "capacidades_operativas",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "kioscos",
+        "column": "direccion",
+        "not_null": false
+      },
+      {
+        "type": "jsonb",
+        "table": "kioscos",
+        "column": "equipos_comercio",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "kioscos",
+        "column": "estado_suscripcion",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "kioscos",
+        "column": "fecha_creacion",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "kioscos",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "kioscos",
+        "column": "nombre",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "kioscos",
+        "column": "rubro",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "kioscos",
+        "column": "telefono",
+        "not_null": false
+      },
+      {
+        "type": "boolean",
+        "table": "lotes_producto",
+        "column": "activo",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,3)",
+        "table": "lotes_producto",
+        "column": "cantidad_actual",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,3)",
+        "table": "lotes_producto",
+        "column": "cantidad_inicial",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "lotes_producto",
+        "column": "fecha_ingreso",
+        "not_null": true
+      },
+      {
+        "type": "date",
+        "table": "lotes_producto",
+        "column": "fecha_vencimiento",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "lotes_producto",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "lotes_producto",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "lotes_producto",
+        "column": "numero_lote",
+        "not_null": false
+      },
+      {
+        "type": "uuid",
+        "table": "lotes_producto",
+        "column": "producto_id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "movimiento_stock_costos",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "movimiento_stock_costos",
+        "column": "movimiento_id",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "movimiento_stock_costos",
+        "column": "precio_costo",
+        "not_null": false
+      },
+      {
+        "type": "numeric(12,3)",
+        "table": "movimientos_stock",
+        "column": "cantidad",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "movimientos_stock",
+        "column": "costo_unitario_referencia",
+        "not_null": false
+      },
+      {
+        "type": "numeric(12,3)",
+        "table": "movimientos_stock",
+        "column": "delta_stock",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "movimientos_stock",
+        "column": "fecha",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "movimientos_stock",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "movimientos_stock",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "movimientos_stock",
+        "column": "lote_producto_id",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "movimientos_stock",
+        "column": "motivo",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "movimientos_stock",
+        "column": "notas",
+        "not_null": false
+      },
+      {
+        "type": "uuid",
+        "table": "movimientos_stock",
+        "column": "producto_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "movimientos_stock",
+        "column": "tipo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "movimientos_stock",
+        "column": "usuario_id",
+        "not_null": false
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "operaciones_escritura",
+        "column": "creada_en",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "operaciones_escritura",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "operaciones_escritura",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "jsonb",
+        "table": "operaciones_escritura",
+        "column": "resultado",
+        "not_null": false
+      },
+      {
+        "type": "jsonb",
+        "table": "operaciones_escritura",
+        "column": "solicitud",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "operaciones_escritura",
+        "column": "tipo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "operaciones_escritura",
+        "column": "usuario_id",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "operaciones_stock",
+        "column": "fecha",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "operaciones_stock",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "operaciones_stock",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "jsonb",
+        "table": "operaciones_stock",
+        "column": "resultado",
+        "not_null": false
+      },
+      {
+        "type": "jsonb",
+        "table": "operaciones_stock",
+        "column": "solicitud",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "producto_costos",
+        "column": "fecha_actualizacion",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "producto_costos",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "producto_costos",
+        "column": "precio_costo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "producto_costos",
+        "column": "producto_id",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "productos",
+        "column": "activo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "productos",
+        "column": "categoria_id",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "productos",
+        "column": "codigo_barras",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "productos",
+        "column": "descripcion",
+        "not_null": true
+      },
+      {
+        "type": "integer",
+        "table": "productos",
+        "column": "dias_alerta_vencimiento",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "productos",
+        "column": "es_combo",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "productos",
+        "column": "es_favorito",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "productos",
+        "column": "es_pesable",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "productos",
+        "column": "es_retornable",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "productos",
+        "column": "fecha_actualizacion",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "productos",
+        "column": "fecha_creacion",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "productos",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "productos",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "productos",
+        "column": "nombre_envase",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "productos",
+        "column": "plu_balanza",
+        "not_null": false
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "productos",
+        "column": "precio_costo",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "productos",
+        "column": "precio_envase",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "productos",
+        "column": "precio_venta",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "productos",
+        "column": "proveedor_id",
+        "not_null": false
+      },
+      {
+        "type": "boolean",
+        "table": "productos",
+        "column": "requiere_vencimiento",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,3)",
+        "table": "productos",
+        "column": "stock_actual",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,3)",
+        "table": "productos",
+        "column": "stock_minimo",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "productos",
+        "column": "unidad_medida",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "proveedores",
+        "column": "activo",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "proveedores",
+        "column": "cbu_alias",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "proveedores",
+        "column": "contacto_nombre",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "proveedores",
+        "column": "cuit",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "proveedores",
+        "column": "dias_visita",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "proveedores",
+        "column": "email",
+        "not_null": false
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "proveedores",
+        "column": "fecha_creacion",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "proveedores",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "proveedores",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "proveedores",
+        "column": "nombre",
+        "not_null": true
+      },
+      {
+        "type": "numeric(12,2)",
+        "table": "proveedores",
+        "column": "saldo_pendiente",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "proveedores",
+        "column": "telefono",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "suscripciones",
+        "column": "estado",
+        "not_null": true
+      },
+      {
+        "type": "date",
+        "table": "suscripciones",
+        "column": "fecha_inicio",
+        "not_null": true
+      },
+      {
+        "type": "date",
+        "table": "suscripciones",
+        "column": "fecha_vencimiento",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "suscripciones",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "suscripciones",
+        "column": "kiosco_id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "suscripciones",
+        "column": "plan_id",
+        "not_null": true
+      },
+      {
+        "type": "boolean",
+        "table": "usuarios",
+        "column": "activo",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "usuarios",
+        "column": "auth_user_id",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "usuarios",
+        "column": "email",
+        "not_null": false
+      },
+      {
+        "type": "boolean",
+        "table": "usuarios",
+        "column": "es_superadmin",
+        "not_null": true
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "usuarios",
+        "column": "fecha_creacion",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "usuarios",
+        "column": "id",
+        "not_null": true
+      },
+      {
+        "type": "uuid",
+        "table": "usuarios",
+        "column": "kiosco_id",
+        "not_null": false
+      },
+      {
+        "type": "text",
+        "table": "usuarios",
+        "column": "nombre",
+        "not_null": true
+      },
+      {
+        "type": "text",
+        "table": "usuarios",
+        "column": "rol",
+        "not_null": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "auditoria_operaciones_kiosco_id_fkey",
+        "type": "f",
+        "table": "auditoria_operaciones",
+        "validated": true,
+        "definition_sha256": "91041bb9d46485a09dc739f1167b4193bdd60ac80f7d1a4dc32db59ed329db78"
+      },
+      {
+        "name": "auditoria_operaciones_pkey",
+        "type": "p",
+        "table": "auditoria_operaciones",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "auditoria_operaciones_usuario_id_fkey",
+        "type": "f",
+        "table": "auditoria_operaciones",
+        "validated": true,
+        "definition_sha256": "ad53279371b25dd55f08f68fb90f2f067de9c2f92462f8c9c1729176201efb8c"
+      },
+      {
+        "name": "categorias_id_kiosco_id_key",
+        "type": "u",
+        "table": "categorias",
+        "validated": true,
+        "definition_sha256": "b10bfe7adda065d73c0a5e120925e15d1ea30c7c60e4102c17482730e4dc655e"
+      },
+      {
+        "name": "categorias_kiosco_id_fkey",
+        "type": "f",
+        "table": "categorias",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "categorias_pkey",
+        "type": "p",
+        "table": "categorias",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "clientes_id_kiosco_id_key",
+        "type": "u",
+        "table": "clientes",
+        "validated": true,
+        "definition_sha256": "b10bfe7adda065d73c0a5e120925e15d1ea30c7c60e4102c17482730e4dc655e"
+      },
+      {
+        "name": "clientes_kiosco_id_fkey",
+        "type": "f",
+        "table": "clientes",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "clientes_limite_credito_check",
+        "type": "c",
+        "table": "clientes",
+        "validated": true,
+        "definition_sha256": "964d3b6d64a454cf68685a5a79c66e9a22a05540be6720db73c9875be27a71cd"
+      },
+      {
+        "name": "clientes_pkey",
+        "type": "p",
+        "table": "clientes",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "clientes_saldo_deudor_check",
+        "type": "c",
+        "table": "clientes",
+        "validated": true,
+        "definition_sha256": "08a4fe86ff3118110af0968ce799864896d47dbc50dc1e78b36aab3165249728"
+      },
+      {
+        "name": "combo_items_cantidad_check",
+        "type": "c",
+        "table": "combo_items",
+        "validated": true,
+        "definition_sha256": "e9fe53276b75343d2147d72a724e891c664a602455ce2e1320812982f0e7f5fc"
+      },
+      {
+        "name": "combo_items_check",
+        "type": "c",
+        "table": "combo_items",
+        "validated": true,
+        "definition_sha256": "e3da14a38e114eb95e01c5859415b01ace070c6c8dc573edfec6636147ca2f41"
+      },
+      {
+        "name": "combo_items_combo_producto_id_componente_producto_id_key",
+        "type": "u",
+        "table": "combo_items",
+        "validated": true,
+        "definition_sha256": "710fc14a7b26e6495a30d8bd27dca3f16a861d5f0565989769ed5ed44c71e1d9"
+      },
+      {
+        "name": "combo_items_combo_producto_id_fkey",
+        "type": "f",
+        "table": "combo_items",
+        "validated": true,
+        "definition_sha256": "c654df69eb598d96a2e521e5bbee4387f83182281f1c8dc248a577ac738ad3ff"
+      },
+      {
+        "name": "combo_items_componente_producto_id_fkey",
+        "type": "f",
+        "table": "combo_items",
+        "validated": true,
+        "definition_sha256": "1b57fd8d9969a942285d9647de5e444383dc58da5b25b5952693440d3536973d"
+      },
+      {
+        "name": "combo_items_kiosco_id_fkey",
+        "type": "f",
+        "table": "combo_items",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "combo_items_pkey",
+        "type": "p",
+        "table": "combo_items",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "historial_precios_producto_kiosco_id_fkey",
+        "type": "f",
+        "table": "historial_precios_producto",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "historial_precios_producto_operacion_id_fkey",
+        "type": "f",
+        "table": "historial_precios_producto",
+        "validated": true,
+        "definition_sha256": "a9487b2b55f5e0c92be67bb75c52d038b5967ba9a192291e6bdb94995a2fbe59"
+      },
+      {
+        "name": "historial_precios_producto_pkey",
+        "type": "p",
+        "table": "historial_precios_producto",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "historial_precios_producto_producto_id_fkey",
+        "type": "f",
+        "table": "historial_precios_producto",
+        "validated": true,
+        "definition_sha256": "a76b0ec94f00d911c6f37d388f2dcb20edfd3ea83dc1e29289ff6f80cc2c6dce"
+      },
+      {
+        "name": "historial_precios_producto_usuario_id_fkey",
+        "type": "f",
+        "table": "historial_precios_producto",
+        "validated": true,
+        "definition_sha256": "b02bc25e4b9441852b092fbf1f2145ec48fe610c26d81a6e4f0435f2499c0444"
+      },
+      {
+        "name": "kioscos_estado_suscripcion_check",
+        "type": "c",
+        "table": "kioscos",
+        "validated": true,
+        "definition_sha256": "4b1b6a99c014cbd7b232418de46609b9ff452352c53ed160832251b8d595d3e7"
+      },
+      {
+        "name": "kioscos_pkey",
+        "type": "p",
+        "table": "kioscos",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "lotes_producto_cantidad_actual_check",
+        "type": "c",
+        "table": "lotes_producto",
+        "validated": true,
+        "definition_sha256": "b735cf7fe4d4cea9941e5a46a1fa80899446f1355ec8ad1b550ab737e9dbf0db"
+      },
+      {
+        "name": "lotes_producto_cantidad_inicial_check",
+        "type": "c",
+        "table": "lotes_producto",
+        "validated": true,
+        "definition_sha256": "807ecb5be59b54f7b525eaf6370b8e4dca4f0d3d92833cd7cd82dc0470727c70"
+      },
+      {
+        "name": "lotes_producto_id_producto_id_kiosco_id_key",
+        "type": "u",
+        "table": "lotes_producto",
+        "validated": true,
+        "definition_sha256": "4ddb4e51a084d3b0fe1f8e2c6de6fbe55aa5da84247b1f6d84ffd94795d957d4"
+      },
+      {
+        "name": "lotes_producto_kiosco_id_fkey",
+        "type": "f",
+        "table": "lotes_producto",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "lotes_producto_pkey",
+        "type": "p",
+        "table": "lotes_producto",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "lotes_producto_producto_id_fkey",
+        "type": "f",
+        "table": "lotes_producto",
+        "validated": true,
+        "definition_sha256": "a76b0ec94f00d911c6f37d388f2dcb20edfd3ea83dc1e29289ff6f80cc2c6dce"
+      },
+      {
+        "name": "movimiento_stock_costos_kiosco_id_fkey",
+        "type": "f",
+        "table": "movimiento_stock_costos",
+        "validated": true,
+        "definition_sha256": "91041bb9d46485a09dc739f1167b4193bdd60ac80f7d1a4dc32db59ed329db78"
+      },
+      {
+        "name": "movimiento_stock_costos_movimiento_id_fkey",
+        "type": "f",
+        "table": "movimiento_stock_costos",
+        "validated": true,
+        "definition_sha256": "2571fd89ba1d85ab7e249fc4ddf0c393b9432d152b50034e26addaaad2495c20"
+      },
+      {
+        "name": "movimiento_stock_costos_pkey",
+        "type": "p",
+        "table": "movimiento_stock_costos",
+        "validated": true,
+        "definition_sha256": "17ecb7b90164230c3a8446ae05988c4a55990a5c410095ad415762c291732034"
+      },
+      {
+        "name": "movimientos_stock_cantidad_check",
+        "type": "c",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "86e047529b476e111d4ac48acc363ff55951973f73cf1f3bea7c70eaddd45148"
+      },
+      {
+        "name": "movimientos_stock_cantidad_delta_check",
+        "type": "c",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "0c67b77e0985f9a8325f95c54c14eb76e2eb04d79385844331d7fe1db0ac4bb3"
+      },
+      {
+        "name": "movimientos_stock_kiosco_id_fkey",
+        "type": "f",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "movimientos_stock_lote_producto_id_fkey",
+        "type": "f",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "faf879573c34236aa115532a126151ad74e58ccf3aef9947afce6625dffd3ea4"
+      },
+      {
+        "name": "movimientos_stock_pkey",
+        "type": "p",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "movimientos_stock_producto_id_fkey",
+        "type": "f",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "f255a78a35c57b783d08b84d812cf831b3f8d3a5b3a0b4128630146d11a2b762"
+      },
+      {
+        "name": "movimientos_stock_tipo_check",
+        "type": "c",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "ea718fefa336e8742ea53b053587d357d1694b64dbf45a9a0426fe1eb329f636"
+      },
+      {
+        "name": "movimientos_stock_usuario_id_fkey",
+        "type": "f",
+        "table": "movimientos_stock",
+        "validated": true,
+        "definition_sha256": "ad53279371b25dd55f08f68fb90f2f067de9c2f92462f8c9c1729176201efb8c"
+      },
+      {
+        "name": "operaciones_escritura_kiosco_id_fkey",
+        "type": "f",
+        "table": "operaciones_escritura",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "operaciones_escritura_pkey",
+        "type": "p",
+        "table": "operaciones_escritura",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "operaciones_escritura_usuario_id_fkey",
+        "type": "f",
+        "table": "operaciones_escritura",
+        "validated": true,
+        "definition_sha256": "b02bc25e4b9441852b092fbf1f2145ec48fe610c26d81a6e4f0435f2499c0444"
+      },
+      {
+        "name": "operaciones_stock_kiosco_id_fkey",
+        "type": "f",
+        "table": "operaciones_stock",
+        "validated": true,
+        "definition_sha256": "91041bb9d46485a09dc739f1167b4193bdd60ac80f7d1a4dc32db59ed329db78"
+      },
+      {
+        "name": "operaciones_stock_pkey",
+        "type": "p",
+        "table": "operaciones_stock",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "producto_costos_kiosco_id_fkey",
+        "type": "f",
+        "table": "producto_costos",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "producto_costos_pkey",
+        "type": "p",
+        "table": "producto_costos",
+        "validated": true,
+        "definition_sha256": "85004fd93e1d0ce9100717304c59ef9fabdc336c4e4fcb5c4b0c01d0d29717ec"
+      },
+      {
+        "name": "producto_costos_precio_costo_check",
+        "type": "c",
+        "table": "producto_costos",
+        "validated": true,
+        "definition_sha256": "5b7d7b821309c882057920db4bd7b9814d381a96c0302db97eec7f3eda3b6d62"
+      },
+      {
+        "name": "producto_costos_producto_id_fkey",
+        "type": "f",
+        "table": "producto_costos",
+        "validated": true,
+        "definition_sha256": "c41d76d98ba036de50c1fea02e532447bfa985aef675b4695ac760a5207aa6a3"
+      },
+      {
+        "name": "productos_categoria_id_fkey",
+        "type": "f",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "6eb37c92c9a0e2cb252302fe2104ed2d874cedb3fb8d88ec04c6ee08e094b1f0"
+      },
+      {
+        "name": "productos_dias_alerta_vencimiento_check",
+        "type": "c",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "532ba79e50d5d381305c6ed8388c83cdd82edc0c4daaa51118657f630b68ace1"
+      },
+      {
+        "name": "productos_id_kiosco_id_key",
+        "type": "u",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "b10bfe7adda065d73c0a5e120925e15d1ea30c7c60e4102c17482730e4dc655e"
+      },
+      {
+        "name": "productos_kiosco_id_fkey",
+        "type": "f",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "productos_pkey",
+        "type": "p",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "productos_precio_costo_check",
+        "type": "c",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "5b7d7b821309c882057920db4bd7b9814d381a96c0302db97eec7f3eda3b6d62"
+      },
+      {
+        "name": "productos_precio_envase_check",
+        "type": "c",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "24e1b020e5bda8ff74faf2b839e6b054fe98edf980d6507ef6085a3f13e8c2c7"
+      },
+      {
+        "name": "productos_precio_venta_check",
+        "type": "c",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "ad1418df5929f49deb83b8143999ffbe4951f5b788f78cf5145fcbd272dab962"
+      },
+      {
+        "name": "productos_proveedor_fk",
+        "type": "f",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "e7f822e920ebd02ce49a2650300a99e92bd45fff8e4e692ffbc38b027f389406"
+      },
+      {
+        "name": "productos_stock_actual_check",
+        "type": "c",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "74f6f21e6777166bb1b99cad71a949d67ca9847a6f7fb401e1620942d5ce3a28"
+      },
+      {
+        "name": "productos_stock_minimo_check",
+        "type": "c",
+        "table": "productos",
+        "validated": true,
+        "definition_sha256": "337f3db20d49267f390c2b0a8463b3f26776096431255b20ebc5c161e5e4b9d2"
+      },
+      {
+        "name": "proveedores_id_kiosco_id_key",
+        "type": "u",
+        "table": "proveedores",
+        "validated": true,
+        "definition_sha256": "b10bfe7adda065d73c0a5e120925e15d1ea30c7c60e4102c17482730e4dc655e"
+      },
+      {
+        "name": "proveedores_kiosco_id_fkey",
+        "type": "f",
+        "table": "proveedores",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "proveedores_nombre_check",
+        "type": "c",
+        "table": "proveedores",
+        "validated": true,
+        "definition_sha256": "86868b530075716d9a53da0f58c6bb767cac51f84e37166e6dce2be52cd3a91e"
+      },
+      {
+        "name": "proveedores_pkey",
+        "type": "p",
+        "table": "proveedores",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "proveedores_saldo_pendiente_check",
+        "type": "c",
+        "table": "proveedores",
+        "validated": true,
+        "definition_sha256": "cdeedece8444cd22ff819f37135705282113ffd0d95d6402836274339158cce7"
+      },
+      {
+        "name": "suscripciones_check",
+        "type": "c",
+        "table": "suscripciones",
+        "validated": true,
+        "definition_sha256": "63268632da614ce2cbbc7e778470e4153185a63377d3c930130fd2a6c810bbe9"
+      },
+      {
+        "name": "suscripciones_estado_check",
+        "type": "c",
+        "table": "suscripciones",
+        "validated": true,
+        "definition_sha256": "494388c9e82afc53815a1da3b5fa832f232d68c6ff764b2869ff86c78bd7559d"
+      },
+      {
+        "name": "suscripciones_kiosco_id_fkey",
+        "type": "f",
+        "table": "suscripciones",
+        "validated": true,
+        "definition_sha256": "91041bb9d46485a09dc739f1167b4193bdd60ac80f7d1a4dc32db59ed329db78"
+      },
+      {
+        "name": "suscripciones_pkey",
+        "type": "p",
+        "table": "suscripciones",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "suscripciones_plan_id_fkey",
+        "type": "f",
+        "table": "suscripciones",
+        "validated": true,
+        "definition_sha256": "eba2974a37b682e207ee42000323f6be9e49db78ecab7e2e5ef0329763238325"
+      },
+      {
+        "name": "usuarios_auth_user_id_fkey",
+        "type": "f",
+        "table": "usuarios",
+        "validated": true,
+        "definition_sha256": "25328fa9bf945f239d5397fc4f6e249f5fdb255ee8636e057b0a3fdc9f734f9b"
+      },
+      {
+        "name": "usuarios_auth_user_id_key",
+        "type": "u",
+        "table": "usuarios",
+        "validated": true,
+        "definition_sha256": "c363e1a068709a832b0a955a30f5d6e4f105ef58418f866454f935808b84e8f8"
+      },
+      {
+        "name": "usuarios_kiosco_id_fkey",
+        "type": "f",
+        "table": "usuarios",
+        "validated": true,
+        "definition_sha256": "eda651053cd3ac36499bf17208604d7dd18a7a2f573727f7b1f836263facdaf2"
+      },
+      {
+        "name": "usuarios_pkey",
+        "type": "p",
+        "table": "usuarios",
+        "validated": true,
+        "definition_sha256": "8c8464f42472e42ee190fc91ca8db79b5351d3a4609040516578d229c56f6fa5"
+      },
+      {
+        "name": "usuarios_rol_check",
+        "type": "c",
+        "table": "usuarios",
+        "validated": true,
+        "definition_sha256": "58ba65799081656349811c08777b363e31c766f34b74c3481ca17c6d85561e38"
+      },
+      {
+        "name": "usuarios_superadmin_kiosco_scope_check",
+        "type": "c",
+        "table": "usuarios",
+        "validated": true,
+        "definition_sha256": "21d8ed2527610242030c87a72898d0ed47f45fc115b0bb3c88d93d0740d588b3"
+      }
+    ]
+  }
+}

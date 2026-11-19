@@ -1524,7 +1524,7 @@ export function ConfigPage() {
                         Excel Unificado
                       </h3>
                       <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">
-                        Exportá Catálogo, Movimientos de Stock, Clientes, Proveedores y Ventas a Excel. Para una copia consistente y restaurable, usá la copia integral JSON.
+                        Exportá Catálogo, Movimientos de Stock, Caja, Clientes, Proveedores, Ventas/Devoluciones y Envases a Excel. Para una copia consistente y restaurable, usá la copia integral JSON.
                       </p>
                     </div>
                     <Button

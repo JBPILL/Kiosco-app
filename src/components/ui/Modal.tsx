@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useId } from 'react'
 
 interface ModalProps {
   isOpen: boolean
@@ -20,6 +20,7 @@ const sizeStyles = {
 }
 
 export function Modal({ isOpen, onClose, title, children, footer, size = 'md', zIndex = 'z-50' }: ModalProps) {
+  const titleId = useId()
   const overlayRef = useRef<HTMLDivElement>(null)
   const mouseDownOnOverlayRef = useRef(false)
   const lastBackdropClickTimeRef = useRef(0)
@@ -93,13 +94,13 @@ export function Modal({ isOpen, onClose, title, children, footer, size = 'md', z
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
         className={`modal-container bg-white dark:bg-gray-800 rounded-2xl shadow-2xl w-full ${sizeStyles[size]} max-h-[min(94vh,calc(100dvh-1.5rem))] my-auto flex flex-col border border-slate-300 dark:border-gray-700 ring-1 ring-slate-900/15 dark:ring-white/10 overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
       >
         {/* Header con estilo de barra de ventana claramente delimitada */}
         <div className="modal-header flex items-center justify-between px-4 sm:px-6 py-3 bg-slate-100/90 dark:bg-gray-800/95 border-b border-slate-200 dark:border-gray-700 flex-shrink-0">
-          <h2 id="modal-title" className="text-base sm:text-lg font-bold text-slate-900 dark:text-gray-100 tracking-tight">
+          <h2 id={titleId} className="text-base sm:text-lg font-bold text-slate-900 dark:text-gray-100 tracking-tight">
             {title}
           </h2>
           <button

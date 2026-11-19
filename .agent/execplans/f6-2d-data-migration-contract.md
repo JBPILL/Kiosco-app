@@ -80,3 +80,12 @@ Evidencia: 177 archivos / 1,624 tests PASS; `npm run build` PASS; prueba C2 PGli
 - [x] Añadir validator offline al utilitario existente `scripts/f6-2d-migration.mjs`; cualquier condición fallida conserva blockers.
 - [x] Añadir pruebas PASS/BLOCK para inclusión, unresolved, provenance, reconciliación, blockers, huérfanos/cruces, fingerprint y filas migrables.
 - [x] Ejecutar validador y validaciones locales; sin remoto, export, import ni cambios de cajas.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR07, PR08 y PR10**.
+
+Conservar los gates de acceso legacy, freeze, reconciliación y rollback documentados. El nuevo registro no autoriza lectura/escritura remota ni cutover de este plan por sí solo.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

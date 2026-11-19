@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { presentarMovimientoStock } from './stockMovementDisplay'
+import { presentarMovimientoStock, resolveStockMovementDelta } from './stockMovementDisplay'
 
 it('presenta egresos históricos positivos y actuales negativos como salidas', () => {
   for (const cantidad of [3, -3]) {
@@ -8,11 +8,22 @@ it('presenta egresos históricos positivos y actuales negativos como salidas', (
   }
 })
 
-it('no interpreta ajustes de formato desconocido como stock final ni como pérdida', () => {
-  for (const cantidad of [10, -4]) {
-    expect(presentarMovimientoStock({ tipo: 'AJUSTE', cantidad, costo_unitario_referencia: 12 }))
-      .toEqual({ cantidad: `Registro: ${cantidad}`, estimacion: null })
-  }
+it('presenta ajustes con signo explícito desde delta_stock sin inventar valoración de pérdida', () => {
+  expect(presentarMovimientoStock({ tipo: 'AJUSTE', cantidad: 5, delta_stock: -5, costo_unitario_referencia: 12 }))
+    .toEqual({ cantidad: '-5', estimacion: null })
+  expect(presentarMovimientoStock({ tipo: 'AJUSTE', cantidad: 5, delta_stock: 5, costo_unitario_referencia: 12 }))
+    .toEqual({ cantidad: '+5', estimacion: null })
+  expect(presentarMovimientoStock({ tipo: 'AJUSTE', cantidad: 0, delta_stock: 0, costo_unitario_referencia: 12 }))
+    .toEqual({ cantidad: '0', estimacion: null })
+})
+
+it('aplica fallback seguro para ajustes históricos sin delta_stock ni inventar valoración', () => {
+  expect(presentarMovimientoStock({ tipo: 'AJUSTE', cantidad: -4, delta_stock: null, costo_unitario_referencia: 12 }))
+    .toEqual({ cantidad: '-4', estimacion: null })
+  expect(presentarMovimientoStock({ tipo: 'AJUSTE', cantidad: 10, delta_stock: null, costo_unitario_referencia: 12 }))
+    .toEqual({ cantidad: '+10', estimacion: null })
+  expect(resolveStockMovementDelta({ tipo: 'AJUSTE', cantidad: 8, delta_stock: null, stock_anterior: 10, stock_nuevo: 8 }))
+    .toBe(-2)
 })
 
 it('conserva costo cero y distingue costo desconocido', () => {

@@ -1,0 +1,18 @@
+# Never version Terraform / OpenTofu state, plans, lock directories, or secret tfvars
+.terraform/
+.terraform.lock.hcl
+.plans/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc

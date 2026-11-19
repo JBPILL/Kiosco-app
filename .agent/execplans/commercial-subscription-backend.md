@@ -174,3 +174,12 @@ El usuario se encarga de la certificación y deja ARCA en pausa. Se detectó que
 el ticket térmico directo redondeaba los importes a pesos enteros. Corrección
 local acotada al formato de impresión, con regresiones de 58/80 mm; evidencia
 en `docs/pilot-thermal-cents-2026-10-18.md`. Impresora física sigue pendiente.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR06, PR08, PR09, PR10 y PR11**.
+
+Conservar alcance de administración comercial, permisos y estados ya aceptados. La publicación de esta rama no acredita facturación productiva, cutover ni aceptación del comercio piloto.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

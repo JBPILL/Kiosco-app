@@ -820,3 +820,12 @@ Se extendió `src/test/kioskoBootstrapSql.test.ts`. La ejecución PGlite del paq
 Recomendación para retomar: verificar en staging, sólo lectura y con ref explícito, que la tabla está vacía y que los cambios 001–004 corresponden al paquete esperado; luego aplicar el `steps/005_stock_history.sql` local corregido como archivo completo. Si hay movimientos previos, detenerse: reconciliar explícitamente cada fila o recrear staging bajo autorización separada. Después validar la columna, trigger, CHECK, NOT NULL, resultado RPC y kardex antes de avanzar al step 006.
 
 **Estado:** `CONTRATO_CANTIDAD=RESUELTO_LOCAL`; `STEP_005_LOCAL=PGlite_PASS`; `STEP_005_STAGING=PENDIENTE`; `001_CAMBIO=NO`; `STAGING_RECREACION=NO_REQUERIDA SI TABLA VACÍA`; `GO_STAGING_INFRA=NO-GO` hasta terminar la validación remota de schema/seguridad y reabrir explícitamente la secuencia de instalación.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR03, PR04, PR05, PR06, PR08 y PR09**.
+
+El cierre histórico de cada fase sigue limitado a su evidencia. Completar matriz fiscal y comercial, concurrencia y recuperación hospedadas antes de declarar el circuito listo para Production.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

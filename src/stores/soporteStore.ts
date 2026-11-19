@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import toast from 'react-hot-toast'
 import { kioskoPilotStrictScopeActivo } from '../lib/kioskPilotScope'
 import { confirmarOperacionPersistida, obtenerOperacionPersistida } from '../lib/operationIdempotency'
+import { exigirAdminComercial, gestionarTicketSoporteComercial } from '../lib/commercialClient'
 
 export type TipoTicket = 'ERROR' | 'CONSULTA' | 'SUGERENCIA' | 'FACTURACION' | 'URGENTE'
 export type EstadoTicket = 'PENDIENTE' | 'EN_PROCESO' | 'RESUELTO'
@@ -93,8 +94,11 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
   tablaExiste: true,
 
   cargarTicketsAdmin: async () => {
-    if (kioskoPilotStrictScopeActivo()) {
-      set({ cargando: false, error: 'La administración de soporte está fuera del alcance del piloto.' })
+    try {
+      exigirAdminComercial()
+    } catch (err: unknown) {
+      const mensaje = err instanceof Error ? err.message : 'La administración de soporte requiere SuperAdmin comercial habilitado.'
+      set({ cargando: false, error: mensaje })
       return []
     }
     set({ cargando: true, error: null })
@@ -106,6 +110,9 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
         .limit(1000)
 
       if (error) {
+        if (kioskoPilotStrictScopeActivo()) {
+          throw error
+        }
         // Código 42P01 indica que la tabla no existe aún en la base de datos
         if (error.code === '42P01' || error.message?.includes('tickets_soporte')) {
           console.info('[SoporteStore] Tabla tickets_soporte no existe en Supabase. Usando almacenamiento local.')
@@ -117,14 +124,17 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
       }
 
       const ticketsSupabase = (data as TicketSoporte[]) || []
-      // Sincronizar con local para disponibilidad offline
       saveLocalTickets(ticketsSupabase)
       set({ tickets: ticketsSupabase, tablaExiste: true, cargando: false })
       return ticketsSupabase
     } catch (err: unknown) {
+      const mensaje = err instanceof Error ? err.message : 'Error al conectar con la base de datos'
+      if (kioskoPilotStrictScopeActivo()) {
+        set({ tickets: [], cargando: false, error: mensaje })
+        return []
+      }
       console.warn('[SoporteStore] Fallback a caché local por error al cargar:', err)
       const locales = getLocalTickets()
-      const mensaje = err instanceof Error ? err.message : 'Error al conectar con la base de datos'
       set({ tickets: locales, cargando: false, error: mensaje })
       return locales
     }
@@ -242,33 +252,25 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
   },
 
   actualizarEstadoTicket: async (id: string, nuevoEstado: EstadoTicket, respuestaAdmin?: string) => {
-    if (kioskoPilotStrictScopeActivo()) {
-      set({ error: 'La administración de tickets está fuera del alcance del piloto.' })
-      return false
-    }
-    const ahora = new Date().toISOString()
-    const cambios: Partial<TicketSoporte> = {
-      estado: nuevoEstado,
-      fecha_actualizacion: ahora,
-      ...(respuestaAdmin !== undefined ? { respuesta_admin: respuestaAdmin } : {}),
-    }
-
-    // Actualizar estado local inmediatamente para feedback instantáneo
-    const ticketsActualizados = get().tickets.map((t) =>
-      t.id === id ? { ...t, ...cambios } : t
-    )
-    saveLocalTickets(ticketsActualizados)
-    set({ tickets: ticketsActualizados })
-
+    set({ guardando: true, error: null })
     try {
-      const { error } = await supabase
-        .from('tickets_soporte')
-        .update(cambios)
-        .eq('id', id)
-
-      if (error && error.code !== '42P01') {
-        console.warn('[SoporteStore] Advertencia al sincronizar estado con Supabase:', error.message)
-      }
+      const data = await gestionarTicketSoporteComercial(id, nuevoEstado, respuestaAdmin)
+      const ticketServidor = (data.ticket && typeof data.ticket === 'object' ? data.ticket : null) as TicketSoporte | null
+      const ticketsActualizados = get().tickets.map((t) =>
+        t.id === id
+          ? {
+              ...t,
+              ...(ticketServidor ?? {}),
+              estado: ticketServidor?.estado ?? nuevoEstado,
+              ...(respuestaAdmin !== undefined
+                ? { respuesta_admin: ticketServidor ? ticketServidor.respuesta_admin : (respuestaAdmin.trim() || null) }
+                : {}),
+              fecha_actualizacion: ticketServidor?.fecha_actualizacion ?? new Date().toISOString(),
+            }
+          : t
+      )
+      saveLocalTickets(ticketsActualizados)
+      set({ tickets: ticketsActualizados, guardando: false })
       toast.success(
         nuevoEstado === 'RESUELTO'
           ? 'Ticket marcado como RESUELTO'
@@ -277,35 +279,27 @@ export const useSoporteStore = create<SoporteState>((set, get) => ({
           : 'Estado del ticket actualizado'
       )
       return true
-    } catch (err) {
-      console.warn('[SoporteStore] Error actualizando estado en Supabase:', err)
-      toast.success('Estado actualizado localmente')
-      return true
+    } catch (err: unknown) {
+      const mensaje = err instanceof Error ? err.message : 'No se pudo actualizar el ticket en el servidor.'
+      set({ guardando: false, error: mensaje })
+      toast.error(mensaje)
+      return false
     }
   },
 
-  eliminarTicket: async (id: string) => {
-    if (kioskoPilotStrictScopeActivo()) {
-      set({ error: 'La eliminación de tickets está fuera del alcance del piloto.' })
-      return false
-    }
-    const filtrados = get().tickets.filter((t) => t.id !== id)
-    saveLocalTickets(filtrados)
-    set({ tickets: filtrados })
-
-    try {
-      await supabase.from('tickets_soporte').delete().eq('id', id)
-      toast.success('Ticket eliminado')
-      return true
-    } catch (err) {
-      console.warn('[SoporteStore] Error al eliminar en Supabase:', err)
-      toast.success('Ticket eliminado del historial local')
-      return true
-    }
+  eliminarTicket: async (_id: string) => {
+    const mensaje = 'La eliminación de tickets está deshabilitada por auditoría. Marcá el ticket como RESUELTO.'
+    set({ error: mensaje })
+    toast.error(mensaje)
+    return false
   },
 
   suscribirRealtimeTickets: () => {
-    if (kioskoPilotStrictScopeActivo()) return () => {}
+    try {
+      exigirAdminComercial()
+    } catch {
+      return () => {}
+    }
     try {
       const channelName = 'tickets_soporte_realtime'
 

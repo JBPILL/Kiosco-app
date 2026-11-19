@@ -52,3 +52,12 @@ siendo la copia consistente/restaurable. No hay cambios SQL, Edge, checkout,
 facturación ni .env.local en este bloque. Publicado y comprobado en Production.
 Preparación fiscal separada en arca-homologation.md; certificado WSASS bloqueado
 por error externo, no incluido en el PASS de este bloque de Excel.
+
+
+## Production Readiness — revisión permanente 20/10/2026
+
+Referencia canónica: [gates PR01–PR11](../../plan_operativo_y_comercial_kioskopos_revision.md#production-readiness--gates-permanentes-20102026). Gates aplicables a este ExecPlan: **PR05, PR06, PR07 y PR09**.
+
+Mantener integridad de IDs, relaciones y cantidades en importación/exportación, sin truncamientos ni permisos ampliados; el archivo Excel no sustituye recuperación de PostgreSQL/Storage.
+
+Esta adenda complementa los estados y decisiones anteriores, sin borrarlos ni convertir un PASS local/histórico en aceptación global. Registrar entorno, versión, fecha, evidencia y límites antes de cerrar el gate aplicable. Continuar según el primer gate pendiente del registro maestro (PR01); las autorizaciones de la sesión conservan su alcance y no se amplían por este plan.

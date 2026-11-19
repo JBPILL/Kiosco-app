@@ -9,3 +9,7 @@ verify_jwt = true
 
 [functions.provision-commerce]
 verify_jwt = true
+
+# Preparado; instalar/habilitar sólo con el gate fiscal de Staging.
+[functions.arca-homologacion]
+verify_jwt = true
